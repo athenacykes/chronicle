@@ -19,6 +19,8 @@ class MacosChronicleShell extends StatelessWidget {
         minWidth: viewModel.sidebarWidth,
         maxWidth: viewModel.sidebarWidth + 80,
         startWidth: viewModel.sidebarWidth,
+        dragClosed: true,
+        dragClosedBuffer: 0,
         topOffset: 28,
         builder: (context, scrollController) => PrimaryScrollController(
           controller: scrollController,
@@ -26,58 +28,12 @@ class MacosChronicleShell extends StatelessWidget {
         ),
       ),
       child: MacosScaffold(
-        toolBar: ToolBar(
-          title: Text(viewModel.title),
-          centerTitle: false,
-          actions: <ToolbarItem>[
-            CustomToolbarItem(
-              tooltipMessage: 'Search notes',
-              inToolbarBuilder: (context) => SizedBox(
-                width: viewModel.searchFieldWidth,
-                child: MacosSearchField<void>(
-                  controller: viewModel.searchController,
-                  placeholder: 'Search notes...',
-                  onChanged: viewModel.onSearchChanged,
-                ),
-              ),
-              inOverflowedBuilder: (context) => const ToolbarOverflowMenuItem(
-                label: 'Search',
-                onPressed: null,
-              ),
-            ),
-            const ToolBarSpacer(),
-            ToolBarIconButton(
-              label: 'Conflicts',
-              icon: _ConflictIconBadge(count: viewModel.conflictCount),
-              tooltipMessage: 'Conflicts',
-              showLabel: false,
-              onPressed: viewModel.onShowConflicts,
-            ),
-            ToolBarIconButton(
-              label: 'Sync now',
-              icon: const MacosIcon(CupertinoIcons.arrow_2_circlepath),
-              tooltipMessage: 'Sync now',
-              showLabel: false,
-              onPressed: () {
-                unawaited(viewModel.onSyncNow());
-              },
-            ),
-            ToolBarIconButton(
-              label: 'Settings',
-              icon: const MacosIcon(CupertinoIcons.gear_solid),
-              tooltipMessage: 'Settings',
-              showLabel: false,
-              onPressed: () {
-                unawaited(viewModel.onOpenSettings());
-              },
-            ),
-          ],
-        ),
         children: <Widget>[
           ContentArea(
             builder: (context, scrollController) {
               return Column(
                 children: <Widget>[
+                  _MacosTopBar(viewModel: viewModel),
                   Expanded(
                     child: _withMaterialBridge(
                       context: context,
@@ -133,6 +89,113 @@ Widget _withMaterialBridge({
     data: materialTheme,
     child: Material(type: MaterialType.transparency, child: child),
   );
+}
+
+class _MacosTopBar extends StatelessWidget {
+  const _MacosTopBar({required this.viewModel});
+
+  final ChronicleShellViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    final typography = MacosTheme.of(context).typography;
+    final titleStyle = typography.title3.copyWith(
+      fontSize: 15,
+      fontWeight: MacosFontWeight.w590,
+    );
+
+    return Container(
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: MacosTheme.of(context).dividerColor),
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final searchWidth = constraints.maxWidth < 760
+              ? 180.0
+              : constraints.maxWidth < 980
+              ? 240.0
+              : viewModel.searchFieldWidth;
+
+          return Row(
+            children: <Widget>[
+              _ToolbarActionIcon(
+                tooltip: 'Toggle sidebar',
+                icon: const MacosIcon(CupertinoIcons.sidebar_left),
+                onPressed: MacosWindowScope.maybeOf(context)?.toggleSidebar,
+              ),
+              const SizedBox(width: 6),
+              Text(viewModel.title, style: titleStyle),
+              const Spacer(),
+              SizedBox(
+                width: searchWidth,
+                child: MacosSearchField<void>(
+                  controller: viewModel.searchController,
+                  placeholder: 'Search notes...',
+                  onChanged: viewModel.onSearchChanged,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _ToolbarActionIcon(
+                tooltip: 'Conflicts',
+                icon: _ConflictIconBadge(count: viewModel.conflictCount),
+                onPressed: viewModel.onShowConflicts,
+              ),
+              _ToolbarActionIcon(
+                tooltip: 'Sync now',
+                icon: const MacosIcon(CupertinoIcons.arrow_2_circlepath),
+                onPressed: () {
+                  unawaited(viewModel.onSyncNow());
+                },
+              ),
+              _ToolbarActionIcon(
+                tooltip: 'Settings',
+                icon: const MacosIcon(CupertinoIcons.gear_solid),
+                onPressed: () {
+                  unawaited(viewModel.onOpenSettings());
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ToolbarActionIcon extends StatelessWidget {
+  const _ToolbarActionIcon({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final Widget icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosTooltip(
+      message: tooltip,
+      child: MacosIconButton(
+        semanticLabel: tooltip,
+        icon: icon,
+        backgroundColor: MacosColors.transparent,
+        boxConstraints: const BoxConstraints(
+          minHeight: 26,
+          minWidth: 26,
+          maxHeight: 26,
+          maxWidth: 26,
+        ),
+        padding: const EdgeInsets.all(4),
+        onPressed: onPressed,
+      ),
+    );
+  }
 }
 
 class _ConflictIconBadge extends StatelessWidget {
