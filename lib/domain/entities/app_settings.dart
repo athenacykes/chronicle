@@ -1,0 +1,65 @@
+import '../../core/time_utils.dart';
+import 'sync_config.dart';
+
+class AppSettings {
+  const AppSettings({
+    required this.storageRootPath,
+    required this.clientId,
+    required this.syncConfig,
+    required this.lastSyncAt,
+  });
+
+  final String? storageRootPath;
+  final String clientId;
+  final SyncConfig syncConfig;
+  final DateTime? lastSyncAt;
+
+  AppSettings copyWith({
+    String? storageRootPath,
+    bool clearStorageRootPath = false,
+    String? clientId,
+    SyncConfig? syncConfig,
+    DateTime? lastSyncAt,
+    bool clearLastSyncAt = false,
+  }) {
+    return AppSettings(
+      storageRootPath: clearStorageRootPath
+          ? null
+          : storageRootPath ?? this.storageRootPath,
+      clientId: clientId ?? this.clientId,
+      syncConfig: syncConfig ?? this.syncConfig,
+      lastSyncAt: clearLastSyncAt ? null : lastSyncAt ?? this.lastSyncAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'storageRootPath': storageRootPath,
+      'clientId': clientId,
+      'syncConfig': syncConfig.toJson(),
+      'lastSyncAt': lastSyncAt == null ? null : formatIsoUtc(lastSyncAt!),
+    };
+  }
+
+  static AppSettings fromJson(Map<String, dynamic> json) {
+    return AppSettings(
+      storageRootPath: json['storageRootPath'] as String?,
+      clientId: (json['clientId'] as String?) ?? '',
+      syncConfig: json['syncConfig'] is Map<String, dynamic>
+          ? SyncConfig.fromJson(json['syncConfig'] as Map<String, dynamic>)
+          : SyncConfig.initial(),
+      lastSyncAt: json['lastSyncAt'] == null
+          ? null
+          : parseIsoUtc(json['lastSyncAt'] as String),
+    );
+  }
+
+  static AppSettings initial(String clientId) {
+    return AppSettings(
+      storageRootPath: null,
+      clientId: clientId,
+      syncConfig: SyncConfig.initial(),
+      lastSyncAt: null,
+    );
+  }
+}
