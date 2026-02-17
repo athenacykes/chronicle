@@ -3,35 +3,63 @@ import 'package:chronicle/app/app_providers.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
 import 'package:chronicle/domain/repositories/settings_repository.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:macos_ui/macos_ui.dart';
 
 void main() {
   testWidgets('shows storage setup screen when root is not configured', (
     tester,
   ) async {
-    final fakeRepo = _FakeSettingsRepository(
-      AppSettings(
-        storageRootPath: null,
-        clientId: 'test-client',
-        syncConfig: SyncConfig.initial(),
-        lastSyncAt: null,
-      ),
-    );
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: <Override>[
-          settingsRepositoryProvider.overrideWithValue(fakeRepo),
-        ],
-        child: const ChronicleApp(),
-      ),
-    );
+    await tester.pumpWidget(_buildTestApp(useMacOSNativeUI: false));
 
     await tester.pumpAndSettle();
 
     expect(find.text('Set up Chronicle storage'), findsOneWidget);
+    expect(find.byType(MaterialApp), findsOneWidget);
   });
+
+  testWidgets('renders macOS app shell when macOS native UI is forced', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp(useMacOSNativeUI: true));
+
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MacosApp), findsOneWidget);
+    expect(find.byType(MacosWindow), findsOneWidget);
+    expect(find.byType(MacosTextField), findsWidgets);
+  });
+
+  testWidgets('renders Material app shell when macOS native UI is disabled', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildTestApp(useMacOSNativeUI: false));
+
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MaterialApp), findsOneWidget);
+    expect(find.byType(Scaffold), findsWidgets);
+  });
+}
+
+Widget _buildTestApp({required bool useMacOSNativeUI}) {
+  final fakeRepo = _FakeSettingsRepository(
+    AppSettings(
+      storageRootPath: null,
+      clientId: 'test-client',
+      syncConfig: SyncConfig.initial(),
+      lastSyncAt: null,
+    ),
+  );
+
+  return ProviderScope(
+    overrides: <Override>[
+      settingsRepositoryProvider.overrideWithValue(fakeRepo),
+    ],
+    child: ChronicleApp(forceMacOSNativeUI: useMacOSNativeUI),
+  );
 }
 
 class _FakeSettingsRepository implements SettingsRepository {

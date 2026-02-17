@@ -38,5 +38,15 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+
+    # Keep all CocoaPods targets aligned with the app's minimum macOS version.
+    target.build_configurations.each do |config|
+      config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
+
+      # Silence extremely noisy warnings from vendored sqlite C source code.
+      if target.name == 'sqlite3'
+        config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
+      end
+    end
   end
 end

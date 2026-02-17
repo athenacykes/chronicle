@@ -32,6 +32,19 @@ flutter test
 flutter run -d macos
 ```
 
+## macOS Native UI Flag
+
+Chronicle now includes an adaptive shell:
+
+- Material shell for non-macOS targets
+- macOS-native shell (using `macos_ui`) when enabled
+
+Enable the macOS-native shell:
+
+```bash
+flutter run -d macos --dart-define=CHRONICLE_MACOS_NATIVE_UI=true
+```
+
 ## Build Runnable macOS Application
 
 Chronicle v0 is desktop-first and currently targets macOS.
