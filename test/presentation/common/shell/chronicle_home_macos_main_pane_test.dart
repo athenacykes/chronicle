@@ -35,21 +35,18 @@ void main() {
     const Phase(
       id: 'phase-start',
       matterId: 'matter-1',
-      type: PhaseType.start,
       name: 'Start',
       order: 0,
     ),
     const Phase(
       id: 'phase-progress',
       matterId: 'matter-1',
-      type: PhaseType.process,
       name: 'In Progress',
       order: 1,
     ),
     const Phase(
       id: 'phase-end',
       matterId: 'matter-1',
-      type: PhaseType.end,
       name: 'Completed',
       order: 2,
     ),
@@ -67,6 +64,7 @@ void main() {
     startedAt: now,
     endedAt: null,
     phases: phases,
+    currentPhaseId: 'phase-progress',
   );
   final noteOne = Note(
     id: 'note-1',
@@ -557,14 +555,9 @@ class _MemoryMatterRepository implements MatterRepository {
       startedAt: now,
       endedAt: null,
       phases: <Phase>[
-        Phase(
-          id: '$id-phase-start',
-          matterId: id,
-          type: PhaseType.start,
-          name: 'Start',
-          order: 0,
-        ),
+        Phase(id: '$id-phase-start', matterId: id, name: 'Start', order: 0),
       ],
+      currentPhaseId: '$id-phase-start',
     );
     _matters.add(matter);
     return matter;

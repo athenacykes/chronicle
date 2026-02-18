@@ -2,8 +2,6 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
-import '../../domain/entities/enums.dart';
-
 class ChronicleLayout {
   const ChronicleLayout(this.rootDirectory);
 
@@ -32,8 +30,12 @@ class ChronicleLayout {
     return File(p.join(matterDirectory(matterId).path, 'matter.json'));
   }
 
-  Directory phaseDirectory(String matterId, PhaseType type) {
-    return Directory(p.join(matterDirectory(matterId).path, type.name));
+  Directory phasesDirectory(String matterId) {
+    return Directory(p.join(matterDirectory(matterId).path, 'phases'));
+  }
+
+  Directory phaseDirectory(String matterId, String phaseId) {
+    return Directory(p.join(phasesDirectory(matterId).path, phaseId));
   }
 
   File orphanNoteFile(String noteId) {
@@ -42,10 +44,10 @@ class ChronicleLayout {
 
   File phaseNoteFile({
     required String matterId,
-    required PhaseType phaseType,
+    required String phaseId,
     required String noteId,
   }) {
-    return File(p.join(phaseDirectory(matterId, phaseType).path, '$noteId.md'));
+    return File(p.join(phaseDirectory(matterId, phaseId).path, '$noteId.md'));
   }
 
   File linkFile(String linkId) {

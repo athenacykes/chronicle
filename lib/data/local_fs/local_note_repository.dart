@@ -6,7 +6,6 @@ import '../../core/app_exception.dart';
 import '../../core/clock.dart';
 import '../../core/file_system_utils.dart';
 import '../../core/id_generator.dart';
-import '../../domain/entities/enums.dart';
 import '../../domain/entities/note.dart';
 import '../../domain/repositories/matter_repository.dart';
 import '../../domain/repositories/note_repository.dart';
@@ -189,9 +188,10 @@ class LocalNoteRepository implements NoteRepository {
       }
 
       final updated = note.copyWith(
-        attachments: _dedupeAttachmentPaths(
-          <String>[...note.attachments, ...createdPaths],
-        ),
+        attachments: _dedupeAttachmentPaths(<String>[
+          ...note.attachments,
+          ...createdPaths,
+        ]),
         updatedAt: _clock.nowUtc(),
       );
       await updateNote(updated);
@@ -280,36 +280,36 @@ class LocalNoteRepository implements NoteRepository {
       return layout.orphanNoteFile(note.id);
     }
 
-    final phaseType = await _resolvePhaseType(
+    final hasPhase = await _matterHasPhase(
       matterId: note.matterId!,
       phaseId: note.phaseId!,
     );
-    if (phaseType == null) {
+    if (!hasPhase) {
       return layout.orphanNoteFile(note.id);
     }
 
     return layout.phaseNoteFile(
       matterId: note.matterId!,
-      phaseType: phaseType,
+      phaseId: note.phaseId!,
       noteId: note.id,
     );
   }
 
-  Future<PhaseType?> _resolvePhaseType({
+  Future<bool> _matterHasPhase({
     required String matterId,
     required String phaseId,
   }) async {
     final matter = await _matterRepository.getMatterById(matterId);
     if (matter == null) {
-      return null;
+      return false;
     }
 
     for (final phase in matter.phases) {
       if (phase.id == phaseId) {
-        return phase.type;
+        return true;
       }
     }
-    return null;
+    return false;
   }
 
   Future<List<File>> _noteFiles(ChronicleLayout layout) async {
@@ -435,12 +435,7 @@ class LocalNoteRepository implements NoteRepository {
         );
       }
 
-      validated.add(
-        _AttachmentSource(
-          file: file,
-          displayName: fileName,
-        ),
-      );
+      validated.add(_AttachmentSource(file: file, displayName: fileName));
     }
 
     return validated;

@@ -31,7 +31,7 @@ final noteListProvider = FutureProvider<List<Note>>((ref) async {
 
   if (viewMode == MatterViewMode.phase) {
     if (phaseId == null || phaseId.isEmpty) {
-      return <Note>[];
+      return repository.listMatterTimeline(matterId);
     }
     return repository.listNotesByMatterAndPhase(
       matterId: matterId,
@@ -83,7 +83,15 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       ref.read(settingsControllerProvider).valueOrNull?.localeTag,
     );
 
-    final phaseId = ref.read(selectedPhaseIdProvider);
+    var phaseId = ref.read(selectedPhaseIdProvider);
+    if (phaseId == null || phaseId.isEmpty) {
+      final matter = await ref
+          .read(matterRepositoryProvider)
+          .getMatterById(matterId);
+      phaseId =
+          matter?.currentPhaseId ??
+          (matter?.phases.isEmpty ?? true ? null : matter!.phases.first.id);
+    }
     final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
       title: l10n.defaultUntitledNoteTitle,
       content: '# ${l10n.defaultUntitledNoteTitle}\n',
@@ -295,6 +303,17 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       ref.read(showOrphansProvider.notifier).state = false;
       ref.read(selectedMatterIdProvider.notifier).state = note.matterId;
       ref.read(selectedPhaseIdProvider.notifier).state = note.phaseId;
+      ref.read(matterViewModeProvider.notifier).state = MatterViewMode.phase;
+      if (note.matterId != null && note.phaseId != null) {
+        final matter = ref
+            .read(mattersControllerProvider.notifier)
+            .findMatter(note.matterId!);
+        if (matter != null) {
+          await ref
+              .read(mattersControllerProvider.notifier)
+              .setMatterCurrentPhase(matter: matter, phaseId: note.phaseId!);
+        }
+      }
     }
 
     ref.invalidate(noteListProvider);

@@ -13,6 +13,7 @@ import 'package:macos_ui/macos_ui.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../app/app_providers.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/matter.dart';
 import '../../../domain/entities/matter_graph_data.dart';
@@ -849,9 +850,9 @@ class _MatterSidebar extends ConsumerWidget {
     ref.read(showOrphansProvider.notifier).state = false;
     ref.read(showConflictsProvider.notifier).state = false;
     ref.read(selectedMatterIdProvider.notifier).state = matter.id;
-    if (matter.phases.isNotEmpty) {
-      ref.read(selectedPhaseIdProvider.notifier).state = matter.phases.first.id;
-    }
+    ref.read(selectedPhaseIdProvider.notifier).state =
+        matter.currentPhaseId ??
+        (matter.phases.isEmpty ? null : matter.phases.first.id);
     ref.invalidate(noteListProvider);
   }
 }
@@ -1501,7 +1502,6 @@ class _MacosMatterViewModeControlState
         tabs: <MacosTab>[
           MacosTab(label: l10n.viewModePhase),
           MacosTab(label: l10n.viewModeTimeline),
-          MacosTab(label: l10n.viewModeList),
           MacosTab(label: l10n.viewModeGraph),
         ],
         controller: _controller,
@@ -1514,12 +1514,14 @@ class _MacosPhaseControl extends StatefulWidget {
   const _MacosPhaseControl({
     required this.phases,
     required this.selectedPhaseId,
+    required this.allPhasesLabel,
     required this.onSelected,
   });
 
   final List<Phase> phases;
   final String? selectedPhaseId;
-  final ValueChanged<String> onSelected;
+  final String allPhasesLabel;
+  final ValueChanged<String?> onSelected;
 
   @override
   State<_MacosPhaseControl> createState() => _MacosPhaseControlState();
@@ -1536,26 +1538,27 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.phases.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     final selectedIndex = _selectedIndex();
-    if (widget.phases.length > 4) {
+    final entries = <(String?, String)>[
+      (null, widget.allPhasesLabel),
+      ...widget.phases.map((phase) => (phase.id, phase.name)),
+    ];
+    if (entries.length > 5) {
       return SizedBox(
         width: 240,
         child: MacosPopupButton<String>(
-          value: widget.phases[selectedIndex].id,
+          value: entries[selectedIndex].$1 ?? '__all_phases__',
           onChanged: (value) {
-            if (value != null) {
-              widget.onSelected(value);
+            if (value == null) {
+              return;
             }
+            widget.onSelected(value == '__all_phases__' ? null : value);
           },
-          items: widget.phases
+          items: entries
               .map(
-                (phase) => MacosPopupMenuItem<String>(
-                  value: phase.id,
-                  child: Text(phase.name),
+                (entry) => MacosPopupMenuItem<String>(
+                  value: entry.$1 ?? '__all_phases__',
+                  child: Text(entry.$2),
                 ),
               )
               .toList(),
@@ -1564,12 +1567,12 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
     }
 
     final needRebuild =
-        _controller == null || _controller!.length != widget.phases.length;
+        _controller == null || _controller!.length != entries.length;
     if (needRebuild) {
       _controller?.dispose();
       _controller = MacosTabController(
         initialIndex: selectedIndex,
-        length: widget.phases.length,
+        length: entries.length,
       )..addListener(_onControllerChanged);
     } else if (_controller!.index != selectedIndex) {
       _controller!.index = selectedIndex;
@@ -1578,8 +1581,8 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
     return KeyedSubtree(
       key: _kMacosPhaseSegmentedKey,
       child: MacosSegmentedControl(
-        tabs: widget.phases
-            .map((phase) => MacosTab(label: phase.name))
+        tabs: entries
+            .map((entry) => MacosTab(label: entry.$2))
             .toList(growable: false),
         controller: _controller!,
       ),
@@ -1587,10 +1590,16 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
   }
 
   int _selectedIndex() {
+    if (widget.selectedPhaseId == null || widget.selectedPhaseId!.isEmpty) {
+      return 0;
+    }
     final index = widget.phases.indexWhere(
       (phase) => phase.id == widget.selectedPhaseId,
     );
-    return index < 0 ? 0 : index;
+    if (index < 0) {
+      return 0;
+    }
+    return index + 1;
   }
 
   void _onControllerChanged() {
@@ -1598,14 +1607,17 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
     if (controller == null) {
       return;
     }
-    widget.onSelected(widget.phases[controller.index].id);
+    if (controller.index == 0) {
+      widget.onSelected(null);
+      return;
+    }
+    widget.onSelected(widget.phases[controller.index - 1].id);
   }
 }
 
 const List<MatterViewMode> _matterViewModes = <MatterViewMode>[
   MatterViewMode.phase,
   MatterViewMode.timeline,
-  MatterViewMode.list,
   MatterViewMode.graph,
 ];
 
@@ -2084,10 +2096,6 @@ class _MatterWorkspace extends ConsumerWidget {
                           label: Text(l10n.viewModeTimeline),
                         ),
                         ButtonSegment<MatterViewMode>(
-                          value: MatterViewMode.list,
-                          label: Text(l10n.viewModeList),
-                        ),
-                        ButtonSegment<MatterViewMode>(
                           value: MatterViewMode.graph,
                           label: Text(l10n.viewModeGraph),
                         ),
@@ -2130,6 +2138,7 @@ class _MatterWorkspace extends ConsumerWidget {
                               matterId: matter.id,
                               phaseId:
                                   selectedPhaseId ??
+                                  matter.currentPhaseId ??
                                   (matter.phases.isEmpty
                                       ? null
                                       : matter.phases.first.id),
@@ -2166,6 +2175,7 @@ class _MatterWorkspace extends ConsumerWidget {
                               matterId: matter.id,
                               phaseId:
                                   selectedPhaseId ??
+                                  matter.currentPhaseId ??
                                   (matter.phases.isEmpty
                                       ? null
                                       : matter.phases.first.id),
@@ -2180,38 +2190,106 @@ class _MatterWorkspace extends ConsumerWidget {
         if (viewMode == MatterViewMode.phase)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: isMacOSNativeUI
-                ? _MacosPhaseControl(
-                    phases: matter.phases,
-                    selectedPhaseId: selectedPhaseId,
-                    onSelected: (phaseId) {
-                      ref.read(selectedPhaseIdProvider.notifier).state =
-                          phaseId;
-                      ref.invalidate(noteListProvider);
-                    },
-                  )
-                : Wrap(
-                    spacing: 8,
-                    children: matter.phases
-                        .map(
-                          (phase) => ChoiceChip(
-                            label: Text(phase.name),
-                            selected: selectedPhaseId == phase.id,
-                            onSelected: (_) {
-                              ref.read(selectedPhaseIdProvider.notifier).state =
-                                  phase.id;
-                              ref.invalidate(noteListProvider);
-                            },
-                          ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: isMacOSNativeUI
+                      ? _MacosPhaseControl(
+                          phases: matter.phases,
+                          selectedPhaseId: selectedPhaseId,
+                          allPhasesLabel: 'All Phases',
+                          onSelected: (phaseId) {
+                            ref.read(selectedPhaseIdProvider.notifier).state =
+                                phaseId;
+                            if (phaseId != null && phaseId.isNotEmpty) {
+                              unawaited(
+                                ref
+                                    .read(mattersControllerProvider.notifier)
+                                    .setMatterCurrentPhase(
+                                      matter: matter,
+                                      phaseId: phaseId,
+                                    ),
+                              );
+                            }
+                            ref.invalidate(noteListProvider);
+                          },
                         )
-                        .toList(),
-                  ),
+                      : Wrap(
+                          spacing: 8,
+                          children: <Widget>[
+                            ChoiceChip(
+                              label: const Text('All Phases'),
+                              selected:
+                                  selectedPhaseId == null ||
+                                  selectedPhaseId.isEmpty,
+                              onSelected: (_) {
+                                ref
+                                        .read(selectedPhaseIdProvider.notifier)
+                                        .state =
+                                    null;
+                                ref.invalidate(noteListProvider);
+                              },
+                            ),
+                            ...matter.phases.map(
+                              (phase) => ChoiceChip(
+                                label: Text(phase.name),
+                                selected: selectedPhaseId == phase.id,
+                                onSelected: (_) {
+                                  ref
+                                      .read(selectedPhaseIdProvider.notifier)
+                                      .state = phase
+                                      .id;
+                                  unawaited(
+                                    ref
+                                        .read(
+                                          mattersControllerProvider.notifier,
+                                        )
+                                        .setMatterCurrentPhase(
+                                          matter: matter,
+                                          phaseId: phase.id,
+                                        ),
+                                  );
+                                  ref.invalidate(noteListProvider);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+                const SizedBox(width: 8),
+                isMacOSNativeUI
+                    ? PushButton(
+                        controlSize: ControlSize.regular,
+                        secondary: true,
+                        onPressed: () async {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (_) =>
+                                _ManagePhasesDialog(matterId: matter.id),
+                          );
+                        },
+                        child: const Text('Manage Phases'),
+                      )
+                    : OutlinedButton(
+                        onPressed: () async {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (_) =>
+                                _ManagePhasesDialog(matterId: matter.id),
+                          );
+                        },
+                        child: const Text('Manage Phases'),
+                      ),
+              ],
+            ),
           ),
         const SizedBox(height: 8),
         Expanded(
-          child: viewMode == MatterViewMode.graph
-              ? const _MatterGraphWorkspace()
-              : const _MatterNotesWorkspace(),
+          child: switch (viewMode) {
+            MatterViewMode.phase => const _MatterNotesWorkspace(),
+            MatterViewMode.timeline => const _MatterTimelineWorkspace(),
+            MatterViewMode.graph => const _MatterGraphWorkspace(),
+          },
         ),
       ],
     );
@@ -2308,6 +2386,125 @@ class _MatterNotesWorkspace extends ConsumerWidget {
   }
 }
 
+Future<void> _openNoteInPhaseEditor(WidgetRef ref, Note note) async {
+  ref.read(showOrphansProvider.notifier).state = false;
+  ref.read(showConflictsProvider.notifier).state = false;
+  ref.read(selectedMatterIdProvider.notifier).state = note.matterId;
+  ref.read(selectedPhaseIdProvider.notifier).state = note.phaseId;
+  ref.read(matterViewModeProvider.notifier).state = MatterViewMode.phase;
+  if (note.matterId != null && note.phaseId != null) {
+    final matter = ref
+        .read(mattersControllerProvider.notifier)
+        .findMatter(note.matterId!);
+    if (matter != null) {
+      await ref
+          .read(mattersControllerProvider.notifier)
+          .setMatterCurrentPhase(matter: matter, phaseId: note.phaseId!);
+    }
+  }
+  ref.invalidate(noteListProvider);
+  await ref.read(noteEditorControllerProvider.notifier).selectNote(note.id);
+}
+
+class _MatterTimelineWorkspace extends ConsumerWidget {
+  const _MatterTimelineWorkspace();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final notes = ref.watch(noteListProvider);
+
+    return notes.when(
+      loading: () => Center(child: _adaptiveLoadingIndicator(context)),
+      error: (error, _) => Center(child: Text('$error')),
+      data: (items) {
+        if (items.isEmpty) {
+          return Center(child: Text(l10n.noNotesYetMessage));
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          itemCount: items.length,
+          separatorBuilder: (_, index) => const SizedBox(height: 8),
+          itemBuilder: (_, index) {
+            final note = items[index];
+            final dateLabel = DateFormat(
+              'yyyy-MM-dd HH:mm',
+            ).format(note.createdAt.toLocal());
+            final preview = note.content
+                .replaceAll('\n', ' ')
+                .trim()
+                .replaceFirst(RegExp(r'^#+\s*'), '');
+            final card = Container(
+              decoration: isMacOSNativeUI
+                  ? _macosPanelDecoration(context)
+                  : BoxDecoration(
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          note.title.trim().isEmpty
+                              ? l10n.untitledLabel
+                              : note.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: isMacOSNativeUI
+                              ? MacosTheme.of(context).typography.headline
+                              : Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      Text(
+                        dateLabel,
+                        style: isMacOSNativeUI
+                            ? MacosTheme.of(context).typography.caption1
+                            : Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    preview.isEmpty ? l10n.noSearchResultsMessage : preview,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: isMacOSNativeUI
+                        ? PushButton(
+                            controlSize: ControlSize.regular,
+                            onPressed: () async {
+                              await _openNoteInPhaseEditor(ref, note);
+                            },
+                            child: const Text('Edit in Phase'),
+                          )
+                        : OutlinedButton(
+                            onPressed: () async {
+                              await _openNoteInPhaseEditor(ref, note);
+                            },
+                            child: const Text('Edit in Phase'),
+                          ),
+                  ),
+                ],
+              ),
+            );
+
+            return card;
+          },
+        );
+      },
+    );
+  }
+}
+
 class _MatterGraphWorkspace extends ConsumerWidget {
   const _MatterGraphWorkspace();
 
@@ -2332,59 +2529,252 @@ class _MatterGraphWorkspace extends ConsumerWidget {
           );
         }
 
-        return Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  if (view.isTruncated)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+            if (view.isTruncated)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.all(10),
+                decoration: isMacOSNativeUI
+                    ? _macosPanelDecoration(context)
+                    : BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      padding: const EdgeInsets.all(10),
-                      decoration: isMacOSNativeUI
-                          ? _macosPanelDecoration(context)
-                          : BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceContainerLow,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                      child: Text(
-                        l10n.graphLimitedNotice(
-                          graphNodeLimit,
-                          view.truncatedNodeCount,
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      child: _GraphCanvas(
-                        graph: view.graph,
-                        selectedNoteId: selectedNoteId,
-                        onTapNode: (noteId) async {
-                          await ref
-                              .read(noteEditorControllerProvider.notifier)
-                              .selectNote(noteId);
-                        },
-                      ),
-                    ),
+                child: Text(
+                  l10n.graphLimitedNotice(
+                    graphNodeLimit,
+                    view.truncatedNodeCount,
                   ),
-                ],
+                ),
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: _GraphCanvas(
+                  graph: view.graph,
+                  selectedNoteId: selectedNoteId,
+                  onTapNode: (noteId) async {
+                    await _showGraphNodePreview(
+                      context: context,
+                      ref: ref,
+                      noteId: noteId,
+                    );
+                  },
+                ),
               ),
             ),
-            const VerticalDivider(width: 1),
-            const SizedBox(width: 480, child: _NoteEditorPane()),
+            SizedBox(
+              height: 170,
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                scrollDirection: Axis.horizontal,
+                itemCount: view.graph.nodes.length,
+                separatorBuilder: (_, index) => const SizedBox(width: 8),
+                itemBuilder: (_, index) {
+                  final node = view.graph.nodes[index];
+                  return _GraphNodePreviewCard(
+                    node: node,
+                    onPreview: () async {
+                      await _showGraphNodePreview(
+                        context: context,
+                        ref: ref,
+                        noteId: node.noteId,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
           ],
         );
       },
     );
   }
+}
+
+class _GraphNodePreviewCard extends StatelessWidget {
+  const _GraphNodePreviewCard({required this.node, required this.onPreview});
+
+  final MatterGraphNode node;
+  final Future<void> Function() onPreview;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final label = node.title.trim().isEmpty ? l10n.untitledLabel : node.title;
+    return Container(
+      width: 220,
+      decoration: isMacOSNativeUI
+          ? _macosPanelDecoration(context)
+          : BoxDecoration(
+              border: Border.all(color: Theme.of(context).dividerColor),
+              borderRadius: BorderRadius.circular(10),
+            ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              GestureDetector(
+                onTap: () async {
+                  await onPreview();
+                },
+                child: CircleAvatar(
+                  radius: 14,
+                  child: Text(label.substring(0, 1).toUpperCase()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            DateFormat('yyyy-MM-dd').format(node.updatedAt.toLocal()),
+            style: isMacOSNativeUI
+                ? MacosTheme.of(context).typography.caption1
+                : Theme.of(context).textTheme.bodySmall,
+          ),
+          const Spacer(),
+          Align(
+            alignment: Alignment.centerRight,
+            child: isMacOSNativeUI
+                ? PushButton(
+                    controlSize: ControlSize.regular,
+                    onPressed: () async {
+                      await onPreview();
+                    },
+                    child: const Text('Preview'),
+                  )
+                : OutlinedButton(
+                    onPressed: () async {
+                      await onPreview();
+                    },
+                    child: const Text('Preview'),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _showGraphNodePreview({
+  required BuildContext context,
+  required WidgetRef ref,
+  required String noteId,
+}) async {
+  final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
+  if (note == null || !context.mounted) {
+    return;
+  }
+
+  final l10n = context.l10n;
+  final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+  final preview = note.content
+      .replaceAll('\n', ' ')
+      .trim()
+      .replaceFirst(RegExp(r'^#+\s*'), '');
+
+  if (isMacOSNativeUI) {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => MacosSheet(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                note.title.trim().isEmpty ? l10n.untitledLabel : note.title,
+                style: MacosTheme.of(dialogContext).typography.title3,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                DateFormat('yyyy-MM-dd HH:mm').format(note.updatedAt.toLocal()),
+                style: MacosTheme.of(dialogContext).typography.caption1,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                preview.isEmpty ? 'No preview available.' : preview,
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  PushButton(
+                    controlSize: ControlSize.regular,
+                    secondary: true,
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: Text(l10n.closeAction),
+                  ),
+                  const SizedBox(width: 8),
+                  PushButton(
+                    controlSize: ControlSize.regular,
+                    onPressed: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _openNoteInPhaseEditor(ref, note);
+                    },
+                    child: const Text('Edit in Phase'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return;
+  }
+
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(note.title.trim().isEmpty ? l10n.untitledLabel : note.title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(DateFormat('yyyy-MM-dd HH:mm').format(note.updatedAt.toLocal())),
+          const SizedBox(height: 8),
+          Text(
+            preview.isEmpty ? 'No preview available.' : preview,
+            maxLines: 6,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: Text(l10n.closeAction),
+        ),
+        FilledButton(
+          onPressed: () async {
+            Navigator.of(dialogContext).pop();
+            await _openNoteInPhaseEditor(ref, note);
+          },
+          child: const Text('Edit in Phase'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _GraphCanvas extends StatelessWidget {
@@ -4797,6 +5187,341 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
       ],
     );
   }
+}
+
+class _ManagePhasesDialog extends ConsumerStatefulWidget {
+  const _ManagePhasesDialog({required this.matterId});
+
+  final String matterId;
+
+  @override
+  ConsumerState<_ManagePhasesDialog> createState() =>
+      _ManagePhasesDialogState();
+}
+
+class _ManagePhasesDialogState extends ConsumerState<_ManagePhasesDialog> {
+  final TextEditingController _newPhaseController = TextEditingController();
+  List<_EditablePhaseItem>? _items;
+  String? _currentPhaseId;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _newPhaseController.dispose();
+    for (final item in _items ?? const <_EditablePhaseItem>[]) {
+      item.nameController.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final sections = ref.watch(mattersControllerProvider).valueOrNull;
+    Matter? matter;
+    if (sections != null) {
+      final all = <Matter>{
+        ...sections.pinned,
+        ...sections.active,
+        ...sections.paused,
+        ...sections.completed,
+        ...sections.archived,
+      };
+      for (final candidate in all) {
+        if (candidate.id == widget.matterId) {
+          matter = candidate;
+          break;
+        }
+      }
+    }
+
+    if (matter == null) {
+      return AlertDialog(
+        title: const Text('Manage Phases'),
+        content: Text(l10n.matterNoLongerExistsMessage),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.closeAction),
+          ),
+        ],
+      );
+    }
+    final selectedMatter = matter;
+
+    if (_items == null) {
+      final sortedPhases = selectedMatter.phases.toList()
+        ..sort((a, b) => a.order.compareTo(b.order));
+      _items = sortedPhases
+          .map(
+            (phase) => _EditablePhaseItem(
+              phaseId: phase.id,
+              nameController: TextEditingController(text: phase.name),
+            ),
+          )
+          .toList();
+    }
+    _currentPhaseId ??=
+        selectedMatter.currentPhaseId ??
+        (_items!.isEmpty ? null : _items!.first.phaseId);
+
+    Future<void> addPhase() async {
+      final name = _newPhaseController.text.trim();
+      if (name.isEmpty) {
+        return;
+      }
+      setState(() {
+        _items!.add(
+          _EditablePhaseItem(
+            phaseId: ref.read(idGeneratorProvider).newId(),
+            nameController: TextEditingController(text: name),
+          ),
+        );
+        _currentPhaseId ??= _items!.first.phaseId;
+        _newPhaseController.clear();
+      });
+    }
+
+    Future<void> save() async {
+      if (_saving ||
+          _items == null ||
+          _items!.isEmpty ||
+          _currentPhaseId == null) {
+        return;
+      }
+
+      final names = _items!
+          .map((item) => item.nameController.text.trim())
+          .where((name) => name.isNotEmpty)
+          .toList();
+      if (names.length != _items!.length) {
+        return;
+      }
+
+      setState(() {
+        _saving = true;
+      });
+
+      final nextPhases = <Phase>[
+        for (var i = 0; i < _items!.length; i++)
+          Phase(
+            id: _items![i].phaseId,
+            matterId: selectedMatter.id,
+            name: _items![i].nameController.text.trim(),
+            order: i,
+          ),
+      ];
+
+      final removedPhaseIds = selectedMatter.phases
+          .where((phase) => !nextPhases.any((next) => next.id == phase.id))
+          .map((phase) => phase.id)
+          .toList(growable: false);
+
+      final noteRepository = ref.read(noteRepositoryProvider);
+      for (final removedPhaseId in removedPhaseIds) {
+        final notes = await noteRepository.listNotesByMatterAndPhase(
+          matterId: selectedMatter.id,
+          phaseId: removedPhaseId,
+        );
+        for (final note in notes) {
+          await noteRepository.moveNote(
+            noteId: note.id,
+            matterId: selectedMatter.id,
+            phaseId: _currentPhaseId,
+          );
+        }
+      }
+
+      await ref
+          .read(mattersControllerProvider.notifier)
+          .updateMatterPhases(
+            matter: selectedMatter,
+            phases: nextPhases,
+            currentPhaseId: _currentPhaseId!,
+          );
+      ref.invalidate(noteListProvider);
+
+      if (context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    Widget buildRow(_EditablePhaseItem item, int index) {
+      final selected = item.phaseId == _currentPhaseId;
+      return Row(
+        children: <Widget>[
+          ChoiceChip(
+            label: const Text('Current'),
+            selected: selected,
+            onSelected: (_) {
+              setState(() {
+                _currentPhaseId = item.phaseId;
+              });
+            },
+          ),
+          Expanded(
+            child: isMacOSNativeUI
+                ? MacosTextField(controller: item.nameController)
+                : TextField(controller: item.nameController),
+          ),
+          IconButton(
+            onPressed: index == 0
+                ? null
+                : () {
+                    setState(() {
+                      final moved = _items!.removeAt(index);
+                      _items!.insert(index - 1, moved);
+                    });
+                  },
+            icon: const Icon(Icons.arrow_upward, size: 18),
+            tooltip: 'Move up',
+          ),
+          IconButton(
+            onPressed: index == _items!.length - 1
+                ? null
+                : () {
+                    setState(() {
+                      final moved = _items!.removeAt(index);
+                      _items!.insert(index + 1, moved);
+                    });
+                  },
+            icon: const Icon(Icons.arrow_downward, size: 18),
+            tooltip: 'Move down',
+          ),
+          IconButton(
+            onPressed: _items!.length <= 1
+                ? null
+                : () {
+                    setState(() {
+                      _items!.removeAt(index);
+                      if (selected) {
+                        _currentPhaseId = _items!.isEmpty
+                            ? null
+                            : _items!.first.phaseId;
+                      }
+                    });
+                  },
+            icon: const Icon(Icons.delete_outline, size: 18),
+            tooltip: l10n.deleteAction,
+          ),
+        ],
+      );
+    }
+
+    final body = SizedBox(
+      width: 720,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Current phase is used as default when creating/editing from Phase view.',
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 320,
+            child: ListView.separated(
+              itemCount: _items!.length,
+              separatorBuilder: (_, index) => const SizedBox(height: 6),
+              itemBuilder: (_, index) => buildRow(_items![index], index),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: isMacOSNativeUI
+                    ? MacosTextField(
+                        controller: _newPhaseController,
+                        placeholder: 'New phase name',
+                      )
+                    : TextField(
+                        controller: _newPhaseController,
+                        decoration: const InputDecoration(
+                          labelText: 'New phase name',
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              isMacOSNativeUI
+                  ? PushButton(
+                      controlSize: ControlSize.regular,
+                      onPressed: addPhase,
+                      child: const Text('Add'),
+                    )
+                  : FilledButton(onPressed: addPhase, child: const Text('Add')),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (isMacOSNativeUI) {
+      return MacosSheet(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Manage Phases',
+                style: MacosTheme.of(context).typography.title2,
+              ),
+              const SizedBox(height: 12),
+              body,
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  PushButton(
+                    controlSize: ControlSize.regular,
+                    secondary: true,
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Text(l10n.cancelAction),
+                  ),
+                  const SizedBox(width: 8),
+                  PushButton(
+                    controlSize: ControlSize.regular,
+                    onPressed: _saving ? null : save,
+                    child: Text(_saving ? 'Saving...' : l10n.saveAction),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return AlertDialog(
+      title: const Text('Manage Phases'),
+      content: body,
+      actions: <Widget>[
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: Text(l10n.cancelAction),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : save,
+          child: Text(_saving ? 'Saving...' : l10n.saveAction),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditablePhaseItem {
+  const _EditablePhaseItem({
+    required this.phaseId,
+    required this.nameController,
+  });
+
+  final String phaseId;
+  final TextEditingController nameController;
 }
 
 enum _MatterDialogMode { create, edit }

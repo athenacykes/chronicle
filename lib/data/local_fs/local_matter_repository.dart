@@ -102,6 +102,7 @@ class LocalMatterRepository implements MatterRepository {
       startedAt: now,
       endedAt: null,
       phases: phases,
+      currentPhaseId: phases.isEmpty ? null : phases.first.id,
     );
 
     await _writeMatter(matter);
@@ -157,18 +158,28 @@ class LocalMatterRepository implements MatterRepository {
   }
 
   Future<void> _writeMatter(Matter matter) async {
+    final hasCurrent =
+        matter.currentPhaseId != null &&
+        matter.phases.any((phase) => phase.id == matter.currentPhaseId);
+    final normalized = hasCurrent
+        ? matter
+        : matter.copyWith(
+            currentPhaseId: matter.phases.isEmpty
+                ? null
+                : matter.phases.first.id,
+          );
     final layout = await _layout();
-    final matterDir = layout.matterDirectory(matter.id);
+    final matterDir = layout.matterDirectory(normalized.id);
     await _fileSystemUtils.ensureDirectory(matterDir);
 
-    for (final phase in matter.phases) {
+    for (final phase in normalized.phases) {
       await _fileSystemUtils.ensureDirectory(
-        layout.phaseDirectory(matter.id, phase.type),
+        layout.phaseDirectory(normalized.id, phase.id),
       );
     }
 
-    final file = layout.matterJsonFile(matter.id);
-    final raw = _codec.encode(matter);
+    final file = layout.matterJsonFile(normalized.id);
+    final raw = _codec.encode(normalized);
     await _fileSystemUtils.atomicWriteString(file, raw);
   }
 

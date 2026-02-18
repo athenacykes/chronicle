@@ -16,6 +16,7 @@ class Matter {
     required this.startedAt,
     required this.endedAt,
     required this.phases,
+    required this.currentPhaseId,
   });
 
   final String id;
@@ -30,6 +31,7 @@ class Matter {
   final DateTime? startedAt;
   final DateTime? endedAt;
   final List<Phase> phases;
+  final String? currentPhaseId;
 
   Matter copyWith({
     String? id,
@@ -46,6 +48,8 @@ class Matter {
     DateTime? endedAt,
     bool clearEndedAt = false,
     List<Phase>? phases,
+    String? currentPhaseId,
+    bool clearCurrentPhaseId = false,
   }) {
     return Matter(
       id: id ?? this.id,
@@ -60,6 +64,9 @@ class Matter {
       startedAt: clearStartedAt ? null : startedAt ?? this.startedAt,
       endedAt: clearEndedAt ? null : endedAt ?? this.endedAt,
       phases: phases ?? this.phases,
+      currentPhaseId: clearCurrentPhaseId
+          ? null
+          : currentPhaseId ?? this.currentPhaseId,
     );
   }
 
@@ -77,10 +84,14 @@ class Matter {
       'endedAt': endedAt == null ? null : formatIsoUtc(endedAt!),
       'isPinned': isPinned,
       'phases': phases.map((value) => value.toJson()).toList(),
+      'currentPhaseId': currentPhaseId,
     };
   }
 
   static Matter fromJson(Map<String, dynamic> json) {
+    final phases = (json['phases'] as List<dynamic>? ?? <dynamic>[])
+        .map((value) => Phase.fromJson(value as Map<String, dynamic>))
+        .toList();
     return Matter(
       id: json['id'] as String,
       title: json['title'] as String,
@@ -100,9 +111,10 @@ class Matter {
       endedAt: json['endedAt'] == null
           ? null
           : parseIsoUtc(json['endedAt'] as String),
-      phases: (json['phases'] as List<dynamic>? ?? <dynamic>[])
-          .map((value) => Phase.fromJson(value as Map<String, dynamic>))
-          .toList(),
+      phases: phases,
+      currentPhaseId:
+          (json['currentPhaseId'] as String?) ??
+          (phases.isEmpty ? null : phases.first.id),
     );
   }
 }

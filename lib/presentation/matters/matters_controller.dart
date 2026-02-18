@@ -4,9 +4,10 @@ import '../../app/app_providers.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/matter.dart';
 import '../../domain/entities/matter_sections.dart';
+import '../../domain/entities/phase.dart';
 import '../../domain/usecases/matters/create_matter.dart';
-import '../../domain/usecases/matters/update_matter.dart';
 import '../../domain/usecases/matters/list_matter_sections.dart';
+import '../../domain/usecases/matters/update_matter.dart';
 
 final selectedMatterIdProvider = StateProvider<String?>((ref) => null);
 final selectedPhaseIdProvider = StateProvider<String?>((ref) => null);
@@ -58,7 +59,9 @@ class MattersController extends AsyncNotifier<MatterSections> {
 
     ref.read(showOrphansProvider.notifier).state = false;
     ref.read(selectedMatterIdProvider.notifier).state = created.id;
-    ref.read(selectedPhaseIdProvider.notifier).state = created.phases.first.id;
+    ref.read(selectedPhaseIdProvider.notifier).state =
+        created.currentPhaseId ??
+        (created.phases.isEmpty ? null : created.phases.first.id);
   }
 
   Future<void> setMatterStatus(String matterId, MatterStatus status) async {
@@ -100,6 +103,72 @@ class MattersController extends AsyncNotifier<MatterSections> {
     state = AsyncData(await _loadSections());
   }
 
+  Future<void> updateMatterPhases({
+    required Matter matter,
+    required List<Phase> phases,
+    required String currentPhaseId,
+  }) async {
+    final reordered = <Phase>[
+      for (var i = 0; i < phases.length; i++) phases[i].copyWith(order: i),
+    ];
+    final updated = matter.copyWith(
+      phases: reordered,
+      currentPhaseId: currentPhaseId,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await UpdateMatter(ref.read(matterRepositoryProvider)).call(updated);
+    state = AsyncData(await _loadSections());
+
+    if (ref.read(selectedMatterIdProvider) == matter.id) {
+      final selectedPhaseId = ref.read(selectedPhaseIdProvider);
+      final phaseExists =
+          selectedPhaseId != null &&
+          reordered.any((phase) => phase.id == selectedPhaseId);
+      if (!phaseExists) {
+        ref.read(selectedPhaseIdProvider.notifier).state = currentPhaseId;
+      }
+    }
+  }
+
+  Future<void> setMatterCurrentPhase({
+    required Matter matter,
+    required String phaseId,
+  }) async {
+    final phaseExists = matter.phases.any((phase) => phase.id == phaseId);
+    if (!phaseExists) {
+      return;
+    }
+    final updated = matter.copyWith(
+      currentPhaseId: phaseId,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await UpdateMatter(ref.read(matterRepositoryProvider)).call(updated);
+    state = AsyncData(await _loadSections());
+    if (ref.read(selectedMatterIdProvider) == matter.id) {
+      ref.read(selectedPhaseIdProvider.notifier).state = phaseId;
+    }
+  }
+
+  Future<void> addPhase({required Matter matter, required String name}) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    final phase = Phase(
+      id: ref.read(idGeneratorProvider).newId(),
+      matterId: matter.id,
+      name: trimmed,
+      order: matter.phases.length,
+    );
+    final phases = <Phase>[...matter.phases, phase];
+    final currentPhaseId = matter.currentPhaseId ?? phase.id;
+    await updateMatterPhases(
+      matter: matter,
+      phases: phases,
+      currentPhaseId: currentPhaseId,
+    );
+  }
+
   Future<void> deleteMatter(String matterId) async {
     await ref.read(matterRepositoryProvider).deleteMatter(matterId);
     final sections = await _loadSections();
@@ -114,9 +183,9 @@ class MattersController extends AsyncNotifier<MatterSections> {
       } else {
         final next = remaining.first;
         ref.read(selectedMatterIdProvider.notifier).state = next.id;
-        ref.read(selectedPhaseIdProvider.notifier).state = next.phases.isEmpty
-            ? null
-            : next.phases.first.id;
+        ref.read(selectedPhaseIdProvider.notifier).state =
+            next.currentPhaseId ??
+            (next.phases.isEmpty ? null : next.phases.first.id);
       }
     }
   }
