@@ -65,4 +65,47 @@ void main() {
     expect(files.length, 1);
     expect(files.single.path, 'orphans/n1.md');
   });
+
+  test('parses directory entries from resourcetype collection', () {
+    const xml = '''
+<d:multistatus xmlns:d="DAV:">
+  <d:response>
+    <d:href>/dav/Chronicle/</d:href>
+    <d:propstat>
+      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/Chronicle/orphans/</d:href>
+    <d:propstat>
+      <d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+    </d:propstat>
+  </d:response>
+  <d:response>
+    <d:href>/dav/Chronicle/orphans/a.md</d:href>
+    <d:propstat>
+      <d:prop><d:getcontentlength>3</d:getcontentlength></d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
+''';
+
+    final parser = const WebDavXmlParser();
+    final entries = parser.parsePropfindEntries(
+      xmlPayload: xml,
+      requestRootPath: '/dav/Chronicle/',
+    );
+
+    final directories = entries
+        .where((entry) => entry.isDirectory)
+        .map((entry) => entry.path)
+        .toSet();
+    final files = entries
+        .where((entry) => !entry.isDirectory)
+        .map((entry) => entry.path)
+        .toSet();
+
+    expect(directories, <String>{'', 'orphans'});
+    expect(files, <String>{'orphans/a.md'});
+  });
 }

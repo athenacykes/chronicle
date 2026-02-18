@@ -12,6 +12,22 @@ class WebDavFileMetadata {
   final String? etag;
 }
 
+class WebDavPropfindEntry {
+  const WebDavPropfindEntry({
+    required this.path,
+    required this.isDirectory,
+    required this.updatedAt,
+    required this.size,
+    required this.etag,
+  });
+
+  final String path;
+  final bool isDirectory;
+  final DateTime updatedAt;
+  final int size;
+  final String? etag;
+}
+
 class SyncFileState {
   const SyncFileState({
     required this.path,

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 
@@ -23,6 +24,7 @@ class LocalSettingsRepository implements SettingsRepository {
 
   static const _settingsFileName = 'chronicle_settings.json';
   static const _syncPasswordKey = 'chronicle.sync.password';
+  static const _syncPasswordFallbackFileName = 'chronicle_sync_password.txt';
 
   final AppDirectories _appDirectories;
   final FileSystemUtils _fileSystemUtils;
@@ -70,18 +72,73 @@ class LocalSettingsRepository implements SettingsRepository {
   }
 
   @override
-  Future<void> saveSyncPassword(String password) {
-    return _secureStorage.write(key: _syncPasswordKey, value: password);
+  Future<void> saveSyncPassword(String password) async {
+    try {
+      await _secureStorage.write(key: _syncPasswordKey, value: password);
+      await _deleteSyncPasswordFallbackIfExists();
+    } on PlatformException catch (error) {
+      if (!_isMissingKeychainEntitlement(error)) {
+        rethrow;
+      }
+      await _writeSyncPasswordFallback(password);
+    }
   }
 
   @override
-  Future<String?> readSyncPassword() {
-    return _secureStorage.read(key: _syncPasswordKey);
+  Future<String?> readSyncPassword() async {
+    try {
+      final secureValue = await _secureStorage.read(key: _syncPasswordKey);
+      if (secureValue != null && secureValue.isNotEmpty) {
+        await _deleteSyncPasswordFallbackIfExists();
+        return secureValue;
+      }
+    } on PlatformException catch (error) {
+      if (!_isMissingKeychainEntitlement(error)) {
+        rethrow;
+      }
+    }
+
+    return _readSyncPasswordFallback();
   }
 
   Future<File> _settingsFile() async {
     final appSupport = await _appDirectories.appSupportDirectory();
     await _fileSystemUtils.ensureDirectory(appSupport);
     return File(p.join(appSupport.path, _settingsFileName));
+  }
+
+  bool _isMissingKeychainEntitlement(PlatformException error) {
+    final message = error.message ?? '';
+    return message.contains('-34018') ||
+        message.toLowerCase().contains('required entitlement');
+  }
+
+  Future<File> _syncPasswordFallbackFile() async {
+    final appSupport = await _appDirectories.appSupportDirectory();
+    await _fileSystemUtils.ensureDirectory(appSupport);
+    return File(p.join(appSupport.path, _syncPasswordFallbackFileName));
+  }
+
+  Future<void> _writeSyncPasswordFallback(String password) async {
+    final file = await _syncPasswordFallbackFile();
+    await _fileSystemUtils.atomicWriteString(file, password);
+  }
+
+  Future<String?> _readSyncPasswordFallback() async {
+    final file = await _syncPasswordFallbackFile();
+    if (!await file.exists()) {
+      return null;
+    }
+
+    final value = await file.readAsString();
+    if (value.isEmpty) {
+      return null;
+    }
+    return value;
+  }
+
+  Future<void> _deleteSyncPasswordFallbackIfExists() async {
+    final file = await _syncPasswordFallbackFile();
+    await _fileSystemUtils.deleteIfExists(file);
   }
 }

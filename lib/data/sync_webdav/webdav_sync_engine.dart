@@ -44,6 +44,10 @@ class WebDavSyncEngine {
     bool allowMassDeletion = false,
   }) async {
     final startedAt = _clock.nowUtc();
+    _debugLog(
+      'Starting sync run for client=$clientId failSafe=$failSafe '
+      'allowMassDeletion=$allowMassDeletion',
+    );
     final errors = <String>[];
     var uploadedCount = 0;
     var downloadedCount = 0;
@@ -56,7 +60,9 @@ class WebDavSyncEngine {
     Timer? heartbeat;
     try {
       await _ensureRemoteSkeleton(client);
+      _debugLog('Remote skeleton ensured.');
       await _acquireLock(client, lockPath, clientId);
+      _debugLog('Acquired sync lock: $lockPath');
       heartbeat = Timer.periodic(const Duration(seconds: 30), (_) async {
         await _writeLock(client, lockPath, clientId);
       });
@@ -64,6 +70,10 @@ class WebDavSyncEngine {
       final previousState = await _syncStateStore.load();
       final localFiles = await _listLocalFiles(layout);
       final remoteFiles = await _listRemoteFiles(client);
+      _debugLog(
+        'Scanned files: local=${localFiles.length}, remote=${remoteFiles.length}, '
+        'previousState=${previousState.length}',
+      );
 
       final allPaths = <String>{
         ...localFiles.keys,
@@ -145,11 +155,21 @@ class WebDavSyncEngine {
         conflicts.add(path);
       }
 
+      _debugLog(
+        'Planned actions: uploads=${uploads.length}, downloads=${downloads.length}, '
+        'deleteLocals=${deleteLocals.length}, deleteRemotes=${deleteRemotes.length}, '
+        'conflicts=${conflicts.length}',
+      );
+
       final candidateDeletionCount = deleteLocals.length + deleteRemotes.length;
       final trackedCount = allPaths.isEmpty ? 1 : allPaths.length;
       if (failSafe &&
           !allowMassDeletion &&
           candidateDeletionCount / trackedCount > 0.2) {
+        _debugLog(
+          'Fail-safe blocked deletions: candidate=$candidateDeletionCount '
+          'tracked=$trackedCount',
+        );
         throw Exception(
           'Sync fail-safe blocked $candidateDeletionCount deletions '
           'out of $trackedCount tracked files',
@@ -165,8 +185,10 @@ class WebDavSyncEngine {
           final bytes = await localFile.readAsBytes();
           await client.uploadFile(path, bytes);
           uploadedCount++;
+          _debugLog('Uploaded: $path (${bytes.length} bytes)');
         } catch (error) {
           errors.add('Upload failed for $path: $error');
+          _debugLog('Upload failed: $path error=$error');
         }
       }
 
@@ -176,8 +198,10 @@ class WebDavSyncEngine {
           final target = layout.fromRelativePath(path);
           await _fileSystemUtils.atomicWriteBytes(target, bytes);
           downloadedCount++;
+          _debugLog('Downloaded: $path (${bytes.length} bytes)');
         } catch (error) {
           errors.add('Download failed for $path: $error');
+          _debugLog('Download failed: $path error=$error');
         }
       }
 
@@ -186,8 +210,10 @@ class WebDavSyncEngine {
           final file = layout.fromRelativePath(path);
           await _fileSystemUtils.deleteIfExists(file);
           deletedCount++;
+          _debugLog('Deleted local: $path');
         } catch (error) {
           errors.add('Local delete failed for $path: $error');
+          _debugLog('Local delete failed: $path error=$error');
         }
       }
 
@@ -195,8 +221,10 @@ class WebDavSyncEngine {
         try {
           await client.deleteFile(path);
           deletedCount++;
+          _debugLog('Deleted remote: $path');
         } catch (error) {
           errors.add('Remote delete failed for $path: $error');
+          _debugLog('Remote delete failed: $path error=$error');
         }
       }
 
@@ -222,8 +250,10 @@ class WebDavSyncEngine {
           await _fileSystemUtils.atomicWriteBytes(conflictFile, conflictBytes);
           await client.uploadFile(conflictPath, conflictBytes);
           conflictCount++;
+          _debugLog('Resolved conflict: $path -> $conflictPath');
         } catch (error) {
           errors.add('Conflict handling failed for $path: $error');
+          _debugLog('Conflict handling failed: $path error=$error');
         }
       }
 
@@ -247,12 +277,18 @@ class WebDavSyncEngine {
       }
 
       await _syncStateStore.save(nextState);
+      _debugLog('Saved sync state for ${nextState.length} paths.');
     } finally {
       heartbeat?.cancel();
       await _releaseLock(client, lockPath);
+      _debugLog('Released sync lock: $lockPath');
     }
 
     final endedAt = _clock.nowUtc();
+    _debugLog(
+      'Sync completed: uploaded=$uploadedCount downloaded=$downloadedCount '
+      'deleted=$deletedCount conflicts=$conflictCount errors=${errors.length}',
+    );
     return SyncResult(
       uploadedCount: uploadedCount,
       downloadedCount: downloadedCount,
@@ -353,6 +389,14 @@ class WebDavSyncEngine {
     }
   }
 
+  void _debugLog(String message) {
+    assert(() {
+      // ignore: avoid_print
+      print('[WebDAV][Sync] $message');
+      return true;
+    }());
+  }
+
   Future<Map<String, File>> _listLocalFiles(ChronicleLayout layout) async {
     final files = await _fileSystemUtils.listFilesRecursively(
       layout.rootDirectory,
@@ -408,7 +452,8 @@ class WebDavSyncEngine {
 
     final now = _clock.nowUtc();
     final body = utf8.decode(localBytes, allowMalformed: true);
-    final content = '''---
+    final content =
+        '''---
 conflictType: "note"
 originalPath: "$originalPath"
 conflictDetectedAt: "${now.toIso8601String()}"

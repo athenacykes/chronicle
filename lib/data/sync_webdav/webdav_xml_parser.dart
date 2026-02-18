@@ -7,7 +7,7 @@ import 'webdav_types.dart';
 class WebDavXmlParser {
   const WebDavXmlParser();
 
-  List<WebDavFileMetadata> parsePropfindResponse({
+  List<WebDavPropfindEntry> parsePropfindEntries({
     required String xmlPayload,
     required String requestRootPath,
   }) {
@@ -16,7 +16,7 @@ class WebDavXmlParser {
       document,
     ).where((element) => _localName(element) == 'response');
 
-    final files = <WebDavFileMetadata>[];
+    final entries = <WebDavPropfindEntry>[];
     for (final response in responses) {
       final href = _readText(response, 'href');
       if (href == null) {
@@ -24,25 +24,51 @@ class WebDavXmlParser {
       }
 
       final decodedHref = Uri.decodeFull(href).trim();
-      if (decodedHref.isEmpty || decodedHref.endsWith('/')) {
+      if (decodedHref.isEmpty) {
         continue;
       }
 
       final relativePath = _toRelativePath(decodedHref, requestRootPath);
-      if (relativePath.isEmpty) {
-        continue;
-      }
+      final isDirectory =
+          decodedHref.endsWith('/') || _hasElement(response, 'collection');
 
       final lastModified = _readText(response, 'getlastmodified');
       final contentLength = _readText(response, 'getcontentlength');
       final etag = _readText(response, 'getetag');
 
-      files.add(
-        WebDavFileMetadata(
+      entries.add(
+        WebDavPropfindEntry(
           path: relativePath,
+          isDirectory: isDirectory,
           updatedAt: _parseHttpDate(lastModified),
           size: int.tryParse((contentLength ?? '').trim()) ?? 0,
           etag: etag?.trim().isEmpty == true ? null : etag?.trim(),
+        ),
+      );
+    }
+
+    return entries;
+  }
+
+  List<WebDavFileMetadata> parsePropfindResponse({
+    required String xmlPayload,
+    required String requestRootPath,
+  }) {
+    final entries = parsePropfindEntries(
+      xmlPayload: xmlPayload,
+      requestRootPath: requestRootPath,
+    );
+    final files = <WebDavFileMetadata>[];
+    for (final entry in entries) {
+      if (entry.isDirectory || entry.path.isEmpty) {
+        continue;
+      }
+      files.add(
+        WebDavFileMetadata(
+          path: entry.path,
+          updatedAt: entry.updatedAt,
+          size: entry.size,
+          etag: entry.etag,
         ),
       );
     }
@@ -63,6 +89,15 @@ class WebDavXmlParser {
       }
     }
     return null;
+  }
+
+  bool _hasElement(XmlElement root, String localName) {
+    for (final element in _allElements(root)) {
+      if (_localName(element) == localName) {
+        return true;
+      }
+    }
+    return false;
   }
 
   DateTime _parseHttpDate(String? value) {
