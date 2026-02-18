@@ -81,6 +81,7 @@
   "setCompletedAction": "Set Completed",
   "setArchivedAction": "Set Archived",
   "deleteAction": "Delete",
+  "closeAction": "Close",
   "cancelAction": "Cancel",
   "deleteMatterTitle": "Delete Matter",
   "deleteMatterConfirmation": "Delete \"{title}\" and all notes in this matter?",
@@ -211,6 +212,12 @@
   "assignToSelectedMatterAction": "Assign to Selected Matter",
   "writeMarkdownHereHint": "Write markdown here...",
   "saveAction": "Save",
+  "editModeLabel": "Edit",
+  "readModeLabel": "Read",
+  "noteMoreActionsTooltip": "More note actions",
+  "noteTagsUtilityTitle": "Tags",
+  "noteAttachmentsUtilityTitle": "Attachments",
+  "noteLinkedNotesUtilityTitle": "Linked Notes",
   "updatedAtRow": "Updated: {updatedAt}",
   "@updatedAtRow": {
     "placeholders": {

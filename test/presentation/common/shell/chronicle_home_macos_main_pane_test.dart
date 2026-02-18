@@ -20,6 +20,7 @@ import 'package:chronicle/domain/repositories/sync_repository.dart';
 import 'package:chronicle/presentation/matters/matters_controller.dart';
 import 'package:chronicle/presentation/notes/notes_controller.dart';
 import 'package:chronicle/presentation/sync/conflicts_controller.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -285,8 +286,172 @@ void main() {
     await tester.tap(find.byKey(const Key('macos_note_editor_save')));
     await tester.pumpAndSettle();
 
+    final saveButtonTop = tester.getTopLeft(
+      find.byKey(const Key('macos_note_editor_save')),
+    );
+    final utilitiesTop = tester.getTopLeft(
+      find.byKey(const Key('note_editor_utility_tags')),
+    );
+    expect(saveButtonTop.dy, lessThan(utilitiesTop.dy));
+    expect(find.textContaining('Updated:'), findsNothing);
     expect(noteRepository.updateCount, greaterThanOrEqualTo(1));
     expect(noteRepository.noteById('note-1')?.title, 'Editor Note Updated');
+  });
+
+  testWidgets('Edit to Read mode auto-saves title and content', (tester) async {
+    _setDesktopViewport(tester);
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('macos_note_editor_title')),
+      'Autosaved Title',
+    );
+    await tester.enterText(
+      find.byKey(const Key('macos_note_editor_content')),
+      '# Autosaved Title\nnew markdown',
+    );
+    await tester.tap(find.text('Read'));
+    await tester.pumpAndSettle();
+
+    final saved = noteRepository.noteById('note-1');
+    expect(saved?.title, 'Autosaved Title');
+    expect(saved?.content, '# Autosaved Title\nnew markdown');
+  });
+
+  testWidgets(
+    'editor utilities open popups and inline utility panels are removed',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: <Override>[
+            selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+            selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+            selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tags (comma separated)'), findsNothing);
+      expect(find.text('Move to Orphans'), findsNothing);
+      expect(find.text('Assign to Selected Matter'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('note_editor_utility_tags')));
+      await tester.pumpAndSettle();
+      expect(find.text('Tags'), findsWidgets);
+      await tester.tap(find.text('Close').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('note_editor_utility_attachments')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Attachments'), findsWidgets);
+      await tester.tap(find.text('Close').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('note_editor_utility_linked')));
+      await tester.pumpAndSettle();
+      expect(find.text('Linked Notes'), findsWidgets);
+      await tester.tap(find.text('Close').last);
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('sync controls are relocated to sidebar in macOS shell', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('sidebar_sync_now_button')), findsOneWidget);
+    expect(find.byKey(const Key('sidebar_sync_status')), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is MacosIcon &&
+            widget.icon == CupertinoIcons.arrow_2_circlepath,
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('sync controls are relocated to sidebar in material shell', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('sidebar_sync_now_button')), findsOneWidget);
+    expect(find.byKey(const Key('sidebar_sync_status')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byIcon(Icons.sync),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('non-macOS keeps material main-pane controls', (tester) async {

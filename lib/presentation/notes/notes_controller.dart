@@ -12,7 +12,12 @@ import '../settings/settings_controller.dart';
 import '../sync/conflicts_controller.dart';
 
 final selectedNoteIdProvider = StateProvider<String?>((ref) => null);
-final previewModeProvider = StateProvider<bool>((ref) => false);
+
+enum NoteEditorViewMode { edit, read }
+
+final noteEditorViewModeProvider = StateProvider<NoteEditorViewMode>(
+  (ref) => NoteEditorViewMode.edit,
+);
 
 final noteListProvider = FutureProvider<List<Note>>((ref) async {
   final repository = ref.watch(noteRepositoryProvider);

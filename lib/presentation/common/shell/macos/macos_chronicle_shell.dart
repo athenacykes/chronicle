@@ -42,27 +42,6 @@ class MacosChronicleShell extends StatelessWidget {
                       child: viewModel.content,
                     ),
                   ),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        top: BorderSide(
-                          color: MacosTheme.of(context).dividerColor,
-                        ),
-                      ),
-                    ),
-                    child: DefaultTextStyle(
-                      style: MacosTheme.of(context).typography.caption1,
-                      child: _withMaterialBridge(
-                        context: context,
-                        child: viewModel.status,
-                      ),
-                    ),
-                  ),
                 ],
               );
             },
@@ -146,13 +125,6 @@ class _MacosTopBar extends StatelessWidget {
                 tooltip: l10n.conflictsLabel,
                 icon: _ConflictIconBadge(count: viewModel.conflictCount),
                 onPressed: viewModel.onShowConflicts,
-              ),
-              _ToolbarActionIcon(
-                tooltip: l10n.syncNowAction,
-                icon: const MacosIcon(CupertinoIcons.arrow_2_circlepath),
-                onPressed: () {
-                  unawaited(viewModel.onSyncNow());
-                },
               ),
               _ToolbarActionIcon(
                 tooltip: l10n.settingsTitle,

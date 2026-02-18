@@ -40,6 +40,8 @@ dependencies:
   intl: ^0.20.2
   crypto: ^3.0.6
   flutter_markdown: ^0.7.7+1
+  flutter_code_editor: ^0.3.2
+  highlight: ^0.7.0
   path_provider: ^2.1.5
   file_picker: ^10.3.3
   open_filex: ^4.7.0

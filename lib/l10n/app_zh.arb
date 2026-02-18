@@ -80,6 +80,7 @@
   "setCompletedAction": "设为已完成",
   "setArchivedAction": "设为已归档",
   "deleteAction": "删除",
+  "closeAction": "关闭",
   "cancelAction": "取消",
   "deleteMatterTitle": "删除 Matter",
   "deleteMatterConfirmation": "删除 \"{title}\" 及该 Matter 下所有笔记？",
@@ -210,6 +211,12 @@
   "assignToSelectedMatterAction": "分配到当前 Matter",
   "writeMarkdownHereHint": "在此输入 Markdown...",
   "saveAction": "保存",
+  "editModeLabel": "编辑",
+  "readModeLabel": "阅读",
+  "noteMoreActionsTooltip": "更多笔记操作",
+  "noteTagsUtilityTitle": "标签",
+  "noteAttachmentsUtilityTitle": "附件",
+  "noteLinkedNotesUtilityTitle": "关联笔记",
   "updatedAtRow": "更新时间：{updatedAt}",
   "@updatedAtRow": {
     "placeholders": {

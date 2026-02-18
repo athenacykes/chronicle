@@ -42,13 +42,6 @@ class MaterialChronicleShell extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: l10n.syncNowAction,
-            onPressed: () async {
-              await viewModel.onSyncNow();
-            },
-            icon: const Icon(Icons.sync),
-          ),
-          IconButton(
             tooltip: l10n.settingsTitle,
             onPressed: () async {
               await viewModel.onOpenSettings();
@@ -66,12 +59,6 @@ class MaterialChronicleShell extends StatelessWidget {
           const VerticalDivider(width: 1),
           Expanded(child: viewModel.content),
         ],
-      ),
-      bottomNavigationBar: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        alignment: Alignment.centerLeft,
-        child: viewModel.status,
       ),
     );
   }
