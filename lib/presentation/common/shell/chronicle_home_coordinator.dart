@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -17,6 +18,7 @@ import '../../../domain/entities/matter_graph_edge.dart';
 import '../../../domain/entities/matter_graph_node.dart';
 import '../../../domain/entities/matter_sections.dart';
 import '../../../domain/entities/note.dart';
+import '../../../domain/entities/phase.dart';
 import '../../../domain/entities/sync_conflict.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
@@ -1211,6 +1213,307 @@ class SearchListItem {
   final String snippet;
 }
 
+const Key _kMacosMatterModeSegmentedKey = Key(
+  'macos_matter_mode_segmented_control',
+);
+const Key _kMacosPhaseSegmentedKey = Key('macos_phase_segmented_control');
+const Key _kMacosMatterNewNoteButtonKey = Key('macos_matter_new_note_button');
+const Key _kMacosOrphanNewNoteButtonKey = Key('macos_orphan_new_note_button');
+const Key _kMacosConflictsRefreshButtonKey = Key('macos_conflicts_refresh');
+const Key _kMacosNoteEditorTitleFieldKey = Key('macos_note_editor_title');
+const Key _kMacosNoteEditorTagsFieldKey = Key('macos_note_editor_tags');
+const Key _kMacosNoteEditorContentFieldKey = Key('macos_note_editor_content');
+const Key _kMacosNoteEditorSaveButtonKey = Key('macos_note_editor_save');
+
+Widget _adaptiveLoadingIndicator(BuildContext context, {Key? key}) {
+  if (_isMacOSNativeUIContext(context)) {
+    return ProgressCircle(key: key);
+  }
+  return CircularProgressIndicator(key: key);
+}
+
+BoxDecoration _macosPanelDecoration(BuildContext context) {
+  final brightness = MacosTheme.brightnessOf(context);
+  return BoxDecoration(
+    color: brightness.resolve(const Color(0xFFFDFDFD), const Color(0xFF202327)),
+    border: Border.all(color: MacosTheme.of(context).dividerColor),
+    borderRadius: BorderRadius.circular(8),
+  );
+}
+
+TextStyle _macosSectionTitleStyle(BuildContext context) {
+  return MacosTheme.of(
+    context,
+  ).typography.title3.copyWith(fontWeight: MacosFontWeight.w590);
+}
+
+class _MacosCompactIconButton extends StatelessWidget {
+  const _MacosCompactIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final Widget icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosTooltip(
+      message: tooltip,
+      child: MacosIconButton(
+        semanticLabel: tooltip,
+        icon: icon,
+        backgroundColor: MacosColors.transparent,
+        boxConstraints: const BoxConstraints(
+          minHeight: 28,
+          minWidth: 28,
+          maxHeight: 28,
+          maxWidth: 28,
+        ),
+        padding: const EdgeInsets.all(4),
+        onPressed: onPressed,
+      ),
+    );
+  }
+}
+
+class _MacosSelectableRow extends StatelessWidget {
+  const _MacosSelectableRow({
+    required this.title,
+    this.subtitle,
+    this.leading,
+    this.trailing,
+    this.selected = false,
+    required this.onTap,
+  });
+
+  final Widget title;
+  final Widget? subtitle;
+  final Widget? leading;
+  final Widget? trailing;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final typography = MacosTheme.of(context).typography;
+    final selectedColor = MacosTheme.of(context).primaryColor.withAlpha(26);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: selected ? selectedColor : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (leading != null) ...<Widget>[
+              leading!,
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  DefaultTextStyle(
+                    style: typography.body.copyWith(
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    ),
+                    child: title,
+                  ),
+                  if (subtitle != null) ...<Widget>[
+                    const SizedBox(height: 2),
+                    DefaultTextStyle(
+                      style: typography.caption1.copyWith(
+                        color: MacosColors.secondaryLabelColor,
+                      ),
+                      child: subtitle!,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (trailing != null) ...<Widget>[
+              const SizedBox(width: 8),
+              trailing!,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MacosMatterViewModeControl extends StatefulWidget {
+  const _MacosMatterViewModeControl({
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final MatterViewMode selected;
+  final ValueChanged<MatterViewMode> onChanged;
+
+  @override
+  State<_MacosMatterViewModeControl> createState() =>
+      _MacosMatterViewModeControlState();
+}
+
+class _MacosMatterViewModeControlState
+    extends State<_MacosMatterViewModeControl> {
+  late final MacosTabController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = MacosTabController(
+      initialIndex: _matterViewModes.indexOf(widget.selected),
+      length: _matterViewModes.length,
+    )..addListener(_onControllerChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MacosMatterViewModeControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final selectedIndex = _matterViewModes.indexOf(widget.selected);
+    if (selectedIndex != _controller.index) {
+      _controller.index = selectedIndex;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller
+      ..removeListener(_onControllerChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    widget.onChanged(_matterViewModes[_controller.index]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return KeyedSubtree(
+      key: _kMacosMatterModeSegmentedKey,
+      child: MacosSegmentedControl(
+        tabs: <MacosTab>[
+          MacosTab(label: l10n.viewModePhase),
+          MacosTab(label: l10n.viewModeTimeline),
+          MacosTab(label: l10n.viewModeList),
+          MacosTab(label: l10n.viewModeGraph),
+        ],
+        controller: _controller,
+      ),
+    );
+  }
+}
+
+class _MacosPhaseControl extends StatefulWidget {
+  const _MacosPhaseControl({
+    required this.phases,
+    required this.selectedPhaseId,
+    required this.onSelected,
+  });
+
+  final List<Phase> phases;
+  final String? selectedPhaseId;
+  final ValueChanged<String> onSelected;
+
+  @override
+  State<_MacosPhaseControl> createState() => _MacosPhaseControlState();
+}
+
+class _MacosPhaseControlState extends State<_MacosPhaseControl> {
+  MacosTabController? _controller;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.phases.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final selectedIndex = _selectedIndex();
+    if (widget.phases.length > 4) {
+      return SizedBox(
+        width: 240,
+        child: MacosPopupButton<String>(
+          value: widget.phases[selectedIndex].id,
+          onChanged: (value) {
+            if (value != null) {
+              widget.onSelected(value);
+            }
+          },
+          items: widget.phases
+              .map(
+                (phase) => MacosPopupMenuItem<String>(
+                  value: phase.id,
+                  child: Text(phase.name),
+                ),
+              )
+              .toList(),
+        ),
+      );
+    }
+
+    final needRebuild =
+        _controller == null || _controller!.length != widget.phases.length;
+    if (needRebuild) {
+      _controller?.dispose();
+      _controller = MacosTabController(
+        initialIndex: selectedIndex,
+        length: widget.phases.length,
+      )..addListener(_onControllerChanged);
+    } else if (_controller!.index != selectedIndex) {
+      _controller!.index = selectedIndex;
+    }
+
+    return KeyedSubtree(
+      key: _kMacosPhaseSegmentedKey,
+      child: MacosSegmentedControl(
+        tabs: widget.phases
+            .map((phase) => MacosTab(label: phase.name))
+            .toList(growable: false),
+        controller: _controller!,
+      ),
+    );
+  }
+
+  int _selectedIndex() {
+    final index = widget.phases.indexWhere(
+      (phase) => phase.id == widget.selectedPhaseId,
+    );
+    return index < 0 ? 0 : index;
+  }
+
+  void _onControllerChanged() {
+    final controller = _controller;
+    if (controller == null) {
+      return;
+    }
+    widget.onSelected(widget.phases[controller.index].id);
+  }
+}
+
+const List<MatterViewMode> _matterViewModes = <MatterViewMode>[
+  MatterViewMode.phase,
+  MatterViewMode.timeline,
+  MatterViewMode.list,
+  MatterViewMode.graph,
+];
+
 class _MainWorkspace extends ConsumerWidget {
   const _MainWorkspace({required this.searchHits, required this.searchQuery});
 
@@ -1269,12 +1572,13 @@ class _ConflictWorkspace extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final conflictsState = ref.watch(conflictsControllerProvider);
     final selected = ref.watch(selectedConflictProvider);
     final selectedContent = ref.watch(selectedConflictContentProvider);
 
     return conflictsState.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => Center(child: _adaptiveLoadingIndicator(context)),
       error: (error, stackTrace) =>
           Center(child: Text(l10n.conflictLoadFailed(error.toString()))),
       data: (conflicts) {
@@ -1287,18 +1591,42 @@ class _ConflictWorkspace extends ConsumerWidget {
                 children: <Widget>[
                   Text(
                     l10n.conflictsCountTitle(conflicts.length),
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: isMacOSNativeUI
+                        ? _macosSectionTitleStyle(context)
+                        : Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(width: 12),
-                  FilledButton.tonalIcon(
-                    onPressed: () async {
-                      await ref
-                          .read(conflictsControllerProvider.notifier)
-                          .reload();
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: Text(l10n.refreshAction),
-                  ),
+                  isMacOSNativeUI
+                      ? PushButton(
+                          key: _kMacosConflictsRefreshButtonKey,
+                          controlSize: ControlSize.regular,
+                          secondary: true,
+                          onPressed: () async {
+                            await ref
+                                .read(conflictsControllerProvider.notifier)
+                                .reload();
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              const MacosIcon(
+                                CupertinoIcons.refresh_thick,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(l10n.refreshAction),
+                            ],
+                          ),
+                        )
+                      : FilledButton.tonalIcon(
+                          onPressed: () async {
+                            await ref
+                                .read(conflictsControllerProvider.notifier)
+                                .reload();
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: Text(l10n.refreshAction),
+                        ),
                 ],
               ),
             ),
@@ -1316,6 +1644,41 @@ class _ConflictWorkspace extends ConsumerWidget {
                               final isSelected =
                                   selected?.conflictPath ==
                                   conflict.conflictPath;
+                              if (isMacOSNativeUI) {
+                                return Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    10,
+                                    2,
+                                    10,
+                                    2,
+                                  ),
+                                  child: _MacosSelectableRow(
+                                    selected: isSelected,
+                                    title: Row(
+                                      children: <Widget>[
+                                        Expanded(child: Text(conflict.title)),
+                                        _ConflictTypeChip(type: conflict.type),
+                                      ],
+                                    ),
+                                    subtitle: Text(
+                                      '${conflict.originalPath}\n${DateFormat('yyyy-MM-dd HH:mm').format(conflict.detectedAt.toLocal())}',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    onTap: () {
+                                      ref
+                                          .read(
+                                            conflictsControllerProvider
+                                                .notifier,
+                                          )
+                                          .selectConflict(
+                                            conflict.conflictPath,
+                                          );
+                                    },
+                                  ),
+                                );
+                              }
+
                               return ListTile(
                                 selected: isSelected,
                                 title: Row(
@@ -1350,9 +1713,9 @@ class _ConflictWorkspace extends ConsumerWidget {
                               children: <Widget>[
                                 Text(
                                   selected.title,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
+                                  style: isMacOSNativeUI
+                                      ? MacosTheme.of(context).typography.title3
+                                      : Theme.of(context).textTheme.titleMedium,
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
@@ -1377,57 +1740,132 @@ class _ConflictWorkspace extends ConsumerWidget {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: <Widget>[
-                                    OutlinedButton.icon(
-                                      onPressed: selected.originalNoteId == null
-                                          ? null
-                                          : () async {
+                                    isMacOSNativeUI
+                                        ? PushButton(
+                                            controlSize: ControlSize.regular,
+                                            secondary: true,
+                                            onPressed:
+                                                selected.originalNoteId == null
+                                                ? null
+                                                : () async {
+                                                    await ref
+                                                        .read(
+                                                          noteEditorControllerProvider
+                                                              .notifier,
+                                                        )
+                                                        .openNoteInWorkspace(
+                                                          selected
+                                                              .originalNoteId!,
+                                                        );
+                                                    ref
+                                                            .read(
+                                                              showConflictsProvider
+                                                                  .notifier,
+                                                            )
+                                                            .state =
+                                                        false;
+                                                  },
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: <Widget>[
+                                                const MacosIcon(
+                                                  CupertinoIcons
+                                                      .arrow_up_right_square,
+                                                  size: 13,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(l10n.openMainNoteAction),
+                                              ],
+                                            ),
+                                          )
+                                        : OutlinedButton.icon(
+                                            onPressed:
+                                                selected.originalNoteId == null
+                                                ? null
+                                                : () async {
+                                                    await ref
+                                                        .read(
+                                                          noteEditorControllerProvider
+                                                              .notifier,
+                                                        )
+                                                        .openNoteInWorkspace(
+                                                          selected
+                                                              .originalNoteId!,
+                                                        );
+                                                    ref
+                                                            .read(
+                                                              showConflictsProvider
+                                                                  .notifier,
+                                                            )
+                                                            .state =
+                                                        false;
+                                                  },
+                                            icon: const Icon(Icons.open_in_new),
+                                            label: Text(
+                                              l10n.openMainNoteAction,
+                                            ),
+                                          ),
+                                    const SizedBox(width: 8),
+                                    isMacOSNativeUI
+                                        ? PushButton(
+                                            controlSize: ControlSize.regular,
+                                            onPressed: () async {
                                               await ref
                                                   .read(
-                                                    noteEditorControllerProvider
+                                                    conflictsControllerProvider
                                                         .notifier,
                                                   )
-                                                  .openNoteInWorkspace(
-                                                    selected.originalNoteId!,
+                                                  .resolveConflict(
+                                                    selected.conflictPath,
                                                   );
                                               ref
-                                                      .read(
-                                                        showConflictsProvider
-                                                            .notifier,
-                                                      )
-                                                      .state =
-                                                  false;
+                                                  .read(
+                                                    conflictsControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .selectConflict(null);
                                             },
-                                      icon: const Icon(Icons.open_in_new),
-                                      label: Text(l10n.openMainNoteAction),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    FilledButton.icon(
-                                      onPressed: () async {
-                                        await ref
-                                            .read(
-                                              conflictsControllerProvider
-                                                  .notifier,
-                                            )
-                                            .resolveConflict(
-                                              selected.conflictPath,
-                                            );
-                                        ref
-                                            .read(
-                                              conflictsControllerProvider
-                                                  .notifier,
-                                            )
-                                            .selectConflict(null);
-                                      },
-                                      icon: const Icon(Icons.check),
-                                      label: Text(l10n.markResolvedAction),
-                                    ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: <Widget>[
+                                                const MacosIcon(
+                                                  CupertinoIcons.check_mark,
+                                                  size: 13,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(l10n.markResolvedAction),
+                                              ],
+                                            ),
+                                          )
+                                        : FilledButton.icon(
+                                            onPressed: () async {
+                                              await ref
+                                                  .read(
+                                                    conflictsControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .resolveConflict(
+                                                    selected.conflictPath,
+                                                  );
+                                              ref
+                                                  .read(
+                                                    conflictsControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .selectConflict(null);
+                                            },
+                                            icon: const Icon(Icons.check),
+                                            label: Text(
+                                              l10n.markResolvedAction,
+                                            ),
+                                          ),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
                                 Expanded(
                                   child: selectedContent.when(
-                                    loading: () => const Center(
-                                      child: CircularProgressIndicator(),
+                                    loading: () => Center(
+                                      child: _adaptiveLoadingIndicator(context),
                                     ),
                                     error: (error, stackTrace) => Text(
                                       l10n.failedToLoadConflict(
@@ -1446,16 +1884,17 @@ class _ConflictWorkspace extends ConsumerWidget {
                                         return Text(l10n.conflictContentEmpty);
                                       }
                                       return Container(
-                                        decoration: BoxDecoration(
-                                          border: Border.all(
-                                            color: Theme.of(
-                                              context,
-                                            ).dividerColor,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
+                                        decoration: isMacOSNativeUI
+                                            ? _macosPanelDecoration(context)
+                                            : BoxDecoration(
+                                                border: Border.all(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).dividerColor,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
                                         padding: const EdgeInsets.all(8),
                                         child: selected.isNote
                                             ? Markdown(data: content)
@@ -1488,6 +1927,7 @@ class _MatterWorkspace extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final viewMode = ref.watch(matterViewModeProvider);
     final selectedPhaseId = ref.watch(selectedPhaseIdProvider);
 
@@ -1504,11 +1944,20 @@ class _MatterWorkspace extends ConsumerWidget {
                   children: <Widget>[
                     Text(
                       matter.title,
-                      style: Theme.of(context).textTheme.titleLarge,
+                      style: isMacOSNativeUI
+                          ? MacosTheme.of(context).typography.largeTitle
+                          : Theme.of(context).textTheme.titleLarge,
                     ),
                     if (matter.description.trim().isNotEmpty)
                       Text(
                         matter.description,
+                        style: isMacOSNativeUI
+                            ? MacosTheme.of(
+                                context,
+                              ).typography.subheadline.copyWith(
+                                color: MacosColors.secondaryLabelColor,
+                              )
+                            : null,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1516,90 +1965,152 @@ class _MatterWorkspace extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 16),
-              SegmentedButton<MatterViewMode>(
-                segments: <ButtonSegment<MatterViewMode>>[
-                  ButtonSegment<MatterViewMode>(
-                    value: MatterViewMode.phase,
-                    label: Text(l10n.viewModePhase),
-                  ),
-                  ButtonSegment<MatterViewMode>(
-                    value: MatterViewMode.timeline,
-                    label: Text(l10n.viewModeTimeline),
-                  ),
-                  ButtonSegment<MatterViewMode>(
-                    value: MatterViewMode.list,
-                    label: Text(l10n.viewModeList),
-                  ),
-                  ButtonSegment<MatterViewMode>(
-                    value: MatterViewMode.graph,
-                    label: Text(l10n.viewModeGraph),
-                  ),
-                ],
-                selected: <MatterViewMode>{viewMode},
-                onSelectionChanged: (selection) {
-                  final selectedMode = selection.first;
-                  ref.read(matterViewModeProvider.notifier).state =
-                      selectedMode;
-                  if (selectedMode == MatterViewMode.graph) {
-                    ref.invalidate(graphControllerProvider);
-                  } else {
-                    ref.invalidate(noteListProvider);
-                  }
-                },
-              ),
+              isMacOSNativeUI
+                  ? _MacosMatterViewModeControl(
+                      selected: viewMode,
+                      onChanged: (selectedMode) {
+                        ref.read(matterViewModeProvider.notifier).state =
+                            selectedMode;
+                        if (selectedMode == MatterViewMode.graph) {
+                          ref.invalidate(graphControllerProvider);
+                        } else {
+                          ref.invalidate(noteListProvider);
+                        }
+                      },
+                    )
+                  : SegmentedButton<MatterViewMode>(
+                      segments: <ButtonSegment<MatterViewMode>>[
+                        ButtonSegment<MatterViewMode>(
+                          value: MatterViewMode.phase,
+                          label: Text(l10n.viewModePhase),
+                        ),
+                        ButtonSegment<MatterViewMode>(
+                          value: MatterViewMode.timeline,
+                          label: Text(l10n.viewModeTimeline),
+                        ),
+                        ButtonSegment<MatterViewMode>(
+                          value: MatterViewMode.list,
+                          label: Text(l10n.viewModeList),
+                        ),
+                        ButtonSegment<MatterViewMode>(
+                          value: MatterViewMode.graph,
+                          label: Text(l10n.viewModeGraph),
+                        ),
+                      ],
+                      selected: <MatterViewMode>{viewMode},
+                      onSelectionChanged: (selection) {
+                        final selectedMode = selection.first;
+                        ref.read(matterViewModeProvider.notifier).state =
+                            selectedMode;
+                        if (selectedMode == MatterViewMode.graph) {
+                          ref.invalidate(graphControllerProvider);
+                        } else {
+                          ref.invalidate(noteListProvider);
+                        }
+                      },
+                    ),
               const Spacer(),
-              FilledButton.icon(
-                onPressed: () async {
-                  final result = await showDialog<_NoteDialogResult>(
-                    context: context,
-                    builder: (_) =>
-                        const _NoteDialog(mode: _NoteDialogMode.create),
-                  );
+              isMacOSNativeUI
+                  ? PushButton(
+                      key: _kMacosMatterNewNoteButtonKey,
+                      controlSize: ControlSize.large,
+                      onPressed: () async {
+                        final result = await showDialog<_NoteDialogResult>(
+                          context: context,
+                          builder: (_) =>
+                              const _NoteDialog(mode: _NoteDialogMode.create),
+                        );
 
-                  if (result == null || result.title.trim().isEmpty) {
-                    return;
-                  }
+                        if (result == null || result.title.trim().isEmpty) {
+                          return;
+                        }
 
-                  await ref
-                      .read(noteEditorControllerProvider.notifier)
-                      .createCustomNote(
-                        title: result.title,
-                        content: result.content,
-                        tags: result.tags,
-                        isPinned: result.isPinned,
-                        matterId: matter.id,
-                        phaseId:
-                            selectedPhaseId ??
-                            (matter.phases.isEmpty
-                                ? null
-                                : matter.phases.first.id),
-                      );
-                },
-                icon: const Icon(Icons.note_add),
-                label: Text(l10n.newNoteAction),
-              ),
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .createCustomNote(
+                              title: result.title,
+                              content: result.content,
+                              tags: result.tags,
+                              isPinned: result.isPinned,
+                              matterId: matter.id,
+                              phaseId:
+                                  selectedPhaseId ??
+                                  (matter.phases.isEmpty
+                                      ? null
+                                      : matter.phases.first.id),
+                            );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const MacosIcon(CupertinoIcons.add, size: 13),
+                          const SizedBox(width: 6),
+                          Text(l10n.newNoteAction),
+                        ],
+                      ),
+                    )
+                  : FilledButton.icon(
+                      onPressed: () async {
+                        final result = await showDialog<_NoteDialogResult>(
+                          context: context,
+                          builder: (_) =>
+                              const _NoteDialog(mode: _NoteDialogMode.create),
+                        );
+
+                        if (result == null || result.title.trim().isEmpty) {
+                          return;
+                        }
+
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .createCustomNote(
+                              title: result.title,
+                              content: result.content,
+                              tags: result.tags,
+                              isPinned: result.isPinned,
+                              matterId: matter.id,
+                              phaseId:
+                                  selectedPhaseId ??
+                                  (matter.phases.isEmpty
+                                      ? null
+                                      : matter.phases.first.id),
+                            );
+                      },
+                      icon: const Icon(Icons.note_add),
+                      label: Text(l10n.newNoteAction),
+                    ),
             ],
           ),
         ),
         if (viewMode == MatterViewMode.phase)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Wrap(
-              spacing: 8,
-              children: matter.phases
-                  .map(
-                    (phase) => ChoiceChip(
-                      label: Text(phase.name),
-                      selected: selectedPhaseId == phase.id,
-                      onSelected: (_) {
-                        ref.read(selectedPhaseIdProvider.notifier).state =
-                            phase.id;
-                        ref.invalidate(noteListProvider);
-                      },
-                    ),
+            child: isMacOSNativeUI
+                ? _MacosPhaseControl(
+                    phases: matter.phases,
+                    selectedPhaseId: selectedPhaseId,
+                    onSelected: (phaseId) {
+                      ref.read(selectedPhaseIdProvider.notifier).state =
+                          phaseId;
+                      ref.invalidate(noteListProvider);
+                    },
                   )
-                  .toList(),
-            ),
+                : Wrap(
+                    spacing: 8,
+                    children: matter.phases
+                        .map(
+                          (phase) => ChoiceChip(
+                            label: Text(phase.name),
+                            selected: selectedPhaseId == phase.id,
+                            onSelected: (_) {
+                              ref.read(selectedPhaseIdProvider.notifier).state =
+                                  phase.id;
+                              ref.invalidate(noteListProvider);
+                            },
+                          ),
+                        )
+                        .toList(),
+                  ),
           ),
         const SizedBox(height: 8),
         Expanded(
@@ -1625,7 +2136,7 @@ class _MatterNotesWorkspace extends ConsumerWidget {
         SizedBox(
           width: 380,
           child: notes.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => Center(child: _adaptiveLoadingIndicator(context)),
             error: (error, _) => Center(child: Text('$error')),
             data: (items) => _NoteList(
               notes: items,
@@ -1708,11 +2219,12 @@ class _MatterGraphWorkspace extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final graphState = ref.watch(graphControllerProvider);
     final selectedNoteId = ref.watch(selectedNoteIdProvider);
 
     return graphState.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => Center(child: _adaptiveLoadingIndicator(context)),
       error: (error, _) =>
           Center(child: Text(l10n.graphLoadFailed(error.toString()))),
       data: (view) {
@@ -1739,12 +2251,14 @@ class _MatterGraphWorkspace extends ConsumerWidget {
                         vertical: 6,
                       ),
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      decoration: isMacOSNativeUI
+                          ? _macosPanelDecoration(context)
+                          : BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.surfaceContainerLow,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                       child: Text(
                         l10n.graphLimitedNotice(
                           graphNodeLimit,
@@ -2006,6 +2520,7 @@ class _OrphanWorkspace extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final notes = ref.watch(orphanNotesProvider);
 
     return Column(
@@ -2017,35 +2532,72 @@ class _OrphanWorkspace extends ConsumerWidget {
             children: <Widget>[
               Text(
                 l10n.orphanNotesTitle,
-                style: Theme.of(context).textTheme.titleLarge,
+                style: isMacOSNativeUI
+                    ? _macosSectionTitleStyle(context)
+                    : Theme.of(context).textTheme.titleLarge,
               ),
               const Spacer(),
-              FilledButton.icon(
-                onPressed: () async {
-                  final result = await showDialog<_NoteDialogResult>(
-                    context: context,
-                    builder: (_) =>
-                        const _NoteDialog(mode: _NoteDialogMode.create),
-                  );
+              isMacOSNativeUI
+                  ? PushButton(
+                      key: _kMacosOrphanNewNoteButtonKey,
+                      controlSize: ControlSize.large,
+                      onPressed: () async {
+                        final result = await showDialog<_NoteDialogResult>(
+                          context: context,
+                          builder: (_) =>
+                              const _NoteDialog(mode: _NoteDialogMode.create),
+                        );
 
-                  if (result == null || result.title.trim().isEmpty) {
-                    return;
-                  }
+                        if (result == null || result.title.trim().isEmpty) {
+                          return;
+                        }
 
-                  await ref
-                      .read(noteEditorControllerProvider.notifier)
-                      .createCustomNote(
-                        title: result.title,
-                        content: result.content,
-                        tags: result.tags,
-                        isPinned: result.isPinned,
-                        matterId: null,
-                        phaseId: null,
-                      );
-                },
-                icon: const Icon(Icons.add),
-                label: Text(l10n.newOrphanNoteAction),
-              ),
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .createCustomNote(
+                              title: result.title,
+                              content: result.content,
+                              tags: result.tags,
+                              isPinned: result.isPinned,
+                              matterId: null,
+                              phaseId: null,
+                            );
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const MacosIcon(CupertinoIcons.add, size: 13),
+                          const SizedBox(width: 6),
+                          Text(l10n.newOrphanNoteAction),
+                        ],
+                      ),
+                    )
+                  : FilledButton.icon(
+                      onPressed: () async {
+                        final result = await showDialog<_NoteDialogResult>(
+                          context: context,
+                          builder: (_) =>
+                              const _NoteDialog(mode: _NoteDialogMode.create),
+                        );
+
+                        if (result == null || result.title.trim().isEmpty) {
+                          return;
+                        }
+
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .createCustomNote(
+                              title: result.title,
+                              content: result.content,
+                              tags: result.tags,
+                              isPinned: result.isPinned,
+                              matterId: null,
+                              phaseId: null,
+                            );
+                      },
+                      icon: const Icon(Icons.add),
+                      label: Text(l10n.newOrphanNoteAction),
+                    ),
             ],
           ),
         ),
@@ -2056,7 +2608,7 @@ class _OrphanWorkspace extends ConsumerWidget {
                 width: 380,
                 child: notes.when(
                   loading: () =>
-                      const Center(child: CircularProgressIndicator()),
+                      Center(child: _adaptiveLoadingIndicator(context)),
                   error: (error, _) => Center(child: Text('$error')),
                   data: (items) => _NoteList(
                     notes: items,
@@ -2159,9 +2711,75 @@ class _NoteList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final selectedNoteId = ref.watch(selectedNoteIdProvider);
     if (notes.isEmpty) {
       return Center(child: Text(l10n.noNotesYetMessage));
+    }
+
+    if (isMacOSNativeUI) {
+      return ListView.separated(
+        padding: const EdgeInsets.all(8),
+        itemCount: notes.length,
+        separatorBuilder: (_, index) => const SizedBox(height: 2),
+        itemBuilder: (_, index) {
+          final note = notes[index];
+          return _MacosSelectableRow(
+            selected: note.id == selectedNoteId,
+            leading: MacosIcon(
+              note.isPinned ? CupertinoIcons.pin_fill : CupertinoIcons.doc_text,
+              size: 14,
+            ),
+            title: Text(
+              note.title.isEmpty ? l10n.untitledLabel : note.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              note.content.replaceAll('\n', ' '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: MacosPulldownButton(
+              icon: CupertinoIcons.ellipsis_circle,
+              items: <MacosPulldownMenuEntry>[
+                MacosPulldownMenuItem(
+                  title: Text(l10n.editAction),
+                  onTap: () {
+                    unawaited(onEdit(note));
+                  },
+                ),
+                MacosPulldownMenuItem(
+                  title: Text(
+                    note.isPinned ? l10n.unpinAction : l10n.pinAction,
+                  ),
+                  onTap: () {
+                    unawaited(onTogglePinned(note));
+                  },
+                ),
+                MacosPulldownMenuItem(
+                  title: Text(l10n.linkNoteActionEllipsis),
+                  onTap: () {
+                    unawaited(onLink(note));
+                  },
+                ),
+                const MacosPulldownMenuDivider(),
+                MacosPulldownMenuItem(
+                  title: Text(l10n.deleteAction),
+                  onTap: () {
+                    unawaited(onDelete(note));
+                  },
+                ),
+              ],
+            ),
+            onTap: () async {
+              await ref
+                  .read(noteEditorControllerProvider.notifier)
+                  .selectNote(note.id);
+            },
+          );
+        },
+      );
     }
 
     return ListView.builder(
@@ -2323,6 +2941,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final noteAsync = ref.watch(noteEditorControllerProvider);
     final previewMode = ref.watch(previewModeProvider);
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
@@ -2333,7 +2952,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
         ?.storageRootPath;
 
     return noteAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => Center(child: _adaptiveLoadingIndicator(context)),
       error: (error, _) =>
           Center(child: Text(l10n.editorError(error.toString()))),
       data: (note) {
@@ -2349,6 +2968,111 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
           _tagsController.text = note.tags.join(', ');
         }
 
+        Future<bool> confirmDelete() async {
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (_) {
+              if (isMacOSNativeUI) {
+                return MacosSheet(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          l10n.deleteNoteTitle,
+                          style: MacosTheme.of(context).typography.title3,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(l10n.deleteNoteConfirmation(note.title)),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: <Widget>[
+                            PushButton(
+                              controlSize: ControlSize.regular,
+                              secondary: true,
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: Text(l10n.cancelAction),
+                            ),
+                            const SizedBox(width: 8),
+                            PushButton(
+                              controlSize: ControlSize.regular,
+                              color: MacosColors.systemRedColor,
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text(l10n.deleteAction),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return AlertDialog(
+                title: Text(l10n.deleteNoteTitle),
+                content: Text(l10n.deleteNoteConfirmation(note.title)),
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text(l10n.cancelAction),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: Text(l10n.deleteAction),
+                  ),
+                ],
+              );
+            },
+          );
+          return confirmed == true;
+        }
+
+        Future<void> saveNote() async {
+          final tags = _tagsController.text
+              .split(',')
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toList();
+
+          await ref
+              .read(noteEditorControllerProvider.notifier)
+              .updateCurrent(
+                title: _titleController.text.trim(),
+                content: _contentController.text,
+                tags: tags,
+              );
+        }
+
+        final titleField = isMacOSNativeUI
+            ? MacosTextField(
+                key: _kMacosNoteEditorTitleFieldKey,
+                controller: _titleController,
+                placeholder: l10n.titleLabel,
+              )
+            : TextField(
+                controller: _titleController,
+                decoration: InputDecoration(
+                  labelText: l10n.titleLabel,
+                  border: const OutlineInputBorder(),
+                ),
+              );
+        final tagsField = isMacOSNativeUI
+            ? MacosTextField(
+                key: _kMacosNoteEditorTagsFieldKey,
+                controller: _tagsController,
+                placeholder: l10n.tagsCommaSeparatedLabel,
+              )
+            : TextField(
+                controller: _tagsController,
+                decoration: InputDecoration(
+                  labelText: l10n.tagsCommaSeparatedLabel,
+                  border: const OutlineInputBorder(),
+                ),
+              );
+
         return Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -2356,87 +3080,110 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      controller: _titleController,
-                      decoration: InputDecoration(
-                        labelText: l10n.titleLabel,
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
+                  Expanded(child: titleField),
                   const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: note.isPinned ? l10n.unpinAction : l10n.pinAction,
-                    onPressed: () async {
-                      await ref
-                          .read(noteEditorControllerProvider.notifier)
-                          .updateCurrent(isPinned: !note.isPinned);
-                    },
-                    icon: Icon(
-                      note.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: l10n.linkNoteAction,
-                    onPressed: () async {
-                      await _showLinkNoteDialog(
-                        context: context,
-                        ref: ref,
-                        sourceNote: note,
-                      );
-                    },
-                    icon: const Icon(Icons.link),
-                  ),
-                  IconButton(
-                    tooltip: l10n.togglePreviewAction,
-                    onPressed: () {
-                      ref.read(previewModeProvider.notifier).state =
-                          !previewMode;
-                    },
-                    icon: Icon(previewMode ? Icons.edit : Icons.preview),
-                  ),
-                  IconButton(
-                    tooltip: l10n.deleteNoteAction,
-                    onPressed: () async {
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: Text(l10n.deleteNoteTitle),
-                          content: Text(
-                            l10n.deleteNoteConfirmation(note.title),
+                  isMacOSNativeUI
+                      ? _MacosCompactIconButton(
+                          tooltip: note.isPinned
+                              ? l10n.unpinAction
+                              : l10n.pinAction,
+                          onPressed: () async {
+                            await ref
+                                .read(noteEditorControllerProvider.notifier)
+                                .updateCurrent(isPinned: !note.isPinned);
+                          },
+                          icon: MacosIcon(
+                            note.isPinned
+                                ? CupertinoIcons.pin_fill
+                                : CupertinoIcons.pin,
                           ),
-                          actions: <Widget>[
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: Text(l10n.cancelAction),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: Text(l10n.deleteAction),
-                            ),
-                          ],
+                        )
+                      : IconButton(
+                          tooltip: note.isPinned
+                              ? l10n.unpinAction
+                              : l10n.pinAction,
+                          onPressed: () async {
+                            await ref
+                                .read(noteEditorControllerProvider.notifier)
+                                .updateCurrent(isPinned: !note.isPinned);
+                          },
+                          icon: Icon(
+                            note.isPinned
+                                ? Icons.push_pin
+                                : Icons.push_pin_outlined,
+                          ),
                         ),
-                      );
-
-                      if (confirmed == true) {
-                        await ref
-                            .read(noteEditorControllerProvider.notifier)
-                            .deleteCurrent();
-                      }
-                    },
-                    icon: const Icon(Icons.delete_outline),
-                  ),
+                  isMacOSNativeUI
+                      ? _MacosCompactIconButton(
+                          tooltip: l10n.linkNoteAction,
+                          onPressed: () async {
+                            await _showLinkNoteDialog(
+                              context: context,
+                              ref: ref,
+                              sourceNote: note,
+                            );
+                          },
+                          icon: const MacosIcon(CupertinoIcons.link),
+                        )
+                      : IconButton(
+                          tooltip: l10n.linkNoteAction,
+                          onPressed: () async {
+                            await _showLinkNoteDialog(
+                              context: context,
+                              ref: ref,
+                              sourceNote: note,
+                            );
+                          },
+                          icon: const Icon(Icons.link),
+                        ),
+                  isMacOSNativeUI
+                      ? _MacosCompactIconButton(
+                          tooltip: l10n.togglePreviewAction,
+                          onPressed: () {
+                            ref.read(previewModeProvider.notifier).state =
+                                !previewMode;
+                          },
+                          icon: MacosIcon(
+                            previewMode
+                                ? CupertinoIcons.pencil
+                                : CupertinoIcons.eye,
+                          ),
+                        )
+                      : IconButton(
+                          tooltip: l10n.togglePreviewAction,
+                          onPressed: () {
+                            ref.read(previewModeProvider.notifier).state =
+                                !previewMode;
+                          },
+                          icon: Icon(previewMode ? Icons.edit : Icons.preview),
+                        ),
+                  isMacOSNativeUI
+                      ? _MacosCompactIconButton(
+                          tooltip: l10n.deleteNoteAction,
+                          onPressed: () async {
+                            if (await confirmDelete()) {
+                              await ref
+                                  .read(noteEditorControllerProvider.notifier)
+                                  .deleteCurrent();
+                            }
+                          },
+                          icon: const MacosIcon(CupertinoIcons.delete),
+                        )
+                      : IconButton(
+                          tooltip: l10n.deleteNoteAction,
+                          onPressed: () async {
+                            if (await confirmDelete()) {
+                              await ref
+                                  .read(noteEditorControllerProvider.notifier)
+                                  .deleteCurrent();
+                            }
+                          },
+                          icon: const Icon(Icons.delete_outline),
+                        ),
                 ],
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _tagsController,
-                decoration: InputDecoration(
-                  labelText: l10n.tagsCommaSeparatedLabel,
-                  border: const OutlineInputBorder(),
-                ),
-              ),
+              tagsField,
               const SizedBox(height: 8),
               _AttachmentsPanel(
                 note: note,
@@ -2450,33 +3197,73 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
-                  OutlinedButton(
-                    onPressed: () async {
-                      await ref
-                          .read(noteEditorControllerProvider.notifier)
-                          .moveCurrent(matterId: null, phaseId: null);
-                      ref.read(showOrphansProvider.notifier).state = true;
-                      ref.read(showConflictsProvider.notifier).state = false;
-                    },
-                    child: Text(l10n.moveToOrphansAction),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton(
-                    onPressed:
-                        selectedMatterId == null || selectedPhaseId == null
-                        ? null
-                        : () async {
+                  isMacOSNativeUI
+                      ? PushButton(
+                          controlSize: ControlSize.regular,
+                          secondary: true,
+                          onPressed: () async {
                             await ref
                                 .read(noteEditorControllerProvider.notifier)
-                                .moveCurrent(
-                                  matterId: selectedMatterId,
-                                  phaseId: selectedPhaseId,
-                                );
-                            ref.read(showOrphansProvider.notifier).state =
+                                .moveCurrent(matterId: null, phaseId: null);
+                            ref.read(showOrphansProvider.notifier).state = true;
+                            ref.read(showConflictsProvider.notifier).state =
                                 false;
                           },
-                    child: Text(l10n.assignToSelectedMatterAction),
-                  ),
+                          child: Text(l10n.moveToOrphansAction),
+                        )
+                      : OutlinedButton(
+                          onPressed: () async {
+                            await ref
+                                .read(noteEditorControllerProvider.notifier)
+                                .moveCurrent(matterId: null, phaseId: null);
+                            ref.read(showOrphansProvider.notifier).state = true;
+                            ref.read(showConflictsProvider.notifier).state =
+                                false;
+                          },
+                          child: Text(l10n.moveToOrphansAction),
+                        ),
+                  const SizedBox(width: 8),
+                  isMacOSNativeUI
+                      ? PushButton(
+                          controlSize: ControlSize.regular,
+                          secondary: true,
+                          onPressed:
+                              selectedMatterId == null ||
+                                  selectedPhaseId == null
+                              ? null
+                              : () async {
+                                  await ref
+                                      .read(
+                                        noteEditorControllerProvider.notifier,
+                                      )
+                                      .moveCurrent(
+                                        matterId: selectedMatterId,
+                                        phaseId: selectedPhaseId,
+                                      );
+                                  ref.read(showOrphansProvider.notifier).state =
+                                      false;
+                                },
+                          child: Text(l10n.assignToSelectedMatterAction),
+                        )
+                      : OutlinedButton(
+                          onPressed:
+                              selectedMatterId == null ||
+                                  selectedPhaseId == null
+                              ? null
+                              : () async {
+                                  await ref
+                                      .read(
+                                        noteEditorControllerProvider.notifier,
+                                      )
+                                      .moveCurrent(
+                                        matterId: selectedMatterId,
+                                        phaseId: selectedPhaseId,
+                                      );
+                                  ref.read(showOrphansProvider.notifier).state =
+                                      false;
+                                },
+                          child: Text(l10n.assignToSelectedMatterAction),
+                        ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -2488,14 +3275,29 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
               Expanded(
                 child: previewMode
                     ? Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: Theme.of(context).dividerColor,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
+                        decoration: isMacOSNativeUI
+                            ? _macosPanelDecoration(context)
+                            : BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                         padding: const EdgeInsets.all(8),
                         child: Markdown(data: _contentController.text),
+                      )
+                    : isMacOSNativeUI
+                    ? Container(
+                        decoration: _macosPanelDecoration(context),
+                        padding: const EdgeInsets.all(6),
+                        child: MacosTextField(
+                          key: _kMacosNoteEditorContentFieldKey,
+                          controller: _contentController,
+                          expands: true,
+                          maxLines: null,
+                          minLines: null,
+                          placeholder: l10n.writeMarkdownHereHint,
+                        ),
                       )
                     : TextField(
                         controller: _contentController,
@@ -2512,29 +3314,36 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
-                  FilledButton.icon(
-                    onPressed: () async {
-                      final tags = _tagsController.text
-                          .split(',')
-                          .map((value) => value.trim())
-                          .where((value) => value.isNotEmpty)
-                          .toList();
-
-                      await ref
-                          .read(noteEditorControllerProvider.notifier)
-                          .updateCurrent(
-                            title: _titleController.text.trim(),
-                            content: _contentController.text,
-                            tags: tags,
-                          );
-                    },
-                    icon: const Icon(Icons.save),
-                    label: Text(l10n.saveAction),
-                  ),
+                  isMacOSNativeUI
+                      ? PushButton(
+                          key: _kMacosNoteEditorSaveButtonKey,
+                          controlSize: ControlSize.regular,
+                          onPressed: saveNote,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              const MacosIcon(
+                                CupertinoIcons.floppy_disk,
+                                size: 13,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(l10n.saveAction),
+                            ],
+                          ),
+                        )
+                      : FilledButton.icon(
+                          onPressed: saveNote,
+                          icon: const Icon(Icons.save),
+                          label: Text(l10n.saveAction),
+                        ),
                   const SizedBox(width: 12),
                   Text(
                     l10n.updatedAtRow(note.updatedAt.toLocal().toString()),
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: isMacOSNativeUI
+                        ? MacosTheme.of(context).typography.caption1.copyWith(
+                            color: MacosColors.secondaryLabelColor,
+                          )
+                        : Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),
@@ -2564,15 +3373,18 @@ class _AttachmentsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final hasStorageRoot =
         storageRootPath != null && storageRootPath!.trim().isNotEmpty;
 
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: isMacOSNativeUI
+          ? _macosPanelDecoration(context)
+          : BoxDecoration(
+              border: Border.all(color: Theme.of(context).dividerColor),
+              borderRadius: BorderRadius.circular(8),
+            ),
       padding: const EdgeInsets.all(8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2582,16 +3394,34 @@ class _AttachmentsPanel extends StatelessWidget {
               Expanded(
                 child: Text(
                   l10n.attachmentsCountTitle(note.attachments.length),
-                  style: Theme.of(context).textTheme.titleSmall,
+                  style: isMacOSNativeUI
+                      ? MacosTheme.of(context).typography.headline
+                      : Theme.of(context).textTheme.titleSmall,
                 ),
               ),
-              FilledButton.tonalIcon(
-                onPressed: () async {
-                  await onAttach();
-                },
-                icon: const Icon(Icons.attach_file),
-                label: Text(l10n.attachFilesActionEllipsis),
-              ),
+              isMacOSNativeUI
+                  ? PushButton(
+                      controlSize: ControlSize.regular,
+                      secondary: true,
+                      onPressed: () async {
+                        await onAttach();
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const MacosIcon(CupertinoIcons.paperclip, size: 13),
+                          const SizedBox(width: 6),
+                          Text(l10n.attachFilesActionEllipsis),
+                        ],
+                      ),
+                    )
+                  : FilledButton.tonalIcon(
+                      onPressed: () async {
+                        await onAttach();
+                      },
+                      icon: const Icon(Icons.attach_file),
+                      label: Text(l10n.attachFilesActionEllipsis),
+                    ),
             ],
           ),
           const SizedBox(height: 6),
@@ -2641,13 +3471,16 @@ class _LinkedNotesPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final linkedCount = linkedNotesAsync.valueOrNull?.length ?? 0;
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(8),
-      ),
+      decoration: isMacOSNativeUI
+          ? _macosPanelDecoration(context)
+          : BoxDecoration(
+              border: Border.all(color: Theme.of(context).dividerColor),
+              borderRadius: BorderRadius.circular(8),
+            ),
       padding: const EdgeInsets.all(8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2658,26 +3491,40 @@ class _LinkedNotesPanel extends ConsumerWidget {
               Expanded(
                 child: Text(
                   l10n.linkedNotesCountTitle(linkedCount),
-                  style: Theme.of(context).textTheme.titleSmall,
+                  style: isMacOSNativeUI
+                      ? MacosTheme.of(context).typography.headline
+                      : Theme.of(context).textTheme.titleSmall,
                 ),
               ),
-              IconButton(
-                tooltip: l10n.linkNoteAction,
-                onPressed: () async {
-                  await _showLinkNoteDialog(
-                    context: context,
-                    ref: ref,
-                    sourceNote: sourceNote,
-                  );
-                },
-                icon: const Icon(Icons.add_link),
-              ),
+              isMacOSNativeUI
+                  ? _MacosCompactIconButton(
+                      tooltip: l10n.linkNoteAction,
+                      onPressed: () async {
+                        await _showLinkNoteDialog(
+                          context: context,
+                          ref: ref,
+                          sourceNote: sourceNote,
+                        );
+                      },
+                      icon: const MacosIcon(CupertinoIcons.link),
+                    )
+                  : IconButton(
+                      tooltip: l10n.linkNoteAction,
+                      onPressed: () async {
+                        await _showLinkNoteDialog(
+                          context: context,
+                          ref: ref,
+                          sourceNote: sourceNote,
+                        );
+                      },
+                      icon: const Icon(Icons.add_link),
+                    ),
             ],
           ),
           SizedBox(
             height: linkedCount == 0 ? 36 : 130,
             child: linkedNotesAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () => Center(child: _adaptiveLoadingIndicator(context)),
               error: (error, stackTrace) =>
                   Text(l10n.failedToLoadLinks(error.toString())),
               data: (items) {
@@ -2690,6 +3537,68 @@ class _LinkedNotesPanel extends ConsumerWidget {
                   separatorBuilder: (_, index) => const Divider(height: 1),
                   itemBuilder: (_, index) {
                     final item = items[index];
+                    if (isMacOSNativeUI) {
+                      return _MacosSelectableRow(
+                        leading: MacosIcon(
+                          item.isOutgoing
+                              ? CupertinoIcons.arrow_up_right
+                              : CupertinoIcons.arrow_down_left,
+                          size: 14,
+                        ),
+                        title: Text(
+                          item.relatedNote.title.isEmpty
+                              ? l10n.untitledLabel
+                              : item.relatedNote.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: item.link.context.trim().isEmpty
+                            ? null
+                            : Text(
+                                item.link.context,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            _MacosCompactIconButton(
+                              tooltip: l10n.openLinkedNoteAction,
+                              onPressed: () async {
+                                await ref
+                                    .read(noteEditorControllerProvider.notifier)
+                                    .selectNote(item.relatedNote.id);
+                              },
+                              icon: const MacosIcon(
+                                CupertinoIcons.arrow_up_right_square,
+                                size: 14,
+                              ),
+                            ),
+                            _MacosCompactIconButton(
+                              tooltip: l10n.removeLinkAction,
+                              onPressed: () async {
+                                await ref
+                                    .read(linksControllerProvider)
+                                    .deleteLink(
+                                      currentNoteId: sourceNote.id,
+                                      link: item.link,
+                                    );
+                              },
+                              icon: const MacosIcon(
+                                CupertinoIcons.link,
+                                size: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                        onTap: () async {
+                          await ref
+                              .read(noteEditorControllerProvider.notifier)
+                              .selectNote(item.relatedNote.id);
+                        },
+                      );
+                    }
+
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
@@ -3035,15 +3944,23 @@ class _ConflictTypeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: isMacOSNativeUI
+            ? MacosTheme.of(context).primaryColor.withAlpha(22)
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
         _conflictTypeLabel(type, l10n).toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall,
+        style: isMacOSNativeUI
+            ? MacosTheme.of(context).typography.caption2.copyWith(
+                color: MacosColors.secondaryLabelColor,
+                fontWeight: FontWeight.w700,
+              )
+            : Theme.of(context).textTheme.labelSmall,
       ),
     );
   }
@@ -3057,8 +3974,41 @@ class _SearchResultsView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     if (results.isEmpty) {
       return Center(child: Text(l10n.noSearchResultsMessage));
+    }
+
+    if (isMacOSNativeUI) {
+      return ListView.separated(
+        padding: const EdgeInsets.all(10),
+        itemBuilder: (_, index) {
+          final result = results[index];
+          return _MacosSelectableRow(
+            title: Text(
+              result.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              result.snippet,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const MacosIcon(
+              CupertinoIcons.arrow_up_right_square,
+              size: 14,
+            ),
+            onTap: () async {
+              await ref
+                  .read(noteEditorControllerProvider.notifier)
+                  .openNoteInWorkspace(result.noteId);
+            },
+          );
+        },
+        separatorBuilder: (context, index) => const SizedBox(height: 4),
+        itemCount: results.length,
+      );
     }
 
     return ListView.separated(
