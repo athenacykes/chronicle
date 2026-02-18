@@ -1,0 +1,329 @@
+{
+  "@@locale": "zh",
+  "appTitle": "Chronicle",
+  "languageSelfName": "简体中文",
+  "searchNotesHint": "搜索笔记...",
+  "toggleSidebarTooltip": "切换侧边栏",
+  "conflictsLabel": "冲突",
+  "syncNowAction": "立即同步",
+  "settingsTitle": "设置",
+  "storageSetupTitle": "设置 Chronicle 存储",
+  "storageSetupDescription": "选择 Chronicle 存储 markdown/json 文件的位置。默认是 ~/Chronicle。",
+  "storageRootPathLabel": "存储根路径",
+  "pickFolderAction": "选择文件夹",
+  "continueAction": "继续",
+  "chronicleSetupTitle": "Chronicle 设置",
+  "failedToLoadSettings": "加载设置失败：{error}",
+  "@failedToLoadSettings": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "syncWorkingStatus": "同步中...",
+  "syncErrorStatus": "同步错误：{error}",
+  "@syncErrorStatus": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "syncSummaryStatus": "状态：{lastMessage} | 上次同步：{lastSync}",
+  "@syncSummaryStatus": {
+    "placeholders": {
+      "lastMessage": {},
+      "lastSync": {}
+    }
+  },
+  "neverLabel": "从未",
+  "newMatterAction": "新建 Matter",
+  "pinnedLabel": "置顶",
+  "activeSectionLabel": "进行中（{count}）",
+  "@activeSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pausedSectionLabel": "已暂停（{count}）",
+  "@pausedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "completedSectionLabel": "已完成（{count}）",
+  "@completedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "archivedSectionLabel": "已归档（{count}）",
+  "@archivedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "orphansLabel": "孤立笔记",
+  "untitledMatterLabel": "（未命名 Matter）",
+  "viewsSectionLabel": "视图",
+  "matterActionsTitle": "Matter 操作",
+  "editAction": "编辑",
+  "unpinAction": "取消置顶",
+  "pinAction": "置顶",
+  "setActiveAction": "设为进行中",
+  "setPausedAction": "设为已暂停",
+  "setCompletedAction": "设为已完成",
+  "setArchivedAction": "设为已归档",
+  "deleteAction": "删除",
+  "cancelAction": "取消",
+  "deleteMatterTitle": "删除 Matter",
+  "deleteMatterConfirmation": "删除 \"{title}\" 及该 Matter 下所有笔记？",
+  "@deleteMatterConfirmation": {
+    "placeholders": {
+      "title": {}
+    }
+  },
+  "matterStatusActive": "进行中",
+  "matterStatusPaused": "已暂停",
+  "matterStatusCompleted": "已完成",
+  "matterStatusArchived": "已归档",
+  "matterStatusBadgeActive": "进行中",
+  "matterStatusBadgePaused": "暂停",
+  "matterStatusBadgeCompleted": "完成",
+  "matterStatusBadgeArchived": "归档",
+  "matterStatusBadgeLetterActive": "进",
+  "matterStatusBadgeLetterPaused": "停",
+  "matterStatusBadgeLetterCompleted": "完",
+  "matterStatusBadgeLetterArchived": "档",
+  "selectMatterOrphansOrConflictsPrompt": "请选择 Matter、孤立笔记或冲突开始使用。",
+  "matterNoLongerExistsMessage": "Matter 已不存在。",
+  "conflictLoadFailed": "加载冲突失败：{error}",
+  "@conflictLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "conflictsCountTitle": "冲突（{count}）",
+  "@conflictsCountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "refreshAction": "刷新",
+  "noConflictsDetectedMessage": "未检测到冲突。",
+  "selectConflictToReviewPrompt": "请选择一个冲突进行查看。",
+  "conflictTypeRow": "类型：{type}",
+  "@conflictTypeRow": {
+    "placeholders": {
+      "type": {}
+    }
+  },
+  "conflictFileRow": "冲突文件：{path}",
+  "@conflictFileRow": {
+    "placeholders": {
+      "path": {}
+    }
+  },
+  "conflictOriginalRow": "原始：{path}",
+  "@conflictOriginalRow": {
+    "placeholders": {
+      "path": {}
+    }
+  },
+  "conflictLocalRow": "本地：{device}",
+  "@conflictLocalRow": {
+    "placeholders": {
+      "device": {}
+    }
+  },
+  "conflictRemoteRow": "远端：{device}",
+  "@conflictRemoteRow": {
+    "placeholders": {
+      "device": {}
+    }
+  },
+  "openMainNoteAction": "打开主笔记",
+  "markResolvedAction": "标记为已解决",
+  "failedToLoadConflict": "加载冲突内容失败：{error}",
+  "@failedToLoadConflict": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "binaryConflictNotPreviewable": "二进制冲突内容无法预览。",
+  "conflictContentEmpty": "冲突内容为空。",
+  "viewModePhase": "阶段",
+  "viewModeTimeline": "时间线",
+  "viewModeList": "列表",
+  "viewModeGraph": "关系图",
+  "newNoteAction": "新建笔记",
+  "deleteNoteTitle": "删除笔记",
+  "deleteNoteConfirmation": "删除 \"{title}\"？",
+  "@deleteNoteConfirmation": {
+    "placeholders": {
+      "title": {}
+    }
+  },
+  "graphLoadFailed": "关系图加载失败：{error}",
+  "@graphLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "noLinkedNotesInMatterMessage": "此 Matter 还没有关联笔记。\n请在笔记操作中创建链接来生成关系图。",
+  "graphLimitedNotice": "关系图最多显示 {limit} 个节点（隐藏 {hiddenCount} 个）。",
+  "@graphLimitedNotice": {
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      },
+      "hiddenCount": {
+        "type": "int"
+      }
+    }
+  },
+  "untitledLabel": "（未命名）",
+  "orphanNotesTitle": "孤立笔记",
+  "newOrphanNoteAction": "新建孤立笔记",
+  "noNotesYetMessage": "还没有笔记。",
+  "linkNoteActionEllipsis": "关联笔记...",
+  "editorError": "编辑器错误：{error}",
+  "@editorError": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "selectNoteToEditPrompt": "请选择要编辑的笔记。",
+  "titleLabel": "标题",
+  "linkNoteAction": "关联笔记",
+  "togglePreviewAction": "切换预览",
+  "deleteNoteAction": "删除笔记",
+  "tagsCommaSeparatedLabel": "标签（逗号分隔）",
+  "moveToOrphansAction": "移动到孤立笔记",
+  "assignToSelectedMatterAction": "分配到当前 Matter",
+  "writeMarkdownHereHint": "在此输入 Markdown...",
+  "saveAction": "保存",
+  "updatedAtRow": "更新时间：{updatedAt}",
+  "@updatedAtRow": {
+    "placeholders": {
+      "updatedAt": {}
+    }
+  },
+  "failedToAttachFiles": "添加附件失败：{error}",
+  "@failedToAttachFiles": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "failedToRemoveAttachment": "移除附件失败：{error}",
+  "@failedToRemoveAttachment": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "attachmentFileNotFoundMessage": "未找到附件文件",
+  "unableToOpenAttachmentMessage": "无法打开附件",
+  "unableToOpenAttachmentWithReason": "无法打开附件：{reason}",
+  "@unableToOpenAttachmentWithReason": {
+    "placeholders": {
+      "reason": {}
+    }
+  },
+  "attachmentsCountTitle": "附件（{count}）",
+  "@attachmentsCountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "attachFilesActionEllipsis": "添加附件...",
+  "noAttachmentsYetMessage": "还没有附件。",
+  "storageRootUnavailableMessage": "存储根路径不可用。请先在设置中配置。",
+  "linkedNotesCountTitle": "关联笔记（{count}）",
+  "@linkedNotesCountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "failedToLoadLinks": "加载链接失败：{error}",
+  "@failedToLoadLinks": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "noLinksYetMessage": "还没有链接。",
+  "openLinkedNoteAction": "打开关联笔记",
+  "removeLinkAction": "移除链接",
+  "unableToLoadNotes": "无法加载笔记：{error}",
+  "@unableToLoadNotes": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "noNotesAvailableToLink": "没有可关联的笔记。",
+  "linkCreatedMessage": "链接已创建",
+  "unableToCreateLink": "无法创建链接：{error}",
+  "@unableToCreateLink": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "linkSourceRow": "来源：{source}",
+  "@linkSourceRow": {
+    "placeholders": {
+      "source": {}
+    }
+  },
+  "targetNoteLabel": "目标笔记",
+  "contextOptionalLabel": "上下文（可选）",
+  "linkContextHint": "这些笔记为什么相关？",
+  "linkNoteDialogTitle": "关联笔记",
+  "createLinkAction": "创建链接",
+  "orphanLabel": "孤立",
+  "conflictTypeNote": "笔记",
+  "conflictTypeLink": "链接",
+  "conflictTypeUnknown": "未知",
+  "noSearchResultsMessage": "没有搜索结果。",
+  "languageLabel": "语言",
+  "settingsSectionStorage": "存储",
+  "settingsSectionLanguage": "语言",
+  "settingsSectionSync": "同步",
+  "syncTargetTypeLabel": "同步目标类型",
+  "syncTargetTypeNone": "无",
+  "syncTargetTypeFilesystem": "文件系统",
+  "syncTargetTypeWebdav": "WebDAV",
+  "webDavUrlLabel": "WebDAV URL",
+  "webDavUsernameLabel": "WebDAV 用户名",
+  "webDavPasswordLabel": "WebDAV 密码",
+  "autoSyncIntervalMinutesLabel": "自动同步间隔（分钟）",
+  "deletionFailSafeLabel": "删除保护",
+  "createMatterTitle": "新建 Matter",
+  "editMatterTitle": "编辑 Matter",
+  "statusLabel": "状态",
+  "descriptionLabel": "描述",
+  "colorHexLabel": "颜色（十六进制）",
+  "colorHexHint": "#4C956C",
+  "iconNameLabel": "图标名称",
+  "iconNameHint": "description",
+  "createAction": "创建",
+  "defaultUntitledNoteTitle": "未命名笔记",
+  "createNoteTitle": "新建笔记",
+  "editNoteTitle": "编辑笔记",
+  "markdownContentLabel": "Markdown 内容",
+  "defaultQuickCaptureTitle": "快速记录",
+  "openAttachmentAction": "打开附件",
+  "removeAttachmentAction": "移除附件",
+  "loadingEllipsis": "...",
+  "fileMissingLabel": "缺失",
+  "imagePreviewUnavailableMessage": "无法预览图片"
+}

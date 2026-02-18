@@ -127,6 +127,45 @@ void main() {
     expect(conflictFiles.length, 1);
   });
 
+  test('handles binary resource conflicts without UTF-8 decoding', () async {
+    final layout = ChronicleLayout(rootDir);
+    final localFile = layout.fromRelativePath('resources/photo.png');
+
+    final baseBytes = <int>[137, 80, 78, 71, 0, 0, 0, 1];
+    await const FileSystemUtils().atomicWriteBytes(localFile, baseBytes);
+    await webDavClient.uploadFile('resources/photo.png', baseBytes);
+
+    await syncEngine.run(
+      client: webDavClient,
+      clientId: 'client-sync',
+      failSafe: true,
+    );
+
+    final localVersion = <int>[137, 80, 78, 71, 1, 2, 3, 4];
+    final remoteVersion = <int>[137, 80, 78, 71, 9, 8, 7, 6];
+    await const FileSystemUtils().atomicWriteBytes(localFile, localVersion);
+    await webDavClient.uploadFile('resources/photo.png', remoteVersion);
+
+    final result = await syncEngine.run(
+      client: webDavClient,
+      clientId: 'client-sync',
+      failSafe: true,
+    );
+    expect(result.conflictCount, 1);
+
+    final localAfterSync = await localFile.readAsBytes();
+    expect(localAfterSync, remoteVersion);
+
+    final files = await const FileSystemUtils().listFilesRecursively(rootDir);
+    final conflictFile = files.firstWhere(
+      (file) =>
+          file.path.contains('resources/photo.conflict.') &&
+          file.path.endsWith('.png'),
+    );
+    final conflictBytes = await conflictFile.readAsBytes();
+    expect(conflictBytes, localVersion);
+  });
+
   test('enforces deletion fail-safe threshold', () async {
     final layout = ChronicleLayout(rootDir);
     for (var i = 0; i < 8; i++) {

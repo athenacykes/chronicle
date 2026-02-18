@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:chronicle/core/app_exception.dart';
 import 'package:chronicle/core/clock.dart';
 import 'package:chronicle/core/file_system_utils.dart';
 import 'package:chronicle/core/id_generator.dart';
@@ -19,6 +20,9 @@ void main() {
   late Directory tempDir;
   late Directory rootDir;
   late _InMemorySettingsRepository settingsRepository;
+  late FileSystemUtils fileSystemUtils;
+  late StorageRootLocator storageRootLocator;
+  late ChronicleStorageInitializer storageInitializer;
   late LocalMatterRepository matterRepository;
   late LocalNoteRepository noteRepository;
 
@@ -35,9 +39,9 @@ void main() {
       ),
     );
 
-    final fileSystemUtils = const FileSystemUtils();
-    final storageRootLocator = StorageRootLocator(settingsRepository);
-    final storageInitializer = ChronicleStorageInitializer(fileSystemUtils);
+    fileSystemUtils = const FileSystemUtils();
+    storageRootLocator = StorageRootLocator(settingsRepository);
+    storageInitializer = ChronicleStorageInitializer(fileSystemUtils);
 
     matterRepository = LocalMatterRepository(
       storageRootLocator: storageRootLocator,
@@ -111,6 +115,150 @@ void main() {
     final layout = ChronicleLayout(rootDir);
     expect(await layout.infoFile.exists(), isTrue);
     expect(await layout.matterJsonFile(matter.id).exists(), isTrue);
+  });
+
+  test('adds attachment and stores resource-relative path', () async {
+    final matter = await matterRepository.createMatter(
+      title: 'Matter Attachments',
+      description: 'Attachment testing',
+    );
+    final note = await noteRepository.createNote(
+      title: 'Attachment Note',
+      content: '# Attachment',
+      matterId: matter.id,
+      phaseId: matter.phases.first.id,
+    );
+
+    final source = File('${tempDir.path}/source.txt');
+    await source.writeAsString('hello attachment');
+
+    final updated = await noteRepository.addAttachments(
+      noteId: note.id,
+      sourceFilePaths: <String>[source.path],
+    );
+
+    expect(updated.attachments, hasLength(1));
+    final attachmentPath = updated.attachments.single;
+    expect(attachmentPath, startsWith('resources/${note.id}/'));
+
+    final layout = ChronicleLayout(rootDir);
+    final stored = layout.fromRelativePath(attachmentPath);
+    expect(await stored.exists(), isTrue);
+    expect(await stored.readAsString(), 'hello attachment');
+
+    final reloaded = await noteRepository.getNoteById(note.id);
+    expect(reloaded?.attachments, equals(<String>[attachmentPath]));
+  });
+
+  test('rejects file over maxAttachmentBytes', () async {
+    final limitedRepository = LocalNoteRepository(
+      storageRootLocator: storageRootLocator,
+      storageInitializer: storageInitializer,
+      codec: const NoteFileCodec(),
+      fileSystemUtils: fileSystemUtils,
+      clock: _FixedClock(DateTime.utc(2026, 1, 1, 13)),
+      idGenerator: _IncrementalIdGenerator(start: 200),
+      matterRepository: matterRepository,
+      maxAttachmentBytes: 4,
+    );
+    final matter = await matterRepository.createMatter(
+      title: 'Limit Matter',
+      description: 'Max size',
+    );
+    final note = await limitedRepository.createNote(
+      title: 'Tiny Limit Note',
+      content: '# tiny',
+      matterId: matter.id,
+      phaseId: matter.phases.first.id,
+    );
+
+    final source = File('${tempDir.path}/too-large.bin');
+    await source.writeAsBytes(<int>[1, 2, 3, 4, 5, 6]);
+
+    await expectLater(
+      () => limitedRepository.addAttachments(
+        noteId: note.id,
+        sourceFilePaths: <String>[source.path],
+      ),
+      throwsA(isA<AppException>()),
+    );
+  });
+
+  test('removes attachment only after last reference is removed', () async {
+    final matter = await matterRepository.createMatter(
+      title: 'Shared Resource',
+      description: 'Reference counting',
+    );
+    final noteA = await noteRepository.createNote(
+      title: 'A',
+      content: '# A',
+      matterId: matter.id,
+      phaseId: matter.phases.first.id,
+    );
+    final noteB = await noteRepository.createNote(
+      title: 'B',
+      content: '# B',
+      matterId: matter.id,
+      phaseId: matter.phases.first.id,
+    );
+
+    final source = File('${tempDir.path}/shared.pdf');
+    await source.writeAsString('shared-payload');
+
+    final updatedA = await noteRepository.addAttachments(
+      noteId: noteA.id,
+      sourceFilePaths: <String>[source.path],
+    );
+    final sharedPath = updatedA.attachments.single;
+
+    final noteBWithShared = noteB.copyWith(
+      attachments: <String>[sharedPath],
+      updatedAt: DateTime.utc(2026, 1, 1, 14),
+    );
+    await noteRepository.updateNote(noteBWithShared);
+
+    final layout = ChronicleLayout(rootDir);
+    final sharedFile = layout.fromRelativePath(sharedPath);
+    expect(await sharedFile.exists(), isTrue);
+
+    await noteRepository.removeAttachment(
+      noteId: noteA.id,
+      attachmentPath: sharedPath,
+    );
+    expect(await sharedFile.exists(), isTrue);
+
+    await noteRepository.removeAttachment(
+      noteId: noteB.id,
+      attachmentPath: sharedPath,
+    );
+    expect(await sharedFile.exists(), isFalse);
+  });
+
+  test('deleting note cleans attachment when no references remain', () async {
+    final matter = await matterRepository.createMatter(
+      title: 'Delete Attachment',
+      description: 'Delete cleanup',
+    );
+    final note = await noteRepository.createNote(
+      title: 'Delete me',
+      content: '# delete',
+      matterId: matter.id,
+      phaseId: matter.phases.first.id,
+    );
+    final source = File('${tempDir.path}/delete.txt');
+    await source.writeAsString('delete-payload');
+
+    final updated = await noteRepository.addAttachments(
+      noteId: note.id,
+      sourceFilePaths: <String>[source.path],
+    );
+    final attachmentPath = updated.attachments.single;
+    final layout = ChronicleLayout(rootDir);
+    final stored = layout.fromRelativePath(attachmentPath);
+    expect(await stored.exists(), isTrue);
+
+    await noteRepository.deleteNote(note.id);
+    expect(await stored.exists(), isFalse);
   });
 }
 

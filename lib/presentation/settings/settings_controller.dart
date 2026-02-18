@@ -60,6 +60,14 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     state = AsyncData(settings);
   }
 
+  Future<void> setLocaleTag(String localeTag) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final updated = settings.copyWith(localeTag: localeTag);
+    await repository.saveSettings(updated);
+    state = AsyncData(updated);
+  }
+
   Future<void> refresh() async {
     final settings = await ref.read(settingsRepositoryProvider).loadSettings();
     state = AsyncData(settings);

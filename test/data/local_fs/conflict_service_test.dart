@@ -66,6 +66,11 @@ Local conflicting content
       linkConflict,
       '{"id":"link-1","sourceNoteId":"note-1","targetNoteId":"note-2"}',
     );
+
+    final binaryConflict = layout.fromRelativePath(
+      'resources/image-1.conflict.20260217121000.client.png',
+    );
+    await fs.atomicWriteBytes(binaryConflict, <int>[137, 80, 78, 71, 1, 2, 3]);
   });
 
   tearDown(() async {
@@ -76,13 +81,16 @@ Local conflicting content
 
   test('lists, reads and resolves conflicts', () async {
     final conflicts = await service.listConflicts();
-    expect(conflicts.length, 2);
+    expect(conflicts.length, 3);
 
     final noteConflict = conflicts.firstWhere(
       (conflict) => conflict.type == SyncConflictType.note,
     );
     final linkConflict = conflicts.firstWhere(
       (conflict) => conflict.type == SyncConflictType.link,
+    );
+    final binaryConflict = conflicts.firstWhere(
+      (conflict) => conflict.type == SyncConflictType.unknown,
     );
 
     expect(noteConflict.originalPath, 'orphans/note-1.md');
@@ -94,19 +102,31 @@ Local conflicting content
     expect(linkConflict.originalNoteId, isNull);
     expect(linkConflict.type, SyncConflictType.link);
 
+    expect(binaryConflict.originalPath, 'resources/image-1.png');
+    expect(binaryConflict.preview, 'Binary conflict file');
+
     final content = await service.readConflictContent(
       noteConflict.conflictPath,
     );
     expect(content, contains('Local conflicting content'));
 
+    final binaryContent = await service.readConflictContent(
+      binaryConflict.conflictPath,
+    );
+    expect(binaryContent, isNull);
+
     await service.resolveConflict(linkConflict.conflictPath);
     final afterFirstResolve = await service.listConflicts();
-    expect(afterFirstResolve.length, 1);
-    expect(afterFirstResolve.single.type, SyncConflictType.note);
+    expect(afterFirstResolve.length, 2);
+
+    await service.resolveConflict(binaryConflict.conflictPath);
+    final afterSecondResolve = await service.listConflicts();
+    expect(afterSecondResolve.length, 1);
+    expect(afterSecondResolve.single.type, SyncConflictType.note);
 
     await service.resolveConflict(noteConflict.conflictPath);
-    final afterSecondResolve = await service.listConflicts();
-    expect(afterSecondResolve, isEmpty);
+    final afterThirdResolve = await service.listConflicts();
+    expect(afterThirdResolve, isEmpty);
   });
 }
 

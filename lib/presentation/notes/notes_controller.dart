@@ -1,11 +1,14 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/note.dart';
 import '../../domain/usecases/notes/create_note.dart';
+import '../../l10n/localization.dart';
 import '../links/links_controller.dart';
 import '../matters/matters_controller.dart';
+import '../settings/settings_controller.dart';
 import '../sync/conflicts_controller.dart';
 
 final selectedNoteIdProvider = StateProvider<String?>((ref) => null);
@@ -71,10 +74,14 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       return null;
     }
 
+    final l10n = appLocalizationsForTag(
+      ref.read(settingsControllerProvider).valueOrNull?.localeTag,
+    );
+
     final phaseId = ref.read(selectedPhaseIdProvider);
     final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
-      title: 'Untitled Note',
-      content: '# Untitled Note\n',
+      title: l10n.defaultUntitledNoteTitle,
+      content: '# ${l10n.defaultUntitledNoteTitle}\n',
       matterId: matterId,
       phaseId: phaseId,
     );
@@ -107,9 +114,13 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }
 
   Future<Note> createOrphan() async {
+    final l10n = appLocalizationsForTag(
+      ref.read(settingsControllerProvider).valueOrNull?.localeTag,
+    );
+
     final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
-      title: 'Quick Capture',
-      content: '# Quick Capture\n',
+      title: l10n.defaultQuickCaptureTitle,
+      content: '# ${l10n.defaultQuickCaptureTitle}\n',
       matterId: null,
       phaseId: null,
     );
@@ -215,6 +226,52 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       state = const AsyncData(null);
     }
     await _refreshCollections();
+  }
+
+  Future<Note?> attachFilesToCurrent() async {
+    final current = state.valueOrNull;
+    if (current == null) {
+      return null;
+    }
+
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: false,
+      type: FileType.any,
+    );
+    if (picked == null || picked.files.isEmpty) {
+      return current;
+    }
+
+    final paths = picked.files
+        .map((file) => file.path)
+        .whereType<String>()
+        .where((path) => path.trim().isNotEmpty)
+        .toList();
+    if (paths.isEmpty) {
+      return current;
+    }
+
+    final updated = await ref
+        .read(noteRepositoryProvider)
+        .addAttachments(noteId: current.id, sourceFilePaths: paths);
+    await _refreshCollections();
+    state = AsyncData(updated);
+    return updated;
+  }
+
+  Future<Note?> removeAttachmentFromCurrent(String attachmentPath) async {
+    final current = state.valueOrNull;
+    if (current == null) {
+      return null;
+    }
+
+    final updated = await ref
+        .read(noteRepositoryProvider)
+        .removeAttachment(noteId: current.id, attachmentPath: attachmentPath);
+    await _refreshCollections();
+    state = AsyncData(updated);
+    return updated;
   }
 
   Future<void> openNoteInWorkspace(String noteId) async {

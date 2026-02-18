@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../l10n/localization.dart';
 import '../chronicle_shell_contract.dart';
 
 class MaterialChronicleShell extends StatelessWidget {
@@ -9,6 +10,8 @@ class MaterialChronicleShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(viewModel.title),
@@ -20,17 +23,17 @@ class MaterialChronicleShell extends StatelessWidget {
               child: TextField(
                 controller: viewModel.searchController,
                 onChanged: viewModel.onSearchChanged,
-                decoration: const InputDecoration(
-                  hintText: 'Search notes...',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  hintText: l10n.searchNotesHint,
+                  prefixIcon: const Icon(Icons.search),
+                  border: const OutlineInputBorder(),
                   isDense: true,
                 ),
               ),
             ),
           ),
           IconButton(
-            tooltip: 'Conflicts',
+            tooltip: l10n.conflictsLabel,
             onPressed: viewModel.onShowConflicts,
             icon: Badge(
               isLabelVisible: viewModel.conflictCount > 0,
@@ -39,14 +42,14 @@ class MaterialChronicleShell extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Sync now',
+            tooltip: l10n.syncNowAction,
             onPressed: () async {
               await viewModel.onSyncNow();
             },
             icon: const Icon(Icons.sync),
           ),
           IconButton(
-            tooltip: 'Settings',
+            tooltip: l10n.settingsTitle,
             onPressed: () async {
               await viewModel.onOpenSettings();
             },

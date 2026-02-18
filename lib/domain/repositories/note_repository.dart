@@ -19,6 +19,14 @@ abstract class NoteRepository {
     required String? matterId,
     required String? phaseId,
   });
+  Future<Note> addAttachments({
+    required String noteId,
+    required List<String> sourceFilePaths,
+  });
+  Future<Note> removeAttachment({
+    required String noteId,
+    required String attachmentPath,
+  });
   Future<List<Note>> listOrphanNotes();
   Future<List<Note>> listNotesByMatterAndPhase({
     required String matterId,

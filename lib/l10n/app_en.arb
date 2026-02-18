@@ -1,0 +1,330 @@
+{
+  "@@locale": "en",
+  "appTitle": "Chronicle",
+  "languageSelfName": "English",
+  "fallbackProbeMessage": "English fallback probe",
+  "searchNotesHint": "Search notes...",
+  "toggleSidebarTooltip": "Toggle sidebar",
+  "conflictsLabel": "Conflicts",
+  "syncNowAction": "Sync now",
+  "settingsTitle": "Settings",
+  "storageSetupTitle": "Set up Chronicle storage",
+  "storageSetupDescription": "Choose where Chronicle stores markdown/json files. Default is ~/Chronicle.",
+  "storageRootPathLabel": "Storage root path",
+  "pickFolderAction": "Pick Folder",
+  "continueAction": "Continue",
+  "chronicleSetupTitle": "Chronicle Setup",
+  "failedToLoadSettings": "Failed to load settings: {error}",
+  "@failedToLoadSettings": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "syncWorkingStatus": "Sync: working...",
+  "syncErrorStatus": "Sync error: {error}",
+  "@syncErrorStatus": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "syncSummaryStatus": "Status: {lastMessage} | Last sync: {lastSync}",
+  "@syncSummaryStatus": {
+    "placeholders": {
+      "lastMessage": {},
+      "lastSync": {}
+    }
+  },
+  "neverLabel": "never",
+  "newMatterAction": "New Matter",
+  "pinnedLabel": "Pinned",
+  "activeSectionLabel": "Active ({count})",
+  "@activeSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pausedSectionLabel": "Paused ({count})",
+  "@pausedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "completedSectionLabel": "Completed ({count})",
+  "@completedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "archivedSectionLabel": "Archived ({count})",
+  "@archivedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "orphansLabel": "Orphans",
+  "untitledMatterLabel": "(untitled matter)",
+  "viewsSectionLabel": "Views",
+  "matterActionsTitle": "Matter Actions",
+  "editAction": "Edit",
+  "unpinAction": "Unpin",
+  "pinAction": "Pin",
+  "setActiveAction": "Set Active",
+  "setPausedAction": "Set Paused",
+  "setCompletedAction": "Set Completed",
+  "setArchivedAction": "Set Archived",
+  "deleteAction": "Delete",
+  "cancelAction": "Cancel",
+  "deleteMatterTitle": "Delete Matter",
+  "deleteMatterConfirmation": "Delete \"{title}\" and all notes in this matter?",
+  "@deleteMatterConfirmation": {
+    "placeholders": {
+      "title": {}
+    }
+  },
+  "matterStatusActive": "Active",
+  "matterStatusPaused": "Paused",
+  "matterStatusCompleted": "Completed",
+  "matterStatusArchived": "Archived",
+  "matterStatusBadgeActive": "ACTIVE",
+  "matterStatusBadgePaused": "PAUSED",
+  "matterStatusBadgeCompleted": "DONE",
+  "matterStatusBadgeArchived": "ARCHIVED",
+  "matterStatusBadgeLetterActive": "A",
+  "matterStatusBadgeLetterPaused": "P",
+  "matterStatusBadgeLetterCompleted": "D",
+  "matterStatusBadgeLetterArchived": "R",
+  "selectMatterOrphansOrConflictsPrompt": "Select a Matter, Orphans, or Conflicts to begin.",
+  "matterNoLongerExistsMessage": "Matter no longer exists.",
+  "conflictLoadFailed": "Conflict load failed: {error}",
+  "@conflictLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "conflictsCountTitle": "Conflicts ({count})",
+  "@conflictsCountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "refreshAction": "Refresh",
+  "noConflictsDetectedMessage": "No conflicts detected.",
+  "selectConflictToReviewPrompt": "Select a conflict to review.",
+  "conflictTypeRow": "Type: {type}",
+  "@conflictTypeRow": {
+    "placeholders": {
+      "type": {}
+    }
+  },
+  "conflictFileRow": "Conflict file: {path}",
+  "@conflictFileRow": {
+    "placeholders": {
+      "path": {}
+    }
+  },
+  "conflictOriginalRow": "Original: {path}",
+  "@conflictOriginalRow": {
+    "placeholders": {
+      "path": {}
+    }
+  },
+  "conflictLocalRow": "Local: {device}",
+  "@conflictLocalRow": {
+    "placeholders": {
+      "device": {}
+    }
+  },
+  "conflictRemoteRow": "Remote: {device}",
+  "@conflictRemoteRow": {
+    "placeholders": {
+      "device": {}
+    }
+  },
+  "openMainNoteAction": "Open Main Note",
+  "markResolvedAction": "Mark Resolved",
+  "failedToLoadConflict": "Failed to load conflict: {error}",
+  "@failedToLoadConflict": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "binaryConflictNotPreviewable": "Binary conflict content is not previewable.",
+  "conflictContentEmpty": "Conflict content is empty.",
+  "viewModePhase": "Phase",
+  "viewModeTimeline": "Timeline",
+  "viewModeList": "List",
+  "viewModeGraph": "Graph",
+  "newNoteAction": "New Note",
+  "deleteNoteTitle": "Delete note",
+  "deleteNoteConfirmation": "Delete \"{title}\"?",
+  "@deleteNoteConfirmation": {
+    "placeholders": {
+      "title": {}
+    }
+  },
+  "graphLoadFailed": "Graph load failed: {error}",
+  "@graphLoadFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "noLinkedNotesInMatterMessage": "No linked notes yet in this matter.\nCreate links from note actions to populate the graph.",
+  "graphLimitedNotice": "Graph limited to {limit} nodes ({hiddenCount} hidden).",
+  "@graphLimitedNotice": {
+    "placeholders": {
+      "limit": {
+        "type": "int"
+      },
+      "hiddenCount": {
+        "type": "int"
+      }
+    }
+  },
+  "untitledLabel": "(untitled)",
+  "orphanNotesTitle": "Orphan Notes",
+  "newOrphanNoteAction": "New Orphan Note",
+  "noNotesYetMessage": "No notes yet.",
+  "linkNoteActionEllipsis": "Link Note...",
+  "editorError": "Editor error: {error}",
+  "@editorError": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "selectNoteToEditPrompt": "Select a note to edit.",
+  "titleLabel": "Title",
+  "linkNoteAction": "Link Note",
+  "togglePreviewAction": "Toggle Preview",
+  "deleteNoteAction": "Delete Note",
+  "tagsCommaSeparatedLabel": "Tags (comma separated)",
+  "moveToOrphansAction": "Move to Orphans",
+  "assignToSelectedMatterAction": "Assign to Selected Matter",
+  "writeMarkdownHereHint": "Write markdown here...",
+  "saveAction": "Save",
+  "updatedAtRow": "Updated: {updatedAt}",
+  "@updatedAtRow": {
+    "placeholders": {
+      "updatedAt": {}
+    }
+  },
+  "failedToAttachFiles": "Failed to attach files: {error}",
+  "@failedToAttachFiles": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "failedToRemoveAttachment": "Failed to remove attachment: {error}",
+  "@failedToRemoveAttachment": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "attachmentFileNotFoundMessage": "Attachment file not found",
+  "unableToOpenAttachmentMessage": "Unable to open attachment",
+  "unableToOpenAttachmentWithReason": "Unable to open attachment: {reason}",
+  "@unableToOpenAttachmentWithReason": {
+    "placeholders": {
+      "reason": {}
+    }
+  },
+  "attachmentsCountTitle": "Attachments ({count})",
+  "@attachmentsCountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "attachFilesActionEllipsis": "Attach files...",
+  "noAttachmentsYetMessage": "No attachments yet.",
+  "storageRootUnavailableMessage": "Storage root unavailable. Configure settings first.",
+  "linkedNotesCountTitle": "Linked Notes ({count})",
+  "@linkedNotesCountTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "failedToLoadLinks": "Failed to load links: {error}",
+  "@failedToLoadLinks": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "noLinksYetMessage": "No links yet.",
+  "openLinkedNoteAction": "Open linked note",
+  "removeLinkAction": "Remove link",
+  "unableToLoadNotes": "Unable to load notes: {error}",
+  "@unableToLoadNotes": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "noNotesAvailableToLink": "No notes available to link.",
+  "linkCreatedMessage": "Link created",
+  "unableToCreateLink": "Unable to create link: {error}",
+  "@unableToCreateLink": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "linkSourceRow": "Source: {source}",
+  "@linkSourceRow": {
+    "placeholders": {
+      "source": {}
+    }
+  },
+  "targetNoteLabel": "Target note",
+  "contextOptionalLabel": "Context (optional)",
+  "linkContextHint": "Why are these notes related?",
+  "linkNoteDialogTitle": "Link Note",
+  "createLinkAction": "Create Link",
+  "orphanLabel": "Orphan",
+  "conflictTypeNote": "Note",
+  "conflictTypeLink": "Link",
+  "conflictTypeUnknown": "Unknown",
+  "noSearchResultsMessage": "No search results.",
+  "languageLabel": "Language",
+  "settingsSectionStorage": "Storage",
+  "settingsSectionLanguage": "Language",
+  "settingsSectionSync": "Sync",
+  "syncTargetTypeLabel": "Sync target type",
+  "syncTargetTypeNone": "None",
+  "syncTargetTypeFilesystem": "File system",
+  "syncTargetTypeWebdav": "WebDAV",
+  "webDavUrlLabel": "WebDAV URL",
+  "webDavUsernameLabel": "WebDAV Username",
+  "webDavPasswordLabel": "WebDAV Password",
+  "autoSyncIntervalMinutesLabel": "Auto-sync interval (minutes)",
+  "deletionFailSafeLabel": "Deletion fail-safe",
+  "createMatterTitle": "Create Matter",
+  "editMatterTitle": "Edit Matter",
+  "statusLabel": "Status",
+  "descriptionLabel": "Description",
+  "colorHexLabel": "Color (hex)",
+  "colorHexHint": "#4C956C",
+  "iconNameLabel": "Icon name",
+  "iconNameHint": "description",
+  "createAction": "Create",
+  "defaultUntitledNoteTitle": "Untitled Note",
+  "createNoteTitle": "Create Note",
+  "editNoteTitle": "Edit Note",
+  "markdownContentLabel": "Markdown content",
+  "defaultQuickCaptureTitle": "Quick Capture",
+  "openAttachmentAction": "Open attachment",
+  "removeAttachmentAction": "Remove attachment",
+  "loadingEllipsis": "...",
+  "fileMissingLabel": "Missing",
+  "imagePreviewUnavailableMessage": "Image preview unavailable"
+}

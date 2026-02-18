@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:macos_ui/macos_ui.dart';
 
+import '../../../../l10n/localization.dart';
 import '../chronicle_shell_contract.dart';
 
 class MacosChronicleShell extends StatelessWidget {
@@ -13,8 +14,9 @@ class MacosChronicleShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return MacosWindow(
-      titleBar: const TitleBar(title: Text('Chronicle')),
+      titleBar: TitleBar(title: Text(l10n.appTitle)),
       sidebar: Sidebar(
         minWidth: viewModel.sidebarWidth,
         maxWidth: viewModel.sidebarWidth + 80,
@@ -98,6 +100,7 @@ class _MacosTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final typography = MacosTheme.of(context).typography;
     final titleStyle = typography.title3.copyWith(
       fontSize: 15,
@@ -123,7 +126,7 @@ class _MacosTopBar extends StatelessWidget {
           return Row(
             children: <Widget>[
               _ToolbarActionIcon(
-                tooltip: 'Toggle sidebar',
+                tooltip: l10n.toggleSidebarTooltip,
                 icon: const MacosIcon(CupertinoIcons.sidebar_left),
                 onPressed: MacosWindowScope.maybeOf(context)?.toggleSidebar,
               ),
@@ -134,25 +137,25 @@ class _MacosTopBar extends StatelessWidget {
                 width: searchWidth,
                 child: MacosSearchField<void>(
                   controller: viewModel.searchController,
-                  placeholder: 'Search notes...',
+                  placeholder: l10n.searchNotesHint,
                   onChanged: viewModel.onSearchChanged,
                 ),
               ),
               const SizedBox(width: 8),
               _ToolbarActionIcon(
-                tooltip: 'Conflicts',
+                tooltip: l10n.conflictsLabel,
                 icon: _ConflictIconBadge(count: viewModel.conflictCount),
                 onPressed: viewModel.onShowConflicts,
               ),
               _ToolbarActionIcon(
-                tooltip: 'Sync now',
+                tooltip: l10n.syncNowAction,
                 icon: const MacosIcon(CupertinoIcons.arrow_2_circlepath),
                 onPressed: () {
                   unawaited(viewModel.onSyncNow());
                 },
               ),
               _ToolbarActionIcon(
-                tooltip: 'Settings',
+                tooltip: l10n.settingsTitle,
                 icon: const MacosIcon(CupertinoIcons.gear_solid),
                 onPressed: () {
                   unawaited(viewModel.onOpenSettings());

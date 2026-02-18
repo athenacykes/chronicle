@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:macos_ui/macos_ui.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/matter.dart';
@@ -15,16 +18,29 @@ import '../../../domain/entities/matter_graph_node.dart';
 import '../../../domain/entities/matter_sections.dart';
 import '../../../domain/entities/note.dart';
 import '../../../domain/entities/sync_conflict.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../l10n/localization.dart';
 import '../../links/graph_controller.dart';
 import '../../links/links_controller.dart';
 import '../../matters/matters_controller.dart';
 import '../../notes/notes_controller.dart';
+import '../../notes/note_attachment_widgets.dart';
 import '../../search/search_controller.dart';
 import '../../settings/settings_controller.dart';
 import '../../sync/conflicts_controller.dart';
 import '../../sync/sync_controller.dart';
 import 'chronicle_shell.dart';
 import 'chronicle_shell_contract.dart';
+
+Future<void> showChronicleSettingsDialog({
+  required BuildContext context,
+  required bool useMacOSNativeUI,
+}) {
+  return showDialog<void>(
+    context: context,
+    builder: (_) => _SettingsDialog(useMacOSNativeUI: useMacOSNativeUI),
+  );
+}
 
 class ChronicleHomeScreen extends ConsumerStatefulWidget {
   const ChronicleHomeScreen({super.key, required this.useMacOSNativeUI});
@@ -38,6 +54,7 @@ class ChronicleHomeScreen extends ConsumerStatefulWidget {
 
 class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
   late final TextEditingController _searchController;
+  bool _settingsDialogOpen = false;
 
   @override
   void initState() {
@@ -51,15 +68,31 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
     super.dispose();
   }
 
+  Future<void> _openSettingsDialog() async {
+    if (!mounted || _settingsDialogOpen) {
+      return;
+    }
+    _settingsDialogOpen = true;
+    try {
+      await showChronicleSettingsDialog(
+        context: context,
+        useMacOSNativeUI: widget.useMacOSNativeUI,
+      );
+    } finally {
+      _settingsDialogOpen = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final settingsState = ref.watch(settingsControllerProvider);
 
     return settingsState.when(
       loading: () => _LoadingShell(useMacOSNativeUI: widget.useMacOSNativeUI),
       error: (error, _) => _ErrorShell(
         useMacOSNativeUI: widget.useMacOSNativeUI,
-        message: 'Failed to load settings: $error',
+        message: l10n.failedToLoadSettings(error.toString()),
       ),
       data: (settings) {
         final root = settings.storageRootPath;
@@ -105,14 +138,14 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
         );
 
         final status = syncState.when(
-          loading: () => const Text('Sync: working...'),
-          error: (error, _) => Text('Sync error: $error'),
+          loading: () => Text(l10n.syncWorkingStatus),
+          error: (error, _) => Text(l10n.syncErrorStatus(error.toString())),
           data: (sync) {
             final lastSyncLabel = settings.lastSyncAt == null
-                ? 'never'
+                ? l10n.neverLabel
                 : settings.lastSyncAt!.toLocal().toString();
             return Text(
-              'Status: ${sync.lastMessage} | Last sync: $lastSyncLabel',
+              l10n.syncSummaryStatus(sync.lastMessage, lastSyncLabel),
             );
           },
         );
@@ -120,7 +153,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
         return ChronicleShell(
           useMacOSNativeUI: widget.useMacOSNativeUI,
           viewModel: ChronicleShellViewModel(
-            title: 'Chronicle',
+            title: l10n.appTitle,
             searchController: _searchController,
             onSearchChanged: (value) =>
                 ref.read(searchControllerProvider.notifier).setText(value),
@@ -133,11 +166,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
               await ref.read(settingsControllerProvider.notifier).refresh();
             },
             onOpenSettings: () async {
-              await showDialog<void>(
-                context: context,
-                builder: (_) =>
-                    _SettingsDialog(useMacOSNativeUI: widget.useMacOSNativeUI),
-              );
+              await _openSettingsDialog();
             },
             conflictCount: conflictCount,
             sidebarBuilder: (scrollController) => mattersState.when(
@@ -172,12 +201,13 @@ class _LoadingShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     if (!useMacOSNativeUI) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return MacosWindow(
-      titleBar: const TitleBar(title: Text('Chronicle')),
+      titleBar: TitleBar(title: Text(l10n.appTitle)),
       child: MacosScaffold(
         children: <Widget>[
           ContentArea(
@@ -198,12 +228,13 @@ class _ErrorShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     if (!useMacOSNativeUI) {
       return Scaffold(body: Center(child: Text(message)));
     }
 
     return MacosWindow(
-      titleBar: const TitleBar(title: Text('Chronicle')),
+      titleBar: TitleBar(title: Text(l10n.appTitle)),
       child: MacosScaffold(
         children: <Widget>[
           ContentArea(
@@ -262,6 +293,7 @@ class _StorageRootSetupScreenState
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     if (_loadingDefault) {
       if (widget.useMacOSNativeUI) {
         return const _LoadingShell(useMacOSNativeUI: true);
@@ -279,26 +311,23 @@ class _StorageRootSetupScreenState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'Set up Chronicle storage',
+                Text(
+                  l10n.storageSetupTitle,
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Choose where Chronicle stores markdown/json files. '
-                  'Default is ~/Chronicle.',
-                ),
+                Text(l10n.storageSetupDescription),
                 const SizedBox(height: 12),
                 widget.useMacOSNativeUI
                     ? MacosTextField(
                         controller: _controller,
-                        placeholder: 'Storage root path',
+                        placeholder: l10n.storageRootPathLabel,
                       )
                     : TextField(
                         controller: _controller,
-                        decoration: const InputDecoration(
-                          labelText: 'Storage root path',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: l10n.storageRootPathLabel,
+                          border: const OutlineInputBorder(),
                         ),
                       ),
                 const SizedBox(height: 12),
@@ -318,7 +347,7 @@ class _StorageRootSetupScreenState
                                 _controller.text = state!.storageRootPath!;
                               }
                             },
-                            child: const Text('Pick Folder'),
+                            child: Text(l10n.pickFolderAction),
                           )
                         : FilledButton(
                             onPressed: () async {
@@ -332,7 +361,7 @@ class _StorageRootSetupScreenState
                                 _controller.text = state!.storageRootPath!;
                               }
                             },
-                            child: const Text('Pick Folder'),
+                            child: Text(l10n.pickFolderAction),
                           ),
                     const SizedBox(width: 8),
                     widget.useMacOSNativeUI
@@ -341,13 +370,13 @@ class _StorageRootSetupScreenState
                             onPressed: () async {
                               await widget.onConfirm(_controller.text.trim());
                             },
-                            child: const Text('Continue'),
+                            child: Text(l10n.continueAction),
                           )
                         : FilledButton.tonal(
                             onPressed: () async {
                               await widget.onConfirm(_controller.text.trim());
                             },
-                            child: const Text('Continue'),
+                            child: Text(l10n.continueAction),
                           ),
                   ],
                 ),
@@ -363,7 +392,7 @@ class _StorageRootSetupScreenState
     }
 
     return MacosWindow(
-      titleBar: const TitleBar(title: Text('Chronicle Setup')),
+      titleBar: TitleBar(title: Text(l10n.chronicleSetupTitle)),
       child: MacosScaffold(
         children: <Widget>[
           ContentArea(builder: (context, scrollController) => body),
@@ -381,6 +410,7 @@ class _MatterSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
     final showOrphans = ref.watch(showOrphansProvider);
     final showConflicts = ref.watch(showConflictsProvider);
@@ -404,10 +434,10 @@ class _MatterSidebar extends ConsumerWidget {
         FilledButton.icon(
           onPressed: () => _createMatter(context: context, ref: ref),
           icon: const Icon(Icons.add),
-          label: const Text('New Matter'),
+          label: Text(l10n.newMatterAction),
         ),
         const SizedBox(height: 12),
-        _SectionHeader(title: 'Pinned'),
+        _SectionHeader(title: l10n.pinnedLabel),
         _MatterList(
           matters: sections.pinned,
           selectedMatterId: selectedMatterId,
@@ -419,7 +449,7 @@ class _MatterSidebar extends ConsumerWidget {
             action: action,
           ),
         ),
-        _SectionHeader(title: 'Active (${sections.active.length})'),
+        _SectionHeader(title: l10n.activeSectionLabel(sections.active.length)),
         _MatterList(
           matters: sections.active,
           selectedMatterId: selectedMatterId,
@@ -431,7 +461,7 @@ class _MatterSidebar extends ConsumerWidget {
             action: action,
           ),
         ),
-        _SectionHeader(title: 'Paused (${sections.paused.length})'),
+        _SectionHeader(title: l10n.pausedSectionLabel(sections.paused.length)),
         _MatterList(
           matters: sections.paused,
           selectedMatterId: selectedMatterId,
@@ -443,7 +473,9 @@ class _MatterSidebar extends ConsumerWidget {
             action: action,
           ),
         ),
-        _SectionHeader(title: 'Completed (${sections.completed.length})'),
+        _SectionHeader(
+          title: l10n.completedSectionLabel(sections.completed.length),
+        ),
         _MatterList(
           matters: sections.completed,
           selectedMatterId: selectedMatterId,
@@ -455,7 +487,9 @@ class _MatterSidebar extends ConsumerWidget {
             action: action,
           ),
         ),
-        _SectionHeader(title: 'Archived (${sections.archived.length})'),
+        _SectionHeader(
+          title: l10n.archivedSectionLabel(sections.archived.length),
+        ),
         _MatterList(
           matters: sections.archived,
           selectedMatterId: selectedMatterId,
@@ -471,7 +505,7 @@ class _MatterSidebar extends ConsumerWidget {
         ListTile(
           selected: showOrphans,
           leading: const Icon(Icons.note_alt_outlined),
-          title: const Text('Orphans'),
+          title: Text(l10n.orphansLabel),
           onTap: () {
             ref.read(showOrphansProvider.notifier).state = true;
             ref.read(showConflictsProvider.notifier).state = false;
@@ -487,7 +521,7 @@ class _MatterSidebar extends ConsumerWidget {
             label: Text('$conflictCount'),
             child: const Icon(Icons.report_problem_outlined),
           ),
-          title: const Text('Conflicts'),
+          title: Text(l10n.conflictsLabel),
           onTap: () {
             ref.read(showConflictsProvider.notifier).state = true;
             ref.read(showOrphansProvider.notifier).state = false;
@@ -505,6 +539,7 @@ class _MatterSidebar extends ConsumerWidget {
     required bool showConflicts,
     required int conflictCount,
   }) {
+    final l10n = context.l10n;
     final sidebarItems = <SidebarItem>[];
     final selectableEntries = <_MacSidebarSelectableEntry>[];
 
@@ -537,7 +572,9 @@ class _MatterSidebar extends ConsumerWidget {
               size: 14,
             ),
             label: Text(
-              matter.title.trim().isEmpty ? '(untitled matter)' : matter.title,
+              matter.title.trim().isEmpty
+                  ? l10n.untitledMatterLabel
+                  : matter.title,
               overflow: TextOverflow.ellipsis,
             ),
             trailing: Row(
@@ -561,22 +598,22 @@ class _MatterSidebar extends ConsumerWidget {
       }
     }
 
-    addSection('Pinned');
+    addSection(l10n.pinnedLabel);
     addMatterItems(sections.pinned);
 
-    addSection('Active (${sections.active.length})');
+    addSection(l10n.activeSectionLabel(sections.active.length));
     addMatterItems(sections.active);
 
-    addSection('Paused (${sections.paused.length})');
+    addSection(l10n.pausedSectionLabel(sections.paused.length));
     addMatterItems(sections.paused);
 
-    addSection('Completed (${sections.completed.length})');
+    addSection(l10n.completedSectionLabel(sections.completed.length));
     addMatterItems(sections.completed);
 
-    addSection('Archived (${sections.archived.length})');
+    addSection(l10n.archivedSectionLabel(sections.archived.length));
     addMatterItems(sections.archived);
 
-    addSection('Views');
+    addSection(l10n.viewsSectionLabel);
     selectableEntries.add(
       _MacSidebarSelectableEntry(
         key: 'orphans',
@@ -590,9 +627,9 @@ class _MatterSidebar extends ConsumerWidget {
       ),
     );
     sidebarItems.add(
-      const SidebarItem(
-        leading: MacosIcon(CupertinoIcons.doc_text),
-        label: Text('Orphans'),
+      SidebarItem(
+        leading: const MacosIcon(CupertinoIcons.doc_text),
+        label: Text(l10n.orphansLabel),
       ),
     );
 
@@ -608,7 +645,7 @@ class _MatterSidebar extends ConsumerWidget {
     sidebarItems.add(
       SidebarItem(
         leading: const MacosIcon(CupertinoIcons.exclamationmark_triangle),
-        label: const Text('Conflicts'),
+        label: Text(l10n.conflictsLabel),
         trailing: conflictCount > 0
             ? _MacosCountBadge(label: '$conflictCount')
             : null,
@@ -641,12 +678,12 @@ class _MatterSidebar extends ConsumerWidget {
           child: PushButton(
             controlSize: ControlSize.large,
             onPressed: () => _createMatter(context: context, ref: ref),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                MacosIcon(CupertinoIcons.add, size: 14),
-                SizedBox(width: 6),
-                Text('New Matter'),
+                const MacosIcon(CupertinoIcons.add, size: 14),
+                const SizedBox(width: 6),
+                Text(l10n.newMatterAction),
               ],
             ),
           ),
@@ -696,6 +733,7 @@ class _MatterSidebar extends ConsumerWidget {
     required Matter matter,
     required _MatterAction action,
   }) async {
+    final l10n = context.l10n;
     final controller = ref.read(mattersControllerProvider.notifier);
 
     switch (action) {
@@ -749,12 +787,12 @@ class _MatterSidebar extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        'Delete Matter',
+                        l10n.deleteMatterTitle,
                         style: MacosTheme.of(dialogContext).typography.title2,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Delete "${matter.title}" and all notes in this matter?',
+                        l10n.deleteMatterConfirmation(matter.title),
                         style: MacosTheme.of(dialogContext).typography.body,
                       ),
                       const SizedBox(height: 18),
@@ -766,7 +804,7 @@ class _MatterSidebar extends ConsumerWidget {
                             secondary: true,
                             onPressed: () =>
                                 Navigator.of(dialogContext).pop(false),
-                            child: const Text('Cancel'),
+                            child: Text(l10n.cancelAction),
                           ),
                           const SizedBox(width: 8),
                           PushButton(
@@ -774,7 +812,7 @@ class _MatterSidebar extends ConsumerWidget {
                             color: MacosColors.systemRedColor,
                             onPressed: () =>
                                 Navigator.of(dialogContext).pop(true),
-                            child: const Text('Delete'),
+                            child: Text(l10n.deleteAction),
                           ),
                         ],
                       ),
@@ -785,18 +823,16 @@ class _MatterSidebar extends ConsumerWidget {
             }
 
             return AlertDialog(
-              title: const Text('Delete Matter'),
-              content: Text(
-                'Delete "${matter.title}" and all notes in this matter?',
-              ),
+              title: Text(l10n.deleteMatterTitle),
+              content: Text(l10n.deleteMatterConfirmation(matter.title)),
               actions: <Widget>[
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.cancelAction),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.of(dialogContext).pop(true),
-                  child: const Text('Delete'),
+                  child: Text(l10n.deleteAction),
                 ),
               ],
             );
@@ -845,12 +881,7 @@ class _MacosMatterStatusBadge extends StatelessWidget {
       MatterStatus.archived => MacosColors.systemGrayColor,
     };
 
-    final label = switch (status) {
-      MatterStatus.active => 'A',
-      MatterStatus.paused => 'P',
-      MatterStatus.completed => 'D',
-      MatterStatus.archived => 'R',
-    };
+    final label = _matterStatusBadgeLetter(context.l10n, status);
 
     return Container(
       width: 16,
@@ -907,6 +938,7 @@ class _MacosMatterActionMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return MacosIconButton(
       icon: const MacosIcon(CupertinoIcons.ellipsis, size: 12),
       backgroundColor: MacosColors.transparent,
@@ -928,7 +960,7 @@ class _MacosMatterActionMenu extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Text(
-                    'Matter Actions',
+                    l10n.matterActionsTitle,
                     style: MacosTheme.of(dialogContext).typography.title3,
                   ),
                   const SizedBox(height: 4),
@@ -937,29 +969,32 @@ class _MacosMatterActionMenu extends StatelessWidget {
                     style: MacosTheme.of(dialogContext).typography.subheadline,
                   ),
                   const SizedBox(height: 12),
-                  _ActionSheetButton(label: 'Edit', action: _MatterAction.edit),
                   _ActionSheetButton(
-                    label: matter.isPinned ? 'Unpin' : 'Pin',
+                    label: l10n.editAction,
+                    action: _MatterAction.edit,
+                  ),
+                  _ActionSheetButton(
+                    label: matter.isPinned ? l10n.unpinAction : l10n.pinAction,
                     action: _MatterAction.togglePinned,
                   ),
                   _ActionSheetButton(
-                    label: 'Set Active',
+                    label: l10n.setActiveAction,
                     action: _MatterAction.setActive,
                   ),
                   _ActionSheetButton(
-                    label: 'Set Paused',
+                    label: l10n.setPausedAction,
                     action: _MatterAction.setPaused,
                   ),
                   _ActionSheetButton(
-                    label: 'Set Completed',
+                    label: l10n.setCompletedAction,
                     action: _MatterAction.setCompleted,
                   ),
                   _ActionSheetButton(
-                    label: 'Set Archived',
+                    label: l10n.setArchivedAction,
                     action: _MatterAction.setArchived,
                   ),
                   _ActionSheetButton(
-                    label: 'Delete',
+                    label: l10n.deleteAction,
                     action: _MatterAction.delete,
                     destructive: true,
                   ),
@@ -968,7 +1003,7 @@ class _MacosMatterActionMenu extends StatelessWidget {
                     controlSize: ControlSize.regular,
                     secondary: true,
                     onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancelAction),
                   ),
                 ],
               ),
@@ -1068,6 +1103,7 @@ class _MatterList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     if (matters.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1101,35 +1137,37 @@ class _MatterList extends StatelessWidget {
                   await onAction(matter, value);
                 },
                 itemBuilder: (_) => <PopupMenuEntry<_MatterAction>>[
-                  const PopupMenuItem<_MatterAction>(
+                  PopupMenuItem<_MatterAction>(
                     value: _MatterAction.edit,
-                    child: Text('Edit'),
+                    child: Text(l10n.editAction),
                   ),
                   PopupMenuItem<_MatterAction>(
                     value: _MatterAction.togglePinned,
-                    child: Text(matter.isPinned ? 'Unpin' : 'Pin'),
+                    child: Text(
+                      matter.isPinned ? l10n.unpinAction : l10n.pinAction,
+                    ),
                   ),
                   const PopupMenuDivider(),
-                  const PopupMenuItem<_MatterAction>(
+                  PopupMenuItem<_MatterAction>(
                     value: _MatterAction.setActive,
-                    child: Text('Set Active'),
+                    child: Text(l10n.setActiveAction),
                   ),
-                  const PopupMenuItem<_MatterAction>(
+                  PopupMenuItem<_MatterAction>(
                     value: _MatterAction.setPaused,
-                    child: Text('Set Paused'),
+                    child: Text(l10n.setPausedAction),
                   ),
-                  const PopupMenuItem<_MatterAction>(
+                  PopupMenuItem<_MatterAction>(
                     value: _MatterAction.setCompleted,
-                    child: Text('Set Completed'),
+                    child: Text(l10n.setCompletedAction),
                   ),
-                  const PopupMenuItem<_MatterAction>(
+                  PopupMenuItem<_MatterAction>(
                     value: _MatterAction.setArchived,
-                    child: Text('Set Archived'),
+                    child: Text(l10n.setArchivedAction),
                   ),
                   const PopupMenuDivider(),
-                  const PopupMenuItem<_MatterAction>(
+                  PopupMenuItem<_MatterAction>(
                     value: _MatterAction.delete,
-                    child: Text('Delete'),
+                    child: Text(l10n.deleteAction),
                   ),
                 ],
               ),
@@ -1148,12 +1186,7 @@ class _MatterStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = switch (status) {
-      MatterStatus.active => 'ACTIVE',
-      MatterStatus.paused => 'PAUSED',
-      MatterStatus.completed => 'DONE',
-      MatterStatus.archived => 'ARCHIVED',
-    };
+    final label = _matterStatusBadgeLabel(context.l10n, status);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1186,6 +1219,7 @@ class _MainWorkspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final showConflicts = ref.watch(showConflictsProvider);
     if (showConflicts) {
       return const _ConflictWorkspace();
@@ -1203,9 +1237,7 @@ class _MainWorkspace extends ConsumerWidget {
     final sections = ref.watch(mattersControllerProvider).valueOrNull;
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
     if (sections == null || selectedMatterId == null) {
-      return const Center(
-        child: Text('Select a Matter, Orphans, or Conflicts to begin.'),
-      );
+      return Center(child: Text(l10n.selectMatterOrphansOrConflictsPrompt));
     }
 
     Matter? selected;
@@ -1224,7 +1256,7 @@ class _MainWorkspace extends ConsumerWidget {
     }
 
     if (selected == null) {
-      return const Center(child: Text('Matter no longer exists.'));
+      return Center(child: Text(l10n.matterNoLongerExistsMessage));
     }
 
     return _MatterWorkspace(matter: selected);
@@ -1236,6 +1268,7 @@ class _ConflictWorkspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final conflictsState = ref.watch(conflictsControllerProvider);
     final selected = ref.watch(selectedConflictProvider);
     final selectedContent = ref.watch(selectedConflictContentProvider);
@@ -1243,7 +1276,7 @@ class _ConflictWorkspace extends ConsumerWidget {
     return conflictsState.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, stackTrace) =>
-          Center(child: Text('Conflict load failed: $error')),
+          Center(child: Text(l10n.conflictLoadFailed(error.toString()))),
       data: (conflicts) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1253,7 +1286,7 @@ class _ConflictWorkspace extends ConsumerWidget {
               child: Row(
                 children: <Widget>[
                   Text(
-                    'Conflicts (${conflicts.length})',
+                    l10n.conflictsCountTitle(conflicts.length),
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(width: 12),
@@ -1264,7 +1297,7 @@ class _ConflictWorkspace extends ConsumerWidget {
                           .reload();
                     },
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Refresh'),
+                    label: Text(l10n.refreshAction),
                   ),
                 ],
               ),
@@ -1275,7 +1308,7 @@ class _ConflictWorkspace extends ConsumerWidget {
                   SizedBox(
                     width: 380,
                     child: conflicts.isEmpty
-                        ? const Center(child: Text('No conflicts detected.'))
+                        ? Center(child: Text(l10n.noConflictsDetectedMessage))
                         : ListView.builder(
                             itemCount: conflicts.length,
                             itemBuilder: (_, index) {
@@ -1309,9 +1342,7 @@ class _ConflictWorkspace extends ConsumerWidget {
                   const VerticalDivider(width: 1),
                   Expanded(
                     child: selected == null
-                        ? const Center(
-                            child: Text('Select a conflict to review.'),
-                          )
+                        ? Center(child: Text(l10n.selectConflictToReviewPrompt))
                         : Padding(
                             padding: const EdgeInsets.all(12),
                             child: Column(
@@ -1325,12 +1356,24 @@ class _ConflictWorkspace extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Type: ${_conflictTypeLabel(selected.type)}',
+                                  l10n.conflictTypeRow(
+                                    _conflictTypeLabel(selected.type, l10n),
+                                  ),
                                 ),
-                                Text('Conflict file: ${selected.conflictPath}'),
-                                Text('Original: ${selected.originalPath}'),
-                                Text('Local: ${selected.localDevice}'),
-                                Text('Remote: ${selected.remoteDevice}'),
+                                Text(
+                                  l10n.conflictFileRow(selected.conflictPath),
+                                ),
+                                Text(
+                                  l10n.conflictOriginalRow(
+                                    selected.originalPath,
+                                  ),
+                                ),
+                                Text(
+                                  l10n.conflictLocalRow(selected.localDevice),
+                                ),
+                                Text(
+                                  l10n.conflictRemoteRow(selected.remoteDevice),
+                                ),
                                 const SizedBox(height: 8),
                                 Row(
                                   children: <Widget>[
@@ -1355,7 +1398,7 @@ class _ConflictWorkspace extends ConsumerWidget {
                                                   false;
                                             },
                                       icon: const Icon(Icons.open_in_new),
-                                      label: const Text('Open Main Note'),
+                                      label: Text(l10n.openMainNoteAction),
                                     ),
                                     const SizedBox(width: 8),
                                     FilledButton.icon(
@@ -1376,7 +1419,7 @@ class _ConflictWorkspace extends ConsumerWidget {
                                             .selectConflict(null);
                                       },
                                       icon: const Icon(Icons.check),
-                                      label: const Text('Mark Resolved'),
+                                      label: Text(l10n.markResolvedAction),
                                     ),
                                   ],
                                 ),
@@ -1386,14 +1429,21 @@ class _ConflictWorkspace extends ConsumerWidget {
                                     loading: () => const Center(
                                       child: CircularProgressIndicator(),
                                     ),
-                                    error: (error, stackTrace) =>
-                                        Text('Failed to load conflict: $error'),
+                                    error: (error, stackTrace) => Text(
+                                      l10n.failedToLoadConflict(
+                                        error.toString(),
+                                      ),
+                                    ),
                                     data: (content) {
                                       if (content == null ||
                                           content.trim().isEmpty) {
-                                        return const Text(
-                                          'Conflict content is empty.',
-                                        );
+                                        if (selected.type ==
+                                            SyncConflictType.unknown) {
+                                          return Text(
+                                            l10n.binaryConflictNotPreviewable,
+                                          );
+                                        }
+                                        return Text(l10n.conflictContentEmpty);
                                       }
                                       return Container(
                                         decoration: BoxDecoration(
@@ -1437,6 +1487,7 @@ class _MatterWorkspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final viewMode = ref.watch(matterViewModeProvider);
     final selectedPhaseId = ref.watch(selectedPhaseIdProvider);
 
@@ -1466,22 +1517,22 @@ class _MatterWorkspace extends ConsumerWidget {
               ),
               const SizedBox(width: 16),
               SegmentedButton<MatterViewMode>(
-                segments: const <ButtonSegment<MatterViewMode>>[
+                segments: <ButtonSegment<MatterViewMode>>[
                   ButtonSegment<MatterViewMode>(
                     value: MatterViewMode.phase,
-                    label: Text('Phase'),
+                    label: Text(l10n.viewModePhase),
                   ),
                   ButtonSegment<MatterViewMode>(
                     value: MatterViewMode.timeline,
-                    label: Text('Timeline'),
+                    label: Text(l10n.viewModeTimeline),
                   ),
                   ButtonSegment<MatterViewMode>(
                     value: MatterViewMode.list,
-                    label: Text('List'),
+                    label: Text(l10n.viewModeList),
                   ),
                   ButtonSegment<MatterViewMode>(
                     value: MatterViewMode.graph,
-                    label: Text('Graph'),
+                    label: Text(l10n.viewModeGraph),
                   ),
                 ],
                 selected: <MatterViewMode>{viewMode},
@@ -1525,7 +1576,7 @@ class _MatterWorkspace extends ConsumerWidget {
                       );
                 },
                 icon: const Icon(Icons.note_add),
-                label: const Text('New Note'),
+                label: Text(l10n.newNoteAction),
               ),
             ],
           ),
@@ -1566,6 +1617,7 @@ class _MatterNotesWorkspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final notes = ref.watch(noteListProvider);
 
     return Row(
@@ -1612,16 +1664,16 @@ class _MatterNotesWorkspace extends ConsumerWidget {
                 final confirmed = await showDialog<bool>(
                   context: context,
                   builder: (_) => AlertDialog(
-                    title: const Text('Delete note'),
-                    content: Text('Delete "${note.title}"?'),
+                    title: Text(l10n.deleteNoteTitle),
+                    content: Text(l10n.deleteNoteConfirmation(note.title)),
                     actions: <Widget>[
                       TextButton(
                         onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('Cancel'),
+                        child: Text(l10n.cancelAction),
                       ),
                       FilledButton(
                         onPressed: () => Navigator.of(context).pop(true),
-                        child: const Text('Delete'),
+                        child: Text(l10n.deleteAction),
                       ),
                     ],
                   ),
@@ -1655,17 +1707,19 @@ class _MatterGraphWorkspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final graphState = ref.watch(graphControllerProvider);
     final selectedNoteId = ref.watch(selectedNoteIdProvider);
 
     return graphState.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Graph load failed: $error')),
+      error: (error, _) =>
+          Center(child: Text(l10n.graphLoadFailed(error.toString()))),
       data: (view) {
         if (view.graph.nodes.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
-              'No linked notes yet in this matter.\nCreate links from note actions to populate the graph.',
+              l10n.noLinkedNotesInMatterMessage,
               textAlign: TextAlign.center,
             ),
           );
@@ -1692,8 +1746,10 @@ class _MatterGraphWorkspace extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'Graph limited to $graphNodeLimit nodes '
-                        '(${view.truncatedNodeCount} hidden).',
+                        l10n.graphLimitedNotice(
+                          graphNodeLimit,
+                          view.truncatedNodeCount,
+                        ),
                       ),
                     ),
                   Expanded(
@@ -1789,7 +1845,9 @@ class _GraphCanvas extends StatelessWidget {
                   left: offset.dx - radius,
                   top: offset.dy - radius,
                   child: Tooltip(
-                    message: node.title.isEmpty ? '(untitled)' : node.title,
+                    message: node.title.isEmpty
+                        ? context.l10n.untitledLabel
+                        : node.title,
                     child: InkWell(
                       onTap: () async => onTapNode(node.noteId),
                       borderRadius: BorderRadius.circular(radius),
@@ -1947,6 +2005,7 @@ class _OrphanWorkspace extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final notes = ref.watch(orphanNotesProvider);
 
     return Column(
@@ -1957,7 +2016,7 @@ class _OrphanWorkspace extends ConsumerWidget {
           child: Row(
             children: <Widget>[
               Text(
-                'Orphan Notes',
+                l10n.orphanNotesTitle,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const Spacer(),
@@ -1985,7 +2044,7 @@ class _OrphanWorkspace extends ConsumerWidget {
                       );
                 },
                 icon: const Icon(Icons.add),
-                label: const Text('New Orphan Note'),
+                label: Text(l10n.newOrphanNoteAction),
               ),
             ],
           ),
@@ -2039,16 +2098,18 @@ class _OrphanWorkspace extends ConsumerWidget {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (_) => AlertDialog(
-                          title: const Text('Delete note'),
-                          content: Text('Delete "${note.title}"?'),
+                          title: Text(l10n.deleteNoteTitle),
+                          content: Text(
+                            l10n.deleteNoteConfirmation(note.title),
+                          ),
                           actions: <Widget>[
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Cancel'),
+                              child: Text(l10n.cancelAction),
                             ),
                             FilledButton(
                               onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Delete'),
+                              child: Text(l10n.deleteAction),
                             ),
                           ],
                         ),
@@ -2097,9 +2158,10 @@ class _NoteList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final selectedNoteId = ref.watch(selectedNoteIdProvider);
     if (notes.isEmpty) {
-      return const Center(child: Text('No notes yet.'));
+      return Center(child: Text(l10n.noNotesYetMessage));
     }
 
     return ListView.builder(
@@ -2108,7 +2170,7 @@ class _NoteList extends ConsumerWidget {
         final note = notes[index];
         return ListTile(
           selected: note.id == selectedNoteId,
-          title: Text(note.title.isEmpty ? '(untitled)' : note.title),
+          title: Text(note.title.isEmpty ? l10n.untitledLabel : note.title),
           subtitle: Text(
             note.content.replaceAll('\n', ' '),
             maxLines: 2,
@@ -2128,19 +2190,22 @@ class _NoteList extends ConsumerWidget {
               }
             },
             itemBuilder: (_) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(value: 'edit', child: Text('Edit')),
+              PopupMenuItem<String>(
+                value: 'edit',
+                child: Text(l10n.editAction),
+              ),
               PopupMenuItem<String>(
                 value: 'toggle_pin',
-                child: Text(note.isPinned ? 'Unpin' : 'Pin'),
+                child: Text(note.isPinned ? l10n.unpinAction : l10n.pinAction),
               ),
-              const PopupMenuItem<String>(
+              PopupMenuItem<String>(
                 value: 'link',
-                child: Text('Link Note...'),
+                child: Text(l10n.linkNoteActionEllipsis),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem<String>(
+              PopupMenuItem<String>(
                 value: 'delete',
-                child: Text('Delete'),
+                child: Text(l10n.deleteAction),
               ),
             ],
             child: note.isPinned
@@ -2179,19 +2244,101 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     super.dispose();
   }
 
+  Future<void> _attachFiles(BuildContext context) async {
+    final l10n = context.l10n;
+    try {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .attachFilesToCurrent();
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showEditorMessage(context, l10n.failedToAttachFiles(error.toString()));
+    }
+  }
+
+  Future<void> _removeAttachment(
+    BuildContext context,
+    String attachmentPath,
+  ) async {
+    final l10n = context.l10n;
+    try {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .removeAttachmentFromCurrent(attachmentPath);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showEditorMessage(
+        context,
+        l10n.failedToRemoveAttachment(error.toString()),
+      );
+    }
+  }
+
+  Future<void> _openAttachment(
+    BuildContext context,
+    String absolutePath,
+  ) async {
+    final l10n = context.l10n;
+    final file = File(absolutePath);
+    if (!await file.exists()) {
+      if (!context.mounted) {
+        return;
+      }
+      _showEditorMessage(context, l10n.attachmentFileNotFoundMessage);
+      return;
+    }
+
+    try {
+      final result = await OpenFilex.open(absolutePath);
+      if (!context.mounted) {
+        return;
+      }
+      if (result.type != ResultType.done) {
+        final message = result.message.trim().isEmpty
+            ? l10n.unableToOpenAttachmentMessage
+            : l10n.unableToOpenAttachmentWithReason(result.message);
+        _showEditorMessage(context, message);
+      }
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showEditorMessage(
+        context,
+        l10n.unableToOpenAttachmentWithReason(error.toString()),
+      );
+    }
+  }
+
+  void _showEditorMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final noteAsync = ref.watch(noteEditorControllerProvider);
     final previewMode = ref.watch(previewModeProvider);
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
     final selectedPhaseId = ref.watch(selectedPhaseIdProvider);
+    final storageRootPath = ref
+        .watch(settingsControllerProvider)
+        .valueOrNull
+        ?.storageRootPath;
 
     return noteAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(child: Text('Editor error: $error')),
+      error: (error, _) =>
+          Center(child: Text(l10n.editorError(error.toString()))),
       data: (note) {
         if (note == null) {
-          return const Center(child: Text('Select a note to edit.'));
+          return Center(child: Text(l10n.selectNoteToEditPrompt));
         }
         final linkedNotesAsync = ref.watch(linkedNotesByNoteProvider(note.id));
 
@@ -2212,15 +2359,15 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                   Expanded(
                     child: TextField(
                       controller: _titleController,
-                      decoration: const InputDecoration(
-                        labelText: 'Title',
-                        border: OutlineInputBorder(),
+                      decoration: InputDecoration(
+                        labelText: l10n.titleLabel,
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    tooltip: note.isPinned ? 'Unpin' : 'Pin',
+                    tooltip: note.isPinned ? l10n.unpinAction : l10n.pinAction,
                     onPressed: () async {
                       await ref
                           .read(noteEditorControllerProvider.notifier)
@@ -2231,7 +2378,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Link Note',
+                    tooltip: l10n.linkNoteAction,
                     onPressed: () async {
                       await _showLinkNoteDialog(
                         context: context,
@@ -2242,7 +2389,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                     icon: const Icon(Icons.link),
                   ),
                   IconButton(
-                    tooltip: 'Toggle Preview',
+                    tooltip: l10n.togglePreviewAction,
                     onPressed: () {
                       ref.read(previewModeProvider.notifier).state =
                           !previewMode;
@@ -2250,21 +2397,23 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                     icon: Icon(previewMode ? Icons.edit : Icons.preview),
                   ),
                   IconButton(
-                    tooltip: 'Delete Note',
+                    tooltip: l10n.deleteNoteAction,
                     onPressed: () async {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (_) => AlertDialog(
-                          title: const Text('Delete note'),
-                          content: Text('Delete "${note.title}"?'),
+                          title: Text(l10n.deleteNoteTitle),
+                          content: Text(
+                            l10n.deleteNoteConfirmation(note.title),
+                          ),
                           actions: <Widget>[
                             TextButton(
                               onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Cancel'),
+                              child: Text(l10n.cancelAction),
                             ),
                             FilledButton(
                               onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Delete'),
+                              child: Text(l10n.deleteAction),
                             ),
                           ],
                         ),
@@ -2283,10 +2432,20 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
               const SizedBox(height: 8),
               TextField(
                 controller: _tagsController,
-                decoration: const InputDecoration(
-                  labelText: 'Tags (comma separated)',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: l10n.tagsCommaSeparatedLabel,
+                  border: const OutlineInputBorder(),
                 ),
+              ),
+              const SizedBox(height: 8),
+              _AttachmentsPanel(
+                note: note,
+                storageRootPath: storageRootPath,
+                onAttach: () => _attachFiles(context),
+                onRemoveAttachment: (attachmentPath) =>
+                    _removeAttachment(context, attachmentPath),
+                onOpenAttachment: (absolutePath) =>
+                    _openAttachment(context, absolutePath),
               ),
               const SizedBox(height: 8),
               Row(
@@ -2299,7 +2458,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                       ref.read(showOrphansProvider.notifier).state = true;
                       ref.read(showConflictsProvider.notifier).state = false;
                     },
-                    child: const Text('Move to Orphans'),
+                    child: Text(l10n.moveToOrphansAction),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton(
@@ -2316,7 +2475,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                             ref.read(showOrphansProvider.notifier).state =
                                 false;
                           },
-                    child: const Text('Assign to Selected Matter'),
+                    child: Text(l10n.assignToSelectedMatterAction),
                   ),
                 ],
               ),
@@ -2343,10 +2502,10 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                         expands: true,
                         maxLines: null,
                         minLines: null,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
-                          hintText: 'Write markdown here...',
+                          hintText: l10n.writeMarkdownHereHint,
                         ),
                       ),
               ),
@@ -2370,11 +2529,11 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                           );
                     },
                     icon: const Icon(Icons.save),
-                    label: const Text('Save'),
+                    label: Text(l10n.saveAction),
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    'Updated: ${note.updatedAt.toLocal()}',
+                    l10n.updatedAtRow(note.updatedAt.toLocal().toString()),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -2383,6 +2542,89 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
           ),
         );
       },
+    );
+  }
+}
+
+class _AttachmentsPanel extends StatelessWidget {
+  const _AttachmentsPanel({
+    required this.note,
+    required this.storageRootPath,
+    required this.onAttach,
+    required this.onOpenAttachment,
+    required this.onRemoveAttachment,
+  });
+
+  final Note note;
+  final String? storageRootPath;
+  final Future<void> Function() onAttach;
+  final Future<void> Function(String absolutePath) onOpenAttachment;
+  final Future<void> Function(String attachmentPath) onRemoveAttachment;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final hasStorageRoot =
+        storageRootPath != null && storageRootPath!.trim().isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(
+                  l10n.attachmentsCountTitle(note.attachments.length),
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  await onAttach();
+                },
+                icon: const Icon(Icons.attach_file),
+                label: Text(l10n.attachFilesActionEllipsis),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (note.attachments.isEmpty)
+            Text(l10n.noAttachmentsYetMessage)
+          else if (!hasStorageRoot)
+            Text(l10n.storageRootUnavailableMessage)
+          else
+            SizedBox(
+              height: 220,
+              child: ListView.builder(
+                itemCount: note.attachments.length,
+                itemBuilder: (context, index) {
+                  final relativePath = note.attachments[index];
+                  final absolutePath = p.normalize(
+                    p.join(storageRootPath!, relativePath),
+                  );
+
+                  return NoteAttachmentTile(
+                    relativePath: relativePath,
+                    absolutePath: absolutePath,
+                    onOpen: () async {
+                      await onOpenAttachment(absolutePath);
+                    },
+                    onRemove: () async {
+                      await onRemoveAttachment(relativePath);
+                    },
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -2398,6 +2640,7 @@ class _LinkedNotesPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     final linkedCount = linkedNotesAsync.valueOrNull?.length ?? 0;
     return Container(
       width: double.infinity,
@@ -2414,12 +2657,12 @@ class _LinkedNotesPanel extends ConsumerWidget {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  'Linked Notes ($linkedCount)',
+                  l10n.linkedNotesCountTitle(linkedCount),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
               ),
               IconButton(
-                tooltip: 'Link Note',
+                tooltip: l10n.linkNoteAction,
                 onPressed: () async {
                   await _showLinkNoteDialog(
                     context: context,
@@ -2436,10 +2679,10 @@ class _LinkedNotesPanel extends ConsumerWidget {
             child: linkedNotesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, stackTrace) =>
-                  Text('Failed to load links: $error'),
+                  Text(l10n.failedToLoadLinks(error.toString())),
               data: (items) {
                 if (items.isEmpty) {
-                  return const Text('No links yet.');
+                  return Text(l10n.noLinksYetMessage);
                 }
 
                 return ListView.separated(
@@ -2458,7 +2701,7 @@ class _LinkedNotesPanel extends ConsumerWidget {
                       ),
                       title: Text(
                         item.relatedNote.title.isEmpty
-                            ? '(untitled)'
+                            ? l10n.untitledLabel
                             : item.relatedNote.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -2474,7 +2717,7 @@ class _LinkedNotesPanel extends ConsumerWidget {
                         spacing: 4,
                         children: <Widget>[
                           IconButton(
-                            tooltip: 'Open linked note',
+                            tooltip: l10n.openLinkedNoteAction,
                             onPressed: () async {
                               await ref
                                   .read(noteEditorControllerProvider.notifier)
@@ -2483,7 +2726,7 @@ class _LinkedNotesPanel extends ConsumerWidget {
                             icon: const Icon(Icons.open_in_new, size: 16),
                           ),
                           IconButton(
-                            tooltip: 'Remove link',
+                            tooltip: l10n.removeLinkAction,
                             onPressed: () async {
                               await ref
                                   .read(linksControllerProvider)
@@ -2513,6 +2756,7 @@ Future<void> _showLinkNoteDialog({
   required WidgetRef ref,
   required Note sourceNote,
 }) async {
+  final l10n = context.l10n;
   List<Note> allNotes;
   try {
     allNotes = await ref.read(allNotesForLinkPickerProvider.future);
@@ -2520,9 +2764,9 @@ Future<void> _showLinkNoteDialog({
     if (!context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Unable to load notes: $error')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.unableToLoadNotes(error.toString()))),
+    );
     return;
   }
   final candidates = allNotes
@@ -2534,9 +2778,9 @@ Future<void> _showLinkNoteDialog({
   }
 
   if (candidates.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('No notes available to link.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.noNotesAvailableToLink)));
     return;
   }
 
@@ -2563,15 +2807,15 @@ Future<void> _showLinkNoteDialog({
     }
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Link created')));
+    ).showSnackBar(SnackBar(content: Text(l10n.linkCreatedMessage)));
   } catch (error) {
     if (!context.mounted) {
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Unable to create link: $error')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(l10n.unableToCreateLink(error.toString()))),
+    );
   }
 }
 
@@ -2603,6 +2847,7 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
 
     final content = SizedBox(
@@ -2612,14 +2857,14 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Source: ${_displayNoteTitle(widget.sourceNote)}',
+            l10n.linkSourceRow(_displayNoteTitle(widget.sourceNote)),
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 10),
           isMacOSNativeUI
               ? Row(
                   children: <Widget>[
-                    const Text('Target note'),
+                    Text(l10n.targetNoteLabel),
                     const SizedBox(width: 8),
                     Expanded(
                       child: MacosPopupButton<String>(
@@ -2646,7 +2891,7 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
                 )
               : DropdownButtonFormField<String>(
                   initialValue: _targetNoteId,
-                  decoration: const InputDecoration(labelText: 'Target note'),
+                  decoration: InputDecoration(labelText: l10n.targetNoteLabel),
                   items: widget.candidates
                       .map(
                         (candidate) => DropdownMenuItem<String>(
@@ -2668,15 +2913,15 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
           isMacOSNativeUI
               ? MacosTextField(
                   controller: _contextController,
-                  placeholder: 'Context (optional)',
+                  placeholder: l10n.contextOptionalLabel,
                   minLines: 2,
                   maxLines: 4,
                 )
               : TextField(
                   controller: _contextController,
-                  decoration: const InputDecoration(
-                    labelText: 'Context (optional)',
-                    hintText: 'Why are these notes related?',
+                  decoration: InputDecoration(
+                    labelText: l10n.contextOptionalLabel,
+                    hintText: l10n.linkContextHint,
                   ),
                   minLines: 2,
                   maxLines: 4,
@@ -2702,7 +2947,10 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Text('Link Note', style: TextStyle(fontSize: 18)),
+              Text(
+                l10n.linkNoteDialogTitle,
+                style: const TextStyle(fontSize: 18),
+              ),
               const SizedBox(height: 12),
               content,
               const SizedBox(height: 12),
@@ -2713,13 +2961,13 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
                     controlSize: ControlSize.large,
                     secondary: true,
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancelAction),
                   ),
                   const SizedBox(width: 8),
                   PushButton(
                     controlSize: ControlSize.large,
                     onPressed: onCreateLink,
-                    child: const Text('Create Link'),
+                    child: Text(l10n.createLinkAction),
                   ),
                 ],
               ),
@@ -2730,22 +2978,28 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
     }
 
     return AlertDialog(
-      title: const Text('Link Note'),
+      title: Text(l10n.linkNoteDialogTitle),
       content: content,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.cancelAction),
         ),
-        FilledButton(onPressed: onCreateLink, child: const Text('Create Link')),
+        FilledButton(
+          onPressed: onCreateLink,
+          child: Text(l10n.createLinkAction),
+        ),
       ],
     );
   }
 
   String _displayNoteTitle(Note note) {
-    final title = note.title.trim().isEmpty ? '(untitled)' : note.title.trim();
+    final l10n = context.l10n;
+    final title = note.title.trim().isEmpty
+        ? l10n.untitledLabel
+        : note.title.trim();
     if (note.matterId == null || note.phaseId == null) {
-      return '$title [Orphan]';
+      return '$title [${l10n.orphanLabel}]';
     }
     return '$title [${note.matterId}]';
   }
@@ -2765,11 +3019,11 @@ bool _isMacOSNativeUIContext(BuildContext context) {
   return MacosTheme.maybeOf(context) != null;
 }
 
-String _conflictTypeLabel(SyncConflictType type) {
+String _conflictTypeLabel(SyncConflictType type, AppLocalizations l10n) {
   return switch (type) {
-    SyncConflictType.note => 'Note',
-    SyncConflictType.link => 'Link',
-    SyncConflictType.unknown => 'Unknown',
+    SyncConflictType.note => l10n.conflictTypeNote,
+    SyncConflictType.link => l10n.conflictTypeLink,
+    SyncConflictType.unknown => l10n.conflictTypeUnknown,
   };
 }
 
@@ -2780,6 +3034,7 @@ class _ConflictTypeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -2787,7 +3042,7 @@ class _ConflictTypeChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
-        _conflictTypeLabel(type).toUpperCase(),
+        _conflictTypeLabel(type, l10n).toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall,
       ),
     );
@@ -2801,8 +3056,9 @@ class _SearchResultsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
     if (results.isEmpty) {
-      return const Center(child: Text('No search results.'));
+      return Center(child: Text(l10n.noSearchResultsMessage));
     }
 
     return ListView.separated(
@@ -2834,6 +3090,8 @@ class _SettingsDialog extends ConsumerStatefulWidget {
   ConsumerState<_SettingsDialog> createState() => _SettingsDialogState();
 }
 
+enum _SettingsSection { storage, language, sync }
+
 class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   late final TextEditingController _rootPathController;
   late final TextEditingController _urlController;
@@ -2842,6 +3100,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   late final TextEditingController _intervalController;
   bool _failSafe = true;
   SyncTargetType _type = SyncTargetType.none;
+  String _localeTag = 'en';
+  _SettingsSection _selectedSection = _SettingsSection.storage;
 
   @override
   void initState() {
@@ -2862,6 +3122,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     );
     _type = settings?.syncConfig.type ?? SyncTargetType.none;
     _failSafe = settings?.syncConfig.failSafe ?? true;
+    _localeTag = appLocaleTag(resolveAppLocale(settings?.localeTag));
   }
 
   @override
@@ -2876,145 +3137,282 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final content = SizedBox(
-      width: 640,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            widget.useMacOSNativeUI
-                ? MacosTextField(
-                    controller: _rootPathController,
-                    placeholder: 'Storage root path',
-                  )
-                : TextField(
-                    controller: _rootPathController,
-                    decoration: const InputDecoration(
-                      labelText: 'Storage root path',
-                    ),
+    final l10n = context.l10n;
+    final useMacOSNativeUI = widget.useMacOSNativeUI;
+    final localeItems = AppLocalizations.supportedLocales
+        .map((locale) => appLocaleTag(locale))
+        .toList(growable: false);
+
+    String localeDisplayName(String localeTag) {
+      final locale = resolveAppLocale(localeTag);
+      final localized = lookupAppLocalizations(locale);
+      return localized.languageSelfName;
+    }
+
+    String sectionLabel(_SettingsSection section) {
+      return switch (section) {
+        _SettingsSection.storage => l10n.settingsSectionStorage,
+        _SettingsSection.language => l10n.settingsSectionLanguage,
+        _SettingsSection.sync => l10n.settingsSectionSync,
+      };
+    }
+
+    Widget sectionNavItem(_SettingsSection section) {
+      final selected = _selectedSection == section;
+      if (useMacOSNativeUI) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: PushButton(
+            controlSize: ControlSize.large,
+            secondary: !selected,
+            onPressed: () => setState(() => _selectedSection = section),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(sectionLabel(section)),
+            ),
+          ),
+        );
+      }
+
+      return ListTile(
+        dense: true,
+        selected: selected,
+        title: Text(sectionLabel(section)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        onTap: () => setState(() => _selectedSection = section),
+      );
+    }
+
+    Widget buildStorageSection() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          useMacOSNativeUI
+              ? MacosTextField(
+                  controller: _rootPathController,
+                  placeholder: l10n.storageRootPathLabel,
+                )
+              : TextField(
+                  controller: _rootPathController,
+                  decoration: InputDecoration(
+                    labelText: l10n.storageRootPathLabel,
                   ),
-            const SizedBox(height: 8),
-            widget.useMacOSNativeUI
-                ? Row(
-                    children: <Widget>[
-                      const Text('Sync target type'),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: MacosPopupButton<SyncTargetType>(
-                          value: _type,
-                          onChanged: (value) {
-                            if (value == null) {
-                              return;
-                            }
-                            setState(() {
-                              _type = value;
-                            });
-                          },
-                          items: SyncTargetType.values
-                              .map(
-                                (value) => MacosPopupMenuItem<SyncTargetType>(
-                                  value: value,
-                                  child: Text(value.name),
-                                ),
-                              )
-                              .toList(),
+                ),
+        ],
+      );
+    }
+
+    Widget buildLanguageSection() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          useMacOSNativeUI
+              ? Row(
+                  children: <Widget>[
+                    Text(l10n.languageLabel),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: MacosPopupButton<String>(
+                        value: _localeTag,
+                        onChanged: (value) {
+                          if (value == null || value.isEmpty) {
+                            return;
+                          }
+                          setState(() {
+                            _localeTag = value;
+                          });
+                        },
+                        items: localeItems
+                            .map(
+                              (localeTag) => MacosPopupMenuItem<String>(
+                                value: localeTag,
+                                child: Text(localeDisplayName(localeTag)),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ],
+                )
+              : DropdownButtonFormField<String>(
+                  initialValue: _localeTag,
+                  items: localeItems
+                      .map(
+                        (localeTag) => DropdownMenuItem<String>(
+                          value: localeTag,
+                          child: Text(localeDisplayName(localeTag)),
                         ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null || value.isEmpty) {
+                      return;
+                    }
+                    setState(() {
+                      _localeTag = value;
+                    });
+                  },
+                  decoration: InputDecoration(labelText: l10n.languageLabel),
+                ),
+        ],
+      );
+    }
+
+    Widget buildSyncSection() {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          useMacOSNativeUI
+              ? Row(
+                  children: <Widget>[
+                    Text(l10n.syncTargetTypeLabel),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: MacosPopupButton<SyncTargetType>(
+                        value: _type,
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setState(() {
+                            _type = value;
+                          });
+                        },
+                        items: SyncTargetType.values
+                            .map(
+                              (value) => MacosPopupMenuItem<SyncTargetType>(
+                                value: value,
+                                child: Text(_syncTargetTypeLabel(value, l10n)),
+                              ),
+                            )
+                            .toList(),
                       ),
-                    ],
-                  )
-                : DropdownButtonFormField<SyncTargetType>(
-                    initialValue: _type,
-                    items: SyncTargetType.values
-                        .map(
-                          (value) => DropdownMenuItem<SyncTargetType>(
-                            value: value,
-                            child: Text(value.name),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
-                      setState(() {
-                        _type = value;
-                      });
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'Sync target type',
                     ),
+                  ],
+                )
+              : DropdownButtonFormField<SyncTargetType>(
+                  initialValue: _type,
+                  items: SyncTargetType.values
+                      .map(
+                        (value) => DropdownMenuItem<SyncTargetType>(
+                          value: value,
+                          child: Text(_syncTargetTypeLabel(value, l10n)),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() {
+                      _type = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    labelText: l10n.syncTargetTypeLabel,
                   ),
-            const SizedBox(height: 8),
-            widget.useMacOSNativeUI
-                ? MacosTextField(
-                    controller: _urlController,
-                    placeholder: 'WebDAV URL',
-                  )
-                : TextField(
-                    controller: _urlController,
-                    decoration: const InputDecoration(labelText: 'WebDAV URL'),
+                ),
+          const SizedBox(height: 8),
+          useMacOSNativeUI
+              ? MacosTextField(
+                  controller: _urlController,
+                  placeholder: l10n.webDavUrlLabel,
+                )
+              : TextField(
+                  controller: _urlController,
+                  decoration: InputDecoration(labelText: l10n.webDavUrlLabel),
+                ),
+          const SizedBox(height: 8),
+          useMacOSNativeUI
+              ? MacosTextField(
+                  controller: _usernameController,
+                  placeholder: l10n.webDavUsernameLabel,
+                )
+              : TextField(
+                  controller: _usernameController,
+                  decoration: InputDecoration(
+                    labelText: l10n.webDavUsernameLabel,
                   ),
-            const SizedBox(height: 8),
-            widget.useMacOSNativeUI
-                ? MacosTextField(
-                    controller: _usernameController,
-                    placeholder: 'WebDAV Username',
-                  )
-                : TextField(
-                    controller: _usernameController,
-                    decoration: const InputDecoration(
-                      labelText: 'WebDAV Username',
+                ),
+          const SizedBox(height: 8),
+          useMacOSNativeUI
+              ? MacosTextField(
+                  controller: _passwordController,
+                  placeholder: l10n.webDavPasswordLabel,
+                  obscureText: true,
+                )
+              : TextField(
+                  controller: _passwordController,
+                  decoration: InputDecoration(
+                    labelText: l10n.webDavPasswordLabel,
+                  ),
+                  obscureText: true,
+                ),
+          const SizedBox(height: 8),
+          useMacOSNativeUI
+              ? MacosTextField(
+                  controller: _intervalController,
+                  placeholder: l10n.autoSyncIntervalMinutesLabel,
+                  keyboardType: TextInputType.number,
+                )
+              : TextField(
+                  controller: _intervalController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: l10n.autoSyncIntervalMinutesLabel,
+                  ),
+                ),
+          const SizedBox(height: 8),
+          useMacOSNativeUI
+              ? Row(
+                  children: <Widget>[
+                    MacosSwitch(
+                      value: _failSafe,
+                      onChanged: (value) => setState(() => _failSafe = value),
                     ),
-                  ),
-            const SizedBox(height: 8),
-            widget.useMacOSNativeUI
-                ? MacosTextField(
-                    controller: _passwordController,
-                    placeholder: 'WebDAV Password',
-                    obscureText: true,
-                  )
-                : TextField(
-                    controller: _passwordController,
-                    decoration: const InputDecoration(
-                      labelText: 'WebDAV Password',
-                    ),
-                    obscureText: true,
-                  ),
-            const SizedBox(height: 8),
-            widget.useMacOSNativeUI
-                ? MacosTextField(
-                    controller: _intervalController,
-                    placeholder: 'Auto-sync interval (minutes)',
-                    keyboardType: TextInputType.number,
-                  )
-                : TextField(
-                    controller: _intervalController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Auto-sync interval (minutes)',
-                    ),
-                  ),
-            const SizedBox(height: 8),
-            widget.useMacOSNativeUI
-                ? Row(
-                    children: <Widget>[
-                      MacosSwitch(
-                        value: _failSafe,
-                        onChanged: (value) => setState(() => _failSafe = value),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Deletion fail-safe'),
-                    ],
-                  )
-                : SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: _failSafe,
-                    onChanged: (value) => setState(() => _failSafe = value),
-                    title: const Text('Deletion fail-safe'),
-                  ),
-          ],
-        ),
+                    const SizedBox(width: 8),
+                    Text(l10n.deletionFailSafeLabel),
+                  ],
+                )
+              : SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _failSafe,
+                  onChanged: (value) => setState(() => _failSafe = value),
+                  title: Text(l10n.deletionFailSafeLabel),
+                ),
+        ],
+      );
+    }
+
+    final sectionContent = switch (_selectedSection) {
+      _SettingsSection.storage => buildStorageSection(),
+      _SettingsSection.language => buildLanguageSection(),
+      _SettingsSection.sync => buildSyncSection(),
+    };
+
+    final content = SizedBox(
+      width: 720,
+      height: 360,
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 170,
+            child: ListView(
+              children: <Widget>[
+                sectionNavItem(_SettingsSection.storage),
+                sectionNavItem(_SettingsSection.language),
+                sectionNavItem(_SettingsSection.sync),
+              ],
+            ),
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+              child: sectionContent,
+            ),
+          ),
+        ],
       ),
     );
 
@@ -3050,6 +3448,10 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
             .startAutoSync(syncConfig.intervalMinutes);
       }
 
+      await ref
+          .read(settingsControllerProvider.notifier)
+          .setLocaleTag(_localeTag);
+
       if (context.mounted) {
         Navigator.of(context).pop();
       }
@@ -3062,7 +3464,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Text('Settings', style: TextStyle(fontSize: 18)),
+              Text(l10n.settingsTitle, style: const TextStyle(fontSize: 18)),
               const SizedBox(height: 12),
               content,
               const SizedBox(height: 12),
@@ -3073,13 +3475,13 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
                     controlSize: ControlSize.large,
                     secondary: true,
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancelAction),
                   ),
                   const SizedBox(width: 8),
                   PushButton(
                     controlSize: ControlSize.large,
                     onPressed: saveSettings,
-                    child: const Text('Save'),
+                    child: Text(l10n.saveAction),
                   ),
                 ],
               ),
@@ -3090,14 +3492,14 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     }
 
     return AlertDialog(
-      title: const Text('Settings'),
+      title: Text(l10n.settingsTitle),
       content: content,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.cancelAction),
         ),
-        FilledButton(onPressed: saveSettings, child: const Text('Save')),
+        FilledButton(onPressed: saveSettings, child: Text(l10n.saveAction)),
       ],
     );
   }
@@ -3160,9 +3562,10 @@ class _MatterDialogState extends State<_MatterDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final title = widget.mode == _MatterDialogMode.create
-        ? 'Create Matter'
-        : 'Edit Matter';
+        ? l10n.createMatterTitle
+        : l10n.editMatterTitle;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
 
     final content = SizedBox(
@@ -3175,27 +3578,29 @@ class _MatterDialogState extends State<_MatterDialog> {
             isMacOSNativeUI
                 ? MacosTextField(
                     controller: _titleController,
-                    placeholder: 'Title',
+                    placeholder: l10n.titleLabel,
                   )
                 : TextField(
                     controller: _titleController,
-                    decoration: const InputDecoration(labelText: 'Title'),
+                    decoration: InputDecoration(labelText: l10n.titleLabel),
                   ),
             const SizedBox(height: 8),
             isMacOSNativeUI
                 ? MacosTextField(
                     controller: _descriptionController,
-                    placeholder: 'Description',
+                    placeholder: l10n.descriptionLabel,
                   )
                 : TextField(
                     controller: _descriptionController,
-                    decoration: const InputDecoration(labelText: 'Description'),
+                    decoration: InputDecoration(
+                      labelText: l10n.descriptionLabel,
+                    ),
                   ),
             const SizedBox(height: 8),
             isMacOSNativeUI
                 ? Row(
                     children: <Widget>[
-                      const Text('Status'),
+                      Text(l10n.statusLabel),
                       const SizedBox(width: 8),
                       Expanded(
                         child: MacosPopupButton<MatterStatus>(
@@ -3212,7 +3617,7 @@ class _MatterDialogState extends State<_MatterDialog> {
                               .map(
                                 (value) => MacosPopupMenuItem<MatterStatus>(
                                   value: value,
-                                  child: Text(value.name),
+                                  child: Text(_matterStatusLabel(l10n, value)),
                                 ),
                               )
                               .toList(),
@@ -3222,12 +3627,12 @@ class _MatterDialogState extends State<_MatterDialog> {
                   )
                 : DropdownButtonFormField<MatterStatus>(
                     initialValue: _status,
-                    decoration: const InputDecoration(labelText: 'Status'),
+                    decoration: InputDecoration(labelText: l10n.statusLabel),
                     items: MatterStatus.values
                         .map(
                           (value) => DropdownMenuItem<MatterStatus>(
                             value: value,
-                            child: Text(value.name),
+                            child: Text(_matterStatusLabel(l10n, value)),
                           ),
                         )
                         .toList(),
@@ -3244,26 +3649,26 @@ class _MatterDialogState extends State<_MatterDialog> {
             isMacOSNativeUI
                 ? MacosTextField(
                     controller: _colorController,
-                    placeholder: 'Color (hex)',
+                    placeholder: l10n.colorHexLabel,
                   )
                 : TextField(
                     controller: _colorController,
-                    decoration: const InputDecoration(
-                      labelText: 'Color (hex)',
-                      hintText: '#4C956C',
+                    decoration: InputDecoration(
+                      labelText: l10n.colorHexLabel,
+                      hintText: l10n.colorHexHint,
                     ),
                   ),
             const SizedBox(height: 8),
             isMacOSNativeUI
                 ? MacosTextField(
                     controller: _iconController,
-                    placeholder: 'Icon name',
+                    placeholder: l10n.iconNameLabel,
                   )
                 : TextField(
                     controller: _iconController,
-                    decoration: const InputDecoration(
-                      labelText: 'Icon name',
-                      hintText: 'description',
+                    decoration: InputDecoration(
+                      labelText: l10n.iconNameLabel,
+                      hintText: l10n.iconNameHint,
                     ),
                   ),
             const SizedBox(height: 8),
@@ -3275,14 +3680,14 @@ class _MatterDialogState extends State<_MatterDialog> {
                         onChanged: (value) => setState(() => _isPinned = value),
                       ),
                       const SizedBox(width: 8),
-                      const Text('Pinned'),
+                      Text(l10n.pinnedLabel),
                     ],
                   )
                 : SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: _isPinned,
                     onChanged: (value) => setState(() => _isPinned = value),
-                    title: const Text('Pinned'),
+                    title: Text(l10n.pinnedLabel),
                   ),
           ],
         ),
@@ -3325,7 +3730,7 @@ class _MatterDialogState extends State<_MatterDialog> {
                     controlSize: ControlSize.large,
                     secondary: true,
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancelAction),
                   ),
                   const SizedBox(width: 8),
                   PushButton(
@@ -3333,8 +3738,8 @@ class _MatterDialogState extends State<_MatterDialog> {
                     onPressed: onSave,
                     child: Text(
                       widget.mode == _MatterDialogMode.create
-                          ? 'Create'
-                          : 'Save',
+                          ? l10n.createAction
+                          : l10n.saveAction,
                     ),
                   ),
                 ],
@@ -3351,12 +3756,14 @@ class _MatterDialogState extends State<_MatterDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.cancelAction),
         ),
         FilledButton(
           onPressed: onSave,
           child: Text(
-            widget.mode == _MatterDialogMode.create ? 'Create' : 'Save',
+            widget.mode == _MatterDialogMode.create
+                ? l10n.createAction
+                : l10n.saveAction,
           ),
         ),
       ],
@@ -3408,20 +3815,30 @@ class _NoteDialogState extends State<_NoteDialog> {
   late final TextEditingController _contentController;
   late final TextEditingController _tagsController;
   late bool _isPinned;
+  bool _seededDefaultContent = false;
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.initialTitle);
-    _contentController = TextEditingController(
-      text: widget.initialContent.isEmpty
-          ? '# ${widget.initialTitle.isEmpty ? 'Untitled Note' : widget.initialTitle}\n'
-          : widget.initialContent,
-    );
+    _contentController = TextEditingController(text: widget.initialContent);
     _tagsController = TextEditingController(
       text: widget.initialTags.join(', '),
     );
     _isPinned = widget.initialPinned;
+    _seededDefaultContent = widget.initialContent.isNotEmpty;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_seededDefaultContent) {
+      return;
+    }
+    final l10n = context.l10n;
+    _contentController.text =
+        '# ${widget.initialTitle.isEmpty ? l10n.defaultUntitledNoteTitle : widget.initialTitle}\n';
+    _seededDefaultContent = true;
   }
 
   @override
@@ -3434,9 +3851,10 @@ class _NoteDialogState extends State<_NoteDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final title = widget.mode == _NoteDialogMode.create
-        ? 'Create Note'
-        : 'Edit Note';
+        ? l10n.createNoteTitle
+        : l10n.editNoteTitle;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
 
     final content = SizedBox(
@@ -3449,22 +3867,22 @@ class _NoteDialogState extends State<_NoteDialog> {
             isMacOSNativeUI
                 ? MacosTextField(
                     controller: _titleController,
-                    placeholder: 'Title',
+                    placeholder: l10n.titleLabel,
                   )
                 : TextField(
                     controller: _titleController,
-                    decoration: const InputDecoration(labelText: 'Title'),
+                    decoration: InputDecoration(labelText: l10n.titleLabel),
                   ),
             const SizedBox(height: 8),
             isMacOSNativeUI
                 ? MacosTextField(
                     controller: _tagsController,
-                    placeholder: 'Tags (comma separated)',
+                    placeholder: l10n.tagsCommaSeparatedLabel,
                   )
                 : TextField(
                     controller: _tagsController,
-                    decoration: const InputDecoration(
-                      labelText: 'Tags (comma separated)',
+                    decoration: InputDecoration(
+                      labelText: l10n.tagsCommaSeparatedLabel,
                     ),
                   ),
             const SizedBox(height: 8),
@@ -3473,15 +3891,15 @@ class _NoteDialogState extends State<_NoteDialog> {
                     controller: _contentController,
                     minLines: 10,
                     maxLines: 20,
-                    placeholder: 'Markdown content',
+                    placeholder: l10n.markdownContentLabel,
                   )
                 : TextField(
                     controller: _contentController,
                     minLines: 10,
                     maxLines: 20,
-                    decoration: const InputDecoration(
-                      labelText: 'Markdown content',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.markdownContentLabel,
+                      border: const OutlineInputBorder(),
                       alignLabelWithHint: true,
                     ),
                   ),
@@ -3494,14 +3912,14 @@ class _NoteDialogState extends State<_NoteDialog> {
                         onChanged: (value) => setState(() => _isPinned = value),
                       ),
                       const SizedBox(width: 8),
-                      const Text('Pinned'),
+                      Text(l10n.pinnedLabel),
                     ],
                   )
                 : SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     value: _isPinned,
                     onChanged: (value) => setState(() => _isPinned = value),
-                    title: const Text('Pinned'),
+                    title: Text(l10n.pinnedLabel),
                   ),
           ],
         ),
@@ -3543,14 +3961,16 @@ class _NoteDialogState extends State<_NoteDialog> {
                     controlSize: ControlSize.large,
                     secondary: true,
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancelAction),
                   ),
                   const SizedBox(width: 8),
                   PushButton(
                     controlSize: ControlSize.large,
                     onPressed: onSave,
                     child: Text(
-                      widget.mode == _NoteDialogMode.create ? 'Create' : 'Save',
+                      widget.mode == _NoteDialogMode.create
+                          ? l10n.createAction
+                          : l10n.saveAction,
                     ),
                   ),
                 ],
@@ -3567,12 +3987,14 @@ class _NoteDialogState extends State<_NoteDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.cancelAction),
         ),
         FilledButton(
           onPressed: onSave,
           child: Text(
-            widget.mode == _NoteDialogMode.create ? 'Create' : 'Save',
+            widget.mode == _NoteDialogMode.create
+                ? l10n.createAction
+                : l10n.saveAction,
           ),
         ),
       ],
@@ -3592,4 +4014,39 @@ class _NoteDialogResult {
   final String content;
   final List<String> tags;
   final bool isPinned;
+}
+
+String _matterStatusLabel(AppLocalizations l10n, MatterStatus status) {
+  return switch (status) {
+    MatterStatus.active => l10n.matterStatusActive,
+    MatterStatus.paused => l10n.matterStatusPaused,
+    MatterStatus.completed => l10n.matterStatusCompleted,
+    MatterStatus.archived => l10n.matterStatusArchived,
+  };
+}
+
+String _matterStatusBadgeLabel(AppLocalizations l10n, MatterStatus status) {
+  return switch (status) {
+    MatterStatus.active => l10n.matterStatusBadgeActive,
+    MatterStatus.paused => l10n.matterStatusBadgePaused,
+    MatterStatus.completed => l10n.matterStatusBadgeCompleted,
+    MatterStatus.archived => l10n.matterStatusBadgeArchived,
+  };
+}
+
+String _matterStatusBadgeLetter(AppLocalizations l10n, MatterStatus status) {
+  return switch (status) {
+    MatterStatus.active => l10n.matterStatusBadgeLetterActive,
+    MatterStatus.paused => l10n.matterStatusBadgeLetterPaused,
+    MatterStatus.completed => l10n.matterStatusBadgeLetterCompleted,
+    MatterStatus.archived => l10n.matterStatusBadgeLetterArchived,
+  };
+}
+
+String _syncTargetTypeLabel(SyncTargetType type, AppLocalizations l10n) {
+  return switch (type) {
+    SyncTargetType.none => l10n.syncTargetTypeNone,
+    SyncTargetType.filesystem => l10n.syncTargetTypeFilesystem,
+    SyncTargetType.webdav => l10n.syncTargetTypeWebdav,
+  };
 }

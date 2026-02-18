@@ -282,7 +282,23 @@ class _InMemoryNoteRepository implements NoteRepository {
   }
 
   @override
+  Future<Note> addAttachments({
+    required String noteId,
+    required List<String> sourceFilePaths,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<List<Note>> listMatterTimeline(String matterId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Note> removeAttachment({
+    required String noteId,
+    required String attachmentPath,
+  }) {
     throw UnimplementedError();
   }
 

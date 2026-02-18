@@ -32,41 +32,68 @@ class ConflictService {
     for (final file in files.where(_isConflictFile)) {
       try {
         final relative = layout.relativePath(file);
-        final raw = await file.readAsString();
-        final parsed = _parseConflictContent(relative, raw);
+        if (_isTextConflictFile(relative)) {
+          final raw = await file.readAsString();
+          final parsed = _parseConflictContent(relative, raw);
 
-        final originalPath = _inferOriginalPath(relative, parsed.metadata);
-        final conflictType = _deriveType(
-          conflictPath: relative,
-          metadata: parsed.metadata,
-          originalPath: originalPath,
-        );
-        final detectedAtRaw = parsed.metadata['conflictDetectedAt'] as String?;
-        final detectedAt = detectedAtRaw == null
-            ? (await file.stat()).modified.toUtc()
-            : DateTime.tryParse(detectedAtRaw)?.toUtc() ??
-                  (await file.stat()).modified.toUtc();
+          final originalPath = _inferOriginalPath(relative, parsed.metadata);
+          final conflictType = _deriveType(
+            conflictPath: relative,
+            metadata: parsed.metadata,
+            originalPath: originalPath,
+          );
+          final detectedAtRaw =
+              parsed.metadata['conflictDetectedAt'] as String?;
+          final detectedAt = detectedAtRaw == null
+              ? (await file.stat()).modified.toUtc()
+              : DateTime.tryParse(detectedAtRaw)?.toUtc() ??
+                    (await file.stat()).modified.toUtc();
 
-        final title = _deriveTitle(
+          final title = _deriveTitle(
+            relative,
+            parsed.body,
+            originalPath,
+            conflictType,
+          );
+          final preview = _derivePreview(parsed.body, conflictType);
+
+          conflicts.add(
+            SyncConflict(
+              type: conflictType,
+              conflictPath: relative,
+              originalPath: originalPath,
+              detectedAt: detectedAt,
+              localDevice:
+                  (parsed.metadata['localDevice'] as String?) ?? 'unknown',
+              remoteDevice:
+                  (parsed.metadata['remoteDevice'] as String?) ?? 'unknown',
+              title: title,
+              preview: preview,
+            ),
+          );
+          continue;
+        }
+
+        final stat = await file.stat();
+        final originalPath = _inferOriginalPath(
           relative,
-          parsed.body,
-          originalPath,
-          conflictType,
+          const <String, dynamic>{},
         );
-        final preview = _derivePreview(parsed.body, conflictType);
-
         conflicts.add(
           SyncConflict(
-            type: conflictType,
+            type: SyncConflictType.unknown,
             conflictPath: relative,
             originalPath: originalPath,
-            detectedAt: detectedAt,
-            localDevice:
-                (parsed.metadata['localDevice'] as String?) ?? 'unknown',
-            remoteDevice:
-                (parsed.metadata['remoteDevice'] as String?) ?? 'unknown',
-            title: title,
-            preview: preview,
+            detectedAt: stat.modified.toUtc(),
+            localDevice: 'unknown',
+            remoteDevice: 'unknown',
+            title: _deriveTitle(
+              relative,
+              '',
+              originalPath,
+              SyncConflictType.unknown,
+            ),
+            preview: 'Binary conflict file',
           ),
         );
       } catch (_) {
@@ -79,12 +106,21 @@ class ConflictService {
   }
 
   Future<String?> readConflictContent(String conflictPath) async {
+    if (!_isTextConflictFile(conflictPath)) {
+      return null;
+    }
+
     final layout = await _layout();
     final file = layout.fromRelativePath(conflictPath);
     if (!await file.exists()) {
       return null;
     }
-    return file.readAsString();
+
+    try {
+      return await file.readAsString();
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> resolveConflict(String conflictPath) async {
@@ -95,10 +131,11 @@ class ConflictService {
 
   bool _isConflictFile(File file) {
     final name = p.basename(file.path);
-    if (!name.contains('.conflict.')) {
-      return false;
-    }
-    return name.endsWith('.md') || name.endsWith('.json');
+    return name.contains('.conflict.');
+  }
+
+  bool _isTextConflictFile(String path) {
+    return path.endsWith('.md') || path.endsWith('.json');
   }
 
   String _inferOriginalPath(

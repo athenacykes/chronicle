@@ -7,12 +7,14 @@ class AppSettings {
     required this.clientId,
     required this.syncConfig,
     required this.lastSyncAt,
+    this.localeTag = 'en',
   });
 
   final String? storageRootPath;
   final String clientId;
   final SyncConfig syncConfig;
   final DateTime? lastSyncAt;
+  final String localeTag;
 
   AppSettings copyWith({
     String? storageRootPath,
@@ -21,6 +23,7 @@ class AppSettings {
     SyncConfig? syncConfig,
     DateTime? lastSyncAt,
     bool clearLastSyncAt = false,
+    String? localeTag,
   }) {
     return AppSettings(
       storageRootPath: clearStorageRootPath
@@ -29,6 +32,7 @@ class AppSettings {
       clientId: clientId ?? this.clientId,
       syncConfig: syncConfig ?? this.syncConfig,
       lastSyncAt: clearLastSyncAt ? null : lastSyncAt ?? this.lastSyncAt,
+      localeTag: localeTag ?? this.localeTag,
     );
   }
 
@@ -38,6 +42,7 @@ class AppSettings {
       'clientId': clientId,
       'syncConfig': syncConfig.toJson(),
       'lastSyncAt': lastSyncAt == null ? null : formatIsoUtc(lastSyncAt!),
+      'localeTag': localeTag,
     };
   }
 
@@ -51,6 +56,7 @@ class AppSettings {
       lastSyncAt: json['lastSyncAt'] == null
           ? null
           : parseIsoUtc(json['lastSyncAt'] as String),
+      localeTag: (json['localeTag'] as String?) ?? 'en',
     );
   }
 
@@ -60,6 +66,7 @@ class AppSettings {
       clientId: clientId,
       syncConfig: SyncConfig.initial(),
       lastSyncAt: null,
+      localeTag: 'en',
     );
   }
 }

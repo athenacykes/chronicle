@@ -213,17 +213,14 @@ class WebDavSyncEngine {
 
           final conflictPath = _buildConflictPath(path, clientId);
           final conflictFile = layout.fromRelativePath(conflictPath);
-          final conflictContent = _buildConflictContent(
+          final conflictBytes = _buildConflictBytes(
             originalPath: path,
             localDevice: 'desktop-$clientId',
             localBytes: localBytes,
           );
 
-          await _fileSystemUtils.atomicWriteString(
-            conflictFile,
-            conflictContent,
-          );
-          await client.uploadFile(conflictPath, utf8.encode(conflictContent));
+          await _fileSystemUtils.atomicWriteBytes(conflictFile, conflictBytes);
+          await client.uploadFile(conflictPath, conflictBytes);
           conflictCount++;
         } catch (error) {
           errors.add('Conflict handling failed for $path: $error');
@@ -400,18 +397,18 @@ class WebDavSyncEngine {
     return '$base.conflict.$stamp.$clientId$ext';
   }
 
-  String _buildConflictContent({
+  List<int> _buildConflictBytes({
     required String originalPath,
     required String localDevice,
     required List<int> localBytes,
   }) {
     if (!originalPath.endsWith('.md')) {
-      return utf8.decode(localBytes);
+      return localBytes;
     }
 
     final now = _clock.nowUtc();
-    final body = utf8.decode(localBytes);
-    return '''---
+    final body = utf8.decode(localBytes, allowMalformed: true);
+    final content = '''---
 conflictType: "note"
 originalPath: "$originalPath"
 conflictDetectedAt: "${now.toIso8601String()}"
@@ -425,6 +422,7 @@ This file contains local changes that conflicted with a remote update.
 
 $body
 ''';
+    return utf8.encode(content);
   }
 
   Future<ChronicleLayout> _layout() async {
