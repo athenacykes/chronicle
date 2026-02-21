@@ -5046,6 +5046,10 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     final localeItems = AppLocalizations.supportedLocales
         .map((locale) => appLocaleTag(locale))
         .toList(growable: false);
+    final viewportSize = MediaQuery.sizeOf(context);
+    final sheetBodyWidth = useMacOSNativeUI
+        ? math.min(1400.0, math.max(760.0, viewportSize.width - 80))
+        : math.min(960.0, math.max(360.0, viewportSize.width - 64));
 
     String localeDisplayName(String localeTag) {
       final locale = resolveAppLocale(localeTag);
@@ -5089,7 +5093,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
     Widget buildStorageSection() {
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           useMacOSNativeUI
               ? MacosTextField(
@@ -5108,7 +5112,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
     Widget buildLanguageSection() {
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           useMacOSNativeUI
               ? Row(
@@ -5164,7 +5168,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
     Widget buildSyncSection() {
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           useMacOSNativeUI
               ? Row(
@@ -5294,13 +5298,8 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
       _SettingsSection.sync => buildSyncSection(),
     };
 
-    final viewportSize = MediaQuery.sizeOf(context);
-    final availableWidth = math.max(360.0, viewportSize.width - 64);
-    final availableHeight = math.max(280.0, viewportSize.height - 180);
-    final contentWidth = math.min(960.0, availableWidth);
-    final contentHeight = math.min(560.0, availableHeight);
-    final sectionNav = ListView(
-      padding: const EdgeInsets.only(top: 4),
+    final sectionNav = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         sectionNavItem(_SettingsSection.storage),
         sectionNavItem(_SettingsSection.language),
@@ -5309,31 +5308,36 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
     );
 
     final content = SizedBox(
-      width: contentWidth,
-      height: contentHeight,
+      width: sheetBodyWidth,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
             key: _kSettingsDialogNavPaneKey,
             width: 146,
             child: Align(alignment: Alignment.topLeft, child: sectionNav),
           ),
-          const VerticalDivider(width: 1),
+          const SizedBox(width: 14),
           Expanded(
             key: _kSettingsDialogContentPaneKey,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: sectionContent,
+            child: Container(
+              padding: const EdgeInsets.only(left: 14, top: 4),
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: Theme.of(context).dividerColor),
                 ),
               ),
+              child: Align(alignment: Alignment.topLeft, child: sectionContent),
             ),
           ),
         ],
+      ),
+    );
+
+    final scrollableContent = SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: sheetBodyWidth),
+        child: content,
       ),
     );
 
@@ -5380,33 +5384,46 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
     if (widget.useMacOSNativeUI) {
       return MacosSheet(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(l10n.settingsTitle, style: const TextStyle(fontSize: 18)),
-              const SizedBox(height: 12),
-              content,
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: <Widget>[
-                  PushButton(
-                    controlSize: ControlSize.large,
-                    secondary: true,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(l10n.cancelAction),
-                  ),
-                  const SizedBox(width: 8),
-                  PushButton(
-                    controlSize: ControlSize.large,
-                    onPressed: saveSettings,
-                    child: Text(l10n.saveAction),
-                  ),
-                ],
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: sheetBodyWidth),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(
+                      l10n.settingsTitle,
+                      style: const TextStyle(fontSize: 18),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    scrollableContent,
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: <Widget>[
+                        PushButton(
+                          controlSize: ControlSize.large,
+                          secondary: true,
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(l10n.cancelAction),
+                        ),
+                        const SizedBox(width: 8),
+                        PushButton(
+                          controlSize: ControlSize.large,
+                          onPressed: saveSettings,
+                          child: Text(l10n.saveAction),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
         ),
       );
@@ -5414,7 +5431,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
     return AlertDialog(
       title: Text(l10n.settingsTitle),
-      content: content,
+      content: scrollableContent,
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -5865,6 +5882,15 @@ class _MatterDialogState extends State<_MatterDialog> {
         ? l10n.createMatterTitle
         : l10n.editMatterTitle;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final viewportSize = MediaQuery.sizeOf(context);
+    final macSheetBodyWidth = math.min(
+      1400.0,
+      math.max(820.0, viewportSize.width - 80),
+    );
+    final macFormMaxHeight = math.min(
+      680.0,
+      math.max(340.0, viewportSize.height - 220),
+    );
 
     Widget buildColorSwatch(String hexColor) {
       final selected = _selectedColorHex == hexColor;
@@ -5907,7 +5933,6 @@ class _MatterDialogState extends State<_MatterDialog> {
           child: GestureDetector(
             onTap: () => setState(() => _selectedIconKey = option.key),
             child: Container(
-              width: 112,
               height: 58,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
@@ -5941,167 +5966,188 @@ class _MatterDialogState extends State<_MatterDialog> {
       );
     }
 
-    final content = SizedBox(
-      width: 660,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            isMacOSNativeUI
-                ? MacosTextField(
-                    controller: _titleController,
-                    placeholder: l10n.titleLabel,
-                  )
-                : TextField(
-                    controller: _titleController,
-                    decoration: InputDecoration(labelText: l10n.titleLabel),
+    Widget buildIconGrid() {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final gridWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : (isMacOSNativeUI ? macSheetBodyWidth : 660.0);
+          final columns = math.max(3, math.min(6, (gridWidth / 170).floor()));
+          final iconTileWidth = math.max(
+            112.0,
+            (gridWidth - ((columns - 1) * 8)) / columns,
+          );
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _kMatterIconOptions
+                .map(
+                  (option) => SizedBox(
+                    width: iconTileWidth,
+                    child: buildIconOption(option),
                   ),
-            const SizedBox(height: 8),
-            isMacOSNativeUI
-                ? MacosTextField(
-                    controller: _descriptionController,
-                    placeholder: l10n.descriptionLabel,
-                  )
-                : TextField(
-                    controller: _descriptionController,
-                    decoration: InputDecoration(
-                      labelText: l10n.descriptionLabel,
+                )
+                .toList(),
+          );
+        },
+      );
+    }
+
+    final formFields = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        isMacOSNativeUI
+            ? MacosTextField(
+                controller: _titleController,
+                placeholder: l10n.titleLabel,
+              )
+            : TextField(
+                controller: _titleController,
+                decoration: InputDecoration(labelText: l10n.titleLabel),
+              ),
+        const SizedBox(height: 8),
+        isMacOSNativeUI
+            ? MacosTextField(
+                controller: _descriptionController,
+                placeholder: l10n.descriptionLabel,
+              )
+            : TextField(
+                controller: _descriptionController,
+                decoration: InputDecoration(labelText: l10n.descriptionLabel),
+              ),
+        const SizedBox(height: 8),
+        isMacOSNativeUI
+            ? Row(
+                children: <Widget>[
+                  Text(l10n.statusLabel),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: MacosPopupButton<MatterStatus>(
+                      value: _status,
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() {
+                          _status = value;
+                        });
+                      },
+                      items: MatterStatus.values
+                          .map(
+                            (value) => MacosPopupMenuItem<MatterStatus>(
+                              value: value,
+                              child: Text(_matterStatusLabel(l10n, value)),
+                            ),
+                          )
+                          .toList(),
                     ),
                   ),
-            const SizedBox(height: 8),
-            isMacOSNativeUI
-                ? Row(
-                    children: <Widget>[
-                      Text(l10n.statusLabel),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: MacosPopupButton<MatterStatus>(
-                          value: _status,
-                          onChanged: (value) {
-                            if (value == null) {
-                              return;
-                            }
-                            setState(() {
-                              _status = value;
-                            });
-                          },
-                          items: MatterStatus.values
-                              .map(
-                                (value) => MacosPopupMenuItem<MatterStatus>(
-                                  value: value,
-                                  child: Text(_matterStatusLabel(l10n, value)),
-                                ),
-                              )
-                              .toList(),
-                        ),
+                ],
+              )
+            : DropdownButtonFormField<MatterStatus>(
+                initialValue: _status,
+                decoration: InputDecoration(labelText: l10n.statusLabel),
+                items: MatterStatus.values
+                    .map(
+                      (value) => DropdownMenuItem<MatterStatus>(
+                        value: value,
+                        child: Text(_matterStatusLabel(l10n, value)),
                       ),
-                    ],
-                  )
-                : DropdownButtonFormField<MatterStatus>(
-                    initialValue: _status,
-                    decoration: InputDecoration(labelText: l10n.statusLabel),
-                    items: MatterStatus.values
-                        .map(
-                          (value) => DropdownMenuItem<MatterStatus>(
-                            value: value,
-                            child: Text(_matterStatusLabel(l10n, value)),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
-                      setState(() {
-                        _status = value;
-                      });
-                    },
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) {
+                    return;
+                  }
+                  setState(() {
+                    _status = value;
+                  });
+                },
+              ),
+        const SizedBox(height: 8),
+        Text(l10n.matterPresetColorsLabel),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _kMatterPresetColors
+              .map((hexColor) => buildColorSwatch(hexColor))
+              .toList(),
+        ),
+        const SizedBox(height: 10),
+        isMacOSNativeUI
+            ? Row(
+                children: <Widget>[
+                  PushButton(
+                    key: _kMatterColorCustomButtonKey,
+                    controlSize: ControlSize.regular,
+                    secondary: true,
+                    onPressed: () => _pickCustomColor(context),
+                    child: Text(l10n.matterCustomColorAction),
                   ),
-            const SizedBox(height: 8),
-            Text(l10n.matterPresetColorsLabel),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _kMatterPresetColors
-                  .map((hexColor) => buildColorSwatch(hexColor))
-                  .toList(),
-            ),
-            const SizedBox(height: 10),
-            isMacOSNativeUI
-                ? Row(
-                    children: <Widget>[
-                      PushButton(
-                        key: _kMatterColorCustomButtonKey,
-                        controlSize: ControlSize.regular,
-                        secondary: true,
-                        onPressed: () => _pickCustomColor(context),
-                        child: Text(l10n.matterCustomColorAction),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: MacosTextField(
-                          key: _kMatterColorPreviewFieldKey,
-                          controller: _colorPreviewController,
-                          readOnly: true,
-                          placeholder: l10n.colorHexLabel,
-                        ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: <Widget>[
-                      OutlinedButton(
-                        key: _kMatterColorCustomButtonKey,
-                        onPressed: () => _pickCustomColor(context),
-                        child: Text(l10n.matterCustomColorAction),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          key: _kMatterColorPreviewFieldKey,
-                          controller: _colorPreviewController,
-                          readOnly: true,
-                          decoration: InputDecoration(
-                            labelText: l10n.colorHexLabel,
-                            hintText: l10n.colorHexHint,
-                          ),
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: MacosTextField(
+                      key: _kMatterColorPreviewFieldKey,
+                      controller: _colorPreviewController,
+                      readOnly: true,
+                      placeholder: l10n.colorHexLabel,
+                    ),
                   ),
-            const SizedBox(height: 12),
-            Text(l10n.matterIconPickerLabel),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _kMatterIconOptions
-                  .map((option) => buildIconOption(option))
-                  .toList(),
-            ),
-            const SizedBox(height: 12),
-            isMacOSNativeUI
-                ? Row(
-                    children: <Widget>[
-                      MacosSwitch(
-                        value: _isPinned,
-                        onChanged: (value) => setState(() => _isPinned = value),
+                ],
+              )
+            : Row(
+                children: <Widget>[
+                  OutlinedButton(
+                    key: _kMatterColorCustomButtonKey,
+                    onPressed: () => _pickCustomColor(context),
+                    child: Text(l10n.matterCustomColorAction),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      key: _kMatterColorPreviewFieldKey,
+                      controller: _colorPreviewController,
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: l10n.colorHexLabel,
+                        hintText: l10n.colorHexHint,
                       ),
-                      const SizedBox(width: 8),
-                      Text(l10n.pinnedLabel),
-                    ],
-                  )
-                : SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
+              ),
+        const SizedBox(height: 12),
+        Text(l10n.matterIconPickerLabel),
+        const SizedBox(height: 8),
+        buildIconGrid(),
+        const SizedBox(height: 12),
+        isMacOSNativeUI
+            ? Row(
+                children: <Widget>[
+                  MacosSwitch(
                     value: _isPinned,
                     onChanged: (value) => setState(() => _isPinned = value),
-                    title: Text(l10n.pinnedLabel),
                   ),
-          ],
-        ),
-      ),
+                  const SizedBox(width: 8),
+                  Text(l10n.pinnedLabel),
+                ],
+              )
+            : SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _isPinned,
+                onChanged: (value) => setState(() => _isPinned = value),
+                title: Text(l10n.pinnedLabel),
+              ),
+      ],
+    );
+
+    final content = SizedBox(
+      width: isMacOSNativeUI ? double.infinity : 660,
+      child: isMacOSNativeUI
+          ? formFields
+          : SingleChildScrollView(child: formFields),
     );
 
     void onSave() {
@@ -6119,38 +6165,49 @@ class _MatterDialogState extends State<_MatterDialog> {
 
     if (isMacOSNativeUI) {
       return MacosSheet(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(title, style: const TextStyle(fontSize: 18)),
-              const SizedBox(height: 12),
-              content,
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: <Widget>[
-                  PushButton(
-                    controlSize: ControlSize.large,
-                    secondary: true,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(l10n.cancelAction),
-                  ),
-                  const SizedBox(width: 8),
-                  PushButton(
-                    controlSize: ControlSize.large,
-                    onPressed: onSave,
-                    child: Text(
-                      widget.mode == _MatterDialogMode.create
-                          ? l10n.createAction
-                          : l10n.saveAction,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: macSheetBodyWidth),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Text(title, style: const TextStyle(fontSize: 18)),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: macFormMaxHeight),
+                      child: SingleChildScrollView(child: content),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: <Widget>[
+                        PushButton(
+                          controlSize: ControlSize.large,
+                          secondary: true,
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(l10n.cancelAction),
+                        ),
+                        const SizedBox(width: 8),
+                        PushButton(
+                          controlSize: ControlSize.large,
+                          onPressed: onSave,
+                          child: Text(
+                            widget.mode == _MatterDialogMode.create
+                                ? l10n.createAction
+                                : l10n.saveAction,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
+            ),
           ),
         ),
       );
