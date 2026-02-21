@@ -315,6 +315,34 @@
   "webDavPasswordLabel": "WebDAV Password",
   "autoSyncIntervalMinutesLabel": "Auto-sync interval (minutes)",
   "deletionFailSafeLabel": "Deletion fail-safe",
+  "syncAdvancedActionsTooltip": "Advanced sync actions",
+  "syncRecoverLocalWinsAction": "Re-upload local to remote",
+  "syncRecoverRemoteWinsAction": "Re-download remote to local",
+  "syncForceDeletionNextRunAction": "Force apply deletions (next run)",
+  "syncRecoverLocalWinsTitle": "Local Wins Recovery",
+  "syncRecoverLocalWinsWarning": "This will overwrite remote data with local data and may delete remote files that do not exist locally. Back up first if needed.",
+  "syncRecoverRemoteWinsTitle": "Remote Wins Recovery",
+  "syncRecoverRemoteWinsWarning": "This will overwrite local data with remote data and may delete local files that do not exist remotely. Back up first if needed.",
+  "syncForceDeletionTitle": "Force Apply Deletions",
+  "syncForceDeletionWarning": "This arms a one-time override for deletion fail-safe on the next sync run. {summary}\nProceed only if you have a backup.",
+  "@syncForceDeletionWarning": {
+    "placeholders": {
+      "summary": {}
+    }
+  },
+  "syncForceDeletionSummary": "Current blocked plan: {candidate} deletions over {tracked} tracked files.",
+  "@syncForceDeletionSummary": {
+    "placeholders": {
+      "candidate": {
+        "type": "int"
+      },
+      "tracked": {
+        "type": "int"
+      }
+    }
+  },
+  "syncForceDeletionSummaryUnknown": "No current deletion-count estimate is available.",
+  "syncForceDeletionArmedStatus": "Force deletion override armed",
   "createMatterTitle": "Create Matter",
   "editMatterTitle": "Edit Matter",
   "statusLabel": "Status",

@@ -7,7 +7,9 @@ import 'package:intl/intl.dart';
 import '../../core/clock.dart';
 import '../../core/file_hash.dart';
 import '../../core/file_system_utils.dart';
+import '../../domain/entities/sync_blocker.dart';
 import '../../domain/entities/sync_result.dart';
+import '../../domain/entities/sync_run_options.dart';
 import '../local_fs/chronicle_layout.dart';
 import '../local_fs/chronicle_storage_initializer.dart';
 import '../local_fs/storage_root_locator.dart';
@@ -41,12 +43,14 @@ class WebDavSyncEngine {
     required WebDavClient client,
     required String clientId,
     required bool failSafe,
-    bool allowMassDeletion = false,
+    required SyncRunOptions options,
+    required String syncTargetUrl,
+    required String syncUsername,
   }) async {
     final startedAt = _clock.nowUtc();
     _debugLog(
       'Starting sync run for client=$clientId failSafe=$failSafe '
-      'allowMassDeletion=$allowMassDeletion',
+      'mode=${options.mode.name}',
     );
     final errors = <String>[];
     var uploadedCount = 0;
@@ -67,7 +71,41 @@ class WebDavSyncEngine {
         await _writeLock(client, lockPath, clientId);
       });
 
-      final previousState = await _syncStateStore.load();
+      final localFormatVersion = await _readLocalFormatVersion(layout);
+      final remoteFormatVersion = await _readRemoteFormatVersion(client);
+      final versionBlocker = _buildVersionBlocker(
+        mode: options.mode,
+        localFormatVersion: localFormatVersion,
+        remoteFormatVersion: remoteFormatVersion,
+      );
+      if (versionBlocker != null) {
+        return SyncResult(
+          uploadedCount: 0,
+          downloadedCount: 0,
+          conflictCount: 0,
+          deletedCount: 0,
+          startedAt: startedAt,
+          endedAt: _clock.nowUtc(),
+          errors: const <String>[],
+          blocker: versionBlocker,
+        );
+      }
+
+      final syncStateNamespace = _syncStateStore.buildNamespace(
+        syncTargetUrl: syncTargetUrl,
+        username: syncUsername,
+        storageRootPath: layout.rootDirectory.path,
+        localFormatVersion: localFormatVersion,
+      );
+
+      if (options.mode == SyncRunMode.recoverLocalWins ||
+          options.mode == SyncRunMode.recoverRemoteWins) {
+        await _syncStateStore.clear(namespace: syncStateNamespace);
+      }
+
+      final previousState = await _syncStateStore.load(
+        namespace: syncStateNamespace,
+      );
       final localFiles = await _listLocalFiles(layout);
       final remoteFiles = await _listRemoteFiles(client);
       _debugLog(
@@ -90,6 +128,28 @@ class WebDavSyncEngine {
         final local = localFiles[path];
         final remote = remoteFiles[path];
         final previous = previousState[path];
+
+        if (options.mode == SyncRunMode.recoverLocalWins) {
+          await _planRecoverLocalWins(
+            path: path,
+            local: local,
+            remote: remote,
+            uploads: uploads,
+            deleteRemotes: deleteRemotes,
+          );
+          continue;
+        }
+
+        if (options.mode == SyncRunMode.recoverRemoteWins) {
+          await _planRecoverRemoteWins(
+            path: path,
+            local: local,
+            remote: remote,
+            downloads: downloads,
+            deleteLocals: deleteLocals,
+          );
+          continue;
+        }
 
         if (local != null && remote == null) {
           final localHash = await sha256ForFile(local);
@@ -163,6 +223,10 @@ class WebDavSyncEngine {
 
       final candidateDeletionCount = deleteLocals.length + deleteRemotes.length;
       final trackedCount = allPaths.isEmpty ? 1 : allPaths.length;
+      final allowMassDeletion =
+          options.mode == SyncRunMode.forceApplyDeletionsOnce ||
+          options.mode == SyncRunMode.recoverLocalWins ||
+          options.mode == SyncRunMode.recoverRemoteWins;
       if (failSafe &&
           !allowMassDeletion &&
           candidateDeletionCount / trackedCount > 0.2) {
@@ -170,9 +234,24 @@ class WebDavSyncEngine {
           'Fail-safe blocked deletions: candidate=$candidateDeletionCount '
           'tracked=$trackedCount',
         );
-        throw Exception(
-          'Sync fail-safe blocked $candidateDeletionCount deletions '
-          'out of $trackedCount tracked files',
+        return SyncResult(
+          uploadedCount: 0,
+          downloadedCount: 0,
+          conflictCount: 0,
+          deletedCount: 0,
+          startedAt: startedAt,
+          endedAt: _clock.nowUtc(),
+          errors: const <String>[],
+          blocker: SyncBlocker(
+            type: SyncBlockerType.failSafeDeletionBlocked,
+            candidateDeletionCount: candidateDeletionCount,
+            trackedCount: trackedCount,
+            localFormatVersion: localFormatVersion,
+            remoteFormatVersion: remoteFormatVersion,
+            message:
+                'Sync fail-safe blocked $candidateDeletionCount deletions '
+                'out of $trackedCount tracked files',
+          ),
         );
       }
 
@@ -276,7 +355,10 @@ class WebDavSyncEngine {
         );
       }
 
-      await _syncStateStore.save(nextState);
+      await _syncStateStore.save(
+        namespace: syncStateNamespace,
+        states: nextState,
+      );
       _debugLog('Saved sync state for ${nextState.length} paths.');
     } finally {
       heartbeat?.cancel();
@@ -297,6 +379,7 @@ class WebDavSyncEngine {
       startedAt: startedAt,
       endedAt: endedAt,
       errors: errors,
+      blocker: null,
     );
   }
 
@@ -474,6 +557,130 @@ $body
     final root = await _storageRootLocator.requireRootDirectory();
     await _storageInitializer.ensureInitialized(root);
     return ChronicleLayout(root);
+  }
+
+  Future<int> _readLocalFormatVersion(ChronicleLayout layout) async {
+    if (!await layout.infoFile.exists()) {
+      return 0;
+    }
+    try {
+      final raw = await layout.infoFile.readAsString();
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      return (decoded['formatVersion'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<int?> _readRemoteFormatVersion(WebDavClient client) async {
+    try {
+      final bytes = await client.downloadFile('info.json');
+      final raw = utf8.decode(bytes, allowMalformed: true);
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      return (decoded['formatVersion'] as num?)?.toInt();
+    } catch (error) {
+      if (_isRemoteInfoMissing(error)) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  bool _isRemoteInfoMissing(Object error) {
+    if (error is HttpException && error.message.contains('404')) {
+      return true;
+    }
+    if (error is Exception &&
+        error.toString().toLowerCase().contains('file not found')) {
+      return true;
+    }
+    if (error is SocketException) {
+      return false;
+    }
+    final lower = error.toString().toLowerCase();
+    return lower.contains('404') || lower.contains('not found');
+  }
+
+  SyncBlocker? _buildVersionBlocker({
+    required SyncRunMode mode,
+    required int localFormatVersion,
+    required int? remoteFormatVersion,
+  }) {
+    if (remoteFormatVersion == null) {
+      return null;
+    }
+    if (remoteFormatVersion > localFormatVersion) {
+      return SyncBlocker(
+        type: SyncBlockerType.versionMismatchClientTooOld,
+        localFormatVersion: localFormatVersion,
+        remoteFormatVersion: remoteFormatVersion,
+        message:
+            'Remote format version ($remoteFormatVersion) is newer than local '
+            'format version ($localFormatVersion). Upgrade Chronicle first.',
+      );
+    }
+    if (remoteFormatVersion < localFormatVersion &&
+        mode != SyncRunMode.recoverLocalWins) {
+      return SyncBlocker(
+        type: SyncBlockerType.versionMismatchRemoteOlder,
+        localFormatVersion: localFormatVersion,
+        remoteFormatVersion: remoteFormatVersion,
+        message:
+            'Remote format version ($remoteFormatVersion) is older than local '
+            'format version ($localFormatVersion). Use Local Wins recovery.',
+      );
+    }
+    return null;
+  }
+
+  Future<void> _planRecoverLocalWins({
+    required String path,
+    required File? local,
+    required WebDavFileMetadata? remote,
+    required List<String> uploads,
+    required List<String> deleteRemotes,
+  }) async {
+    if (local != null && remote == null) {
+      uploads.add(path);
+      return;
+    }
+    if (local == null && remote != null) {
+      deleteRemotes.add(path);
+      return;
+    }
+    if (local == null || remote == null) {
+      return;
+    }
+    final localHash = await sha256ForFile(local);
+    final remoteHash = _remoteHash(remote);
+    if (localHash != remoteHash) {
+      uploads.add(path);
+    }
+  }
+
+  Future<void> _planRecoverRemoteWins({
+    required String path,
+    required File? local,
+    required WebDavFileMetadata? remote,
+    required List<String> downloads,
+    required List<String> deleteLocals,
+  }) async {
+    if (local != null && remote == null) {
+      deleteLocals.add(path);
+      return;
+    }
+    if (local == null && remote != null) {
+      downloads.add(path);
+      return;
+    }
+    if (local == null || remote == null) {
+      return;
+    }
+    final localHash = await sha256ForFile(local);
+    final remoteHash = _remoteHash(remote);
+    if (localHash != remoteHash) {
+      downloads.add(path);
+    }
   }
 }
 

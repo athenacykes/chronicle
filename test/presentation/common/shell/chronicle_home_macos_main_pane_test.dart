@@ -8,8 +8,10 @@ import 'package:chronicle/domain/entities/note_link.dart';
 import 'package:chronicle/domain/entities/note_search_hit.dart';
 import 'package:chronicle/domain/entities/phase.dart';
 import 'package:chronicle/domain/entities/search_query.dart';
+import 'package:chronicle/domain/entities/sync_blocker.dart';
 import 'package:chronicle/domain/entities/sync_conflict.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
+import 'package:chronicle/domain/entities/sync_run_options.dart';
 import 'package:chronicle/domain/entities/sync_result.dart';
 import 'package:chronicle/domain/repositories/link_repository.dart';
 import 'package:chronicle/domain/repositories/matter_repository.dart';
@@ -409,6 +411,10 @@ void main() {
     expect(find.byKey(const Key('sidebar_sync_now_button')), findsOneWidget);
     expect(find.byKey(const Key('sidebar_sync_status')), findsOneWidget);
     expect(
+      find.byKey(const Key('sidebar_sync_advanced_button')),
+      findsOneWidget,
+    );
+    expect(
       find.byWidgetPredicate(
         (widget) =>
             widget is MacosIcon &&
@@ -444,11 +450,112 @@ void main() {
     expect(find.byKey(const Key('sidebar_sync_now_button')), findsOneWidget);
     expect(find.byKey(const Key('sidebar_sync_status')), findsOneWidget);
     expect(
+      find.byKey(const Key('sidebar_sync_advanced_button')),
+      findsOneWidget,
+    );
+    expect(
       find.descendant(
         of: find.byType(AppBar),
         matching: find.byIcon(Icons.sync),
       ),
       findsNothing,
+    );
+  });
+
+  testWidgets('force deletion override is one-time in material shell', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    final syncRepository = _NoopSyncRepository();
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          syncRepositoryProvider.overrideWithValue(syncRepository),
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_advanced_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Force apply deletions (next run)').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Force Apply Deletions'), findsOneWidget);
+    await tester.tap(find.text('Continue').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Force deletion override armed'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_now_button')));
+    await tester.pumpAndSettle();
+    expect(
+      syncRepository.lastOptions?.mode,
+      SyncRunMode.forceApplyDeletionsOnce,
+    );
+    expect(find.textContaining('Force deletion override armed'), findsNothing);
+  });
+
+  testWidgets('blocked sync status is shown when repository returns blocker', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    final now = DateTime.utc(2026, 2, 21, 11, 0);
+    final syncRepository = _NoopSyncRepository(
+      nextResult: SyncResult(
+        uploadedCount: 0,
+        downloadedCount: 0,
+        conflictCount: 0,
+        deletedCount: 0,
+        startedAt: now,
+        endedAt: now,
+        errors: const <String>[],
+        blocker: const SyncBlocker(
+          type: SyncBlockerType.versionMismatchRemoteOlder,
+          localFormatVersion: 2,
+          remoteFormatVersion: 1,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          syncRepositoryProvider.overrideWithValue(syncRepository),
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_now_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Sync blocked:'), findsOneWidget);
+    expect(
+      find.byKey(const Key('sidebar_sync_advanced_button')),
+      findsOneWidget,
     );
   });
 
@@ -798,7 +905,11 @@ class _MemorySearchRepository implements SearchRepository {
 }
 
 class _NoopSyncRepository implements SyncRepository {
+  _NoopSyncRepository({SyncResult? nextResult}) : _nextResult = nextResult;
+
   SyncConfig _config = SyncConfig.initial();
+  final SyncResult? _nextResult;
+  SyncRunOptions? lastOptions;
 
   @override
   Future<SyncConfig> getConfig() async => _config;
@@ -812,8 +923,11 @@ class _NoopSyncRepository implements SyncRepository {
   }
 
   @override
-  Future<SyncResult> syncNow({bool allowMassDeletion = false}) async {
-    return SyncResult.empty(DateTime.now().toUtc());
+  Future<SyncResult> syncNow({
+    SyncRunOptions options = const SyncRunOptions(),
+  }) async {
+    lastOptions = options;
+    return _nextResult ?? SyncResult.empty(DateTime.now().toUtc());
   }
 }
 

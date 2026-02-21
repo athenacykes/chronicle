@@ -22,6 +22,7 @@ import '../../../domain/entities/matter_graph_node.dart';
 import '../../../domain/entities/matter_sections.dart';
 import '../../../domain/entities/note.dart';
 import '../../../domain/entities/phase.dart';
+import '../../../domain/entities/sync_blocker.dart';
 import '../../../domain/entities/sync_conflict.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
@@ -876,8 +877,21 @@ class _SidebarSyncPanel extends ConsumerWidget {
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final settings = ref.watch(settingsControllerProvider).valueOrNull;
     final syncState = ref.watch(syncControllerProvider);
+    final syncData = syncState.valueOrNull;
+    final enableAdvancedSyncRecovery = _kEnableAdvancedSyncRecovery;
+    final blocker = syncData?.blocker;
+    final remoteRecoveryEnabled =
+        blocker == null ||
+        blocker.type == SyncBlockerType.failSafeDeletionBlocked;
+    final deletionSummary =
+        blocker?.type == SyncBlockerType.failSafeDeletionBlocked
+        ? l10n.syncForceDeletionSummary(
+            blocker?.candidateDeletionCount ?? 0,
+            blocker?.trackedCount ?? 0,
+          )
+        : l10n.syncForceDeletionSummaryUnknown;
 
-    final status = syncState.when(
+    var status = syncState.when(
       loading: () => l10n.syncWorkingStatus,
       error: (error, _) => l10n.syncErrorStatus(error.toString()),
       data: (sync) {
@@ -887,10 +901,89 @@ class _SidebarSyncPanel extends ConsumerWidget {
         return l10n.syncSummaryStatus(sync.lastMessage, lastSyncLabel);
       },
     );
+    if (syncData?.forceDeletionArmed ?? false) {
+      status = '$status | ${l10n.syncForceDeletionArmedStatus}';
+    }
 
     Future<void> runSyncNow() async {
       await ref.read(syncControllerProvider.notifier).runSyncNow();
       await ref.read(settingsControllerProvider.notifier).refresh();
+    }
+
+    Future<bool> confirmAction({
+      required String title,
+      required String message,
+    }) async {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.cancelAction),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.continueAction),
+            ),
+          ],
+        ),
+      );
+      return confirmed == true;
+    }
+
+    Future<void> runRecoverLocalWins() async {
+      final confirmed = await confirmAction(
+        title: l10n.syncRecoverLocalWinsTitle,
+        message: l10n.syncRecoverLocalWinsWarning,
+      );
+      if (!confirmed) {
+        return;
+      }
+      await ref.read(syncControllerProvider.notifier).runRecoverLocalWins();
+      await ref.read(settingsControllerProvider.notifier).refresh();
+    }
+
+    Future<void> runRecoverRemoteWins() async {
+      if (!remoteRecoveryEnabled) {
+        return;
+      }
+      final confirmed = await confirmAction(
+        title: l10n.syncRecoverRemoteWinsTitle,
+        message: l10n.syncRecoverRemoteWinsWarning,
+      );
+      if (!confirmed) {
+        return;
+      }
+      await ref.read(syncControllerProvider.notifier).runRecoverRemoteWins();
+      await ref.read(settingsControllerProvider.notifier).refresh();
+    }
+
+    Future<void> armForceDeletionOverride() async {
+      final confirmed = await confirmAction(
+        title: l10n.syncForceDeletionTitle,
+        message: l10n.syncForceDeletionWarning(deletionSummary),
+      );
+      if (!confirmed) {
+        return;
+      }
+      ref.read(syncControllerProvider.notifier).armForceApplyDeletionsOnce();
+    }
+
+    Future<void> handleAdvancedAction(_SyncAdvancedAction action) async {
+      switch (action) {
+        case _SyncAdvancedAction.recoverLocalWins:
+          await runRecoverLocalWins();
+          return;
+        case _SyncAdvancedAction.recoverRemoteWins:
+          await runRecoverRemoteWins();
+          return;
+        case _SyncAdvancedAction.armForceDeletion:
+          await armForceDeletionOverride();
+          return;
+      }
     }
 
     if (isMacOSNativeUI) {
@@ -899,21 +992,71 @@ class _SidebarSyncPanel extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            PushButton(
-              key: _kSidebarSyncNowButtonKey,
-              controlSize: ControlSize.regular,
-              secondary: true,
-              onPressed: () {
-                unawaited(runSyncNow());
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  const MacosIcon(CupertinoIcons.arrow_2_circlepath, size: 13),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: PushButton(
+                    key: _kSidebarSyncNowButtonKey,
+                    controlSize: ControlSize.regular,
+                    secondary: true,
+                    onPressed: () {
+                      unawaited(runSyncNow());
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const MacosIcon(
+                          CupertinoIcons.arrow_2_circlepath,
+                          size: 13,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(l10n.syncNowAction),
+                      ],
+                    ),
+                  ),
+                ),
+                if (enableAdvancedSyncRecovery) ...<Widget>[
                   const SizedBox(width: 6),
-                  Text(l10n.syncNowAction),
+                  MacosPulldownButton(
+                    key: _kSidebarSyncAdvancedButtonKey,
+                    icon: CupertinoIcons.ellipsis_circle,
+                    items: <MacosPulldownMenuEntry>[
+                      MacosPulldownMenuItem(
+                        title: Text(l10n.syncRecoverLocalWinsAction),
+                        onTap: () {
+                          unawaited(
+                            handleAdvancedAction(
+                              _SyncAdvancedAction.recoverLocalWins,
+                            ),
+                          );
+                        },
+                      ),
+                      MacosPulldownMenuItem(
+                        title: Text(l10n.syncRecoverRemoteWinsAction),
+                        enabled: remoteRecoveryEnabled,
+                        onTap: () {
+                          unawaited(
+                            handleAdvancedAction(
+                              _SyncAdvancedAction.recoverRemoteWins,
+                            ),
+                          );
+                        },
+                      ),
+                      const MacosPulldownMenuDivider(),
+                      MacosPulldownMenuItem(
+                        title: Text(l10n.syncForceDeletionNextRunAction),
+                        onTap: () {
+                          unawaited(
+                            handleAdvancedAction(
+                              _SyncAdvancedAction.armForceDeletion,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ],
-              ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(
@@ -935,13 +1078,43 @@ class _SidebarSyncPanel extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          FilledButton.tonalIcon(
-            key: _kSidebarSyncNowButtonKey,
-            onPressed: () async {
-              await runSyncNow();
-            },
-            icon: const Icon(Icons.sync),
-            label: Text(l10n.syncNowAction),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  key: _kSidebarSyncNowButtonKey,
+                  onPressed: () async {
+                    await runSyncNow();
+                  },
+                  icon: const Icon(Icons.sync),
+                  label: Text(l10n.syncNowAction),
+                ),
+              ),
+              if (enableAdvancedSyncRecovery)
+                PopupMenuButton<_SyncAdvancedAction>(
+                  key: _kSidebarSyncAdvancedButtonKey,
+                  tooltip: l10n.syncAdvancedActionsTooltip,
+                  onSelected: (action) async {
+                    await handleAdvancedAction(action);
+                  },
+                  itemBuilder: (_) => <PopupMenuEntry<_SyncAdvancedAction>>[
+                    PopupMenuItem<_SyncAdvancedAction>(
+                      value: _SyncAdvancedAction.recoverLocalWins,
+                      child: Text(l10n.syncRecoverLocalWinsAction),
+                    ),
+                    PopupMenuItem<_SyncAdvancedAction>(
+                      value: _SyncAdvancedAction.recoverRemoteWins,
+                      enabled: remoteRecoveryEnabled,
+                      child: Text(l10n.syncRecoverRemoteWinsAction),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem<_SyncAdvancedAction>(
+                      value: _SyncAdvancedAction.armForceDeletion,
+                      child: Text(l10n.syncForceDeletionNextRunAction),
+                    ),
+                  ],
+                ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(
@@ -1320,6 +1493,14 @@ const Key _kNoteEditorUtilityAttachmentsKey = Key(
 const Key _kNoteEditorUtilityLinkedKey = Key('note_editor_utility_linked');
 const Key _kSidebarSyncNowButtonKey = Key('sidebar_sync_now_button');
 const Key _kSidebarSyncStatusKey = Key('sidebar_sync_status');
+const Key _kSidebarSyncAdvancedButtonKey = Key('sidebar_sync_advanced_button');
+const bool _kEnableAdvancedSyncRecovery = true;
+
+enum _SyncAdvancedAction {
+  recoverLocalWins,
+  recoverRemoteWins,
+  armForceDeletion,
+}
 
 Widget _adaptiveLoadingIndicator(BuildContext context, {Key? key}) {
   if (_isMacOSNativeUIContext(context)) {
@@ -1462,6 +1643,7 @@ class _MacosMatterViewModeControl extends StatefulWidget {
 class _MacosMatterViewModeControlState
     extends State<_MacosMatterViewModeControl> {
   late final MacosTabController _controller;
+  bool _isSyncingController = false;
 
   @override
   void initState() {
@@ -1477,7 +1659,12 @@ class _MacosMatterViewModeControlState
     super.didUpdateWidget(oldWidget);
     final selectedIndex = _matterViewModes.indexOf(widget.selected);
     if (selectedIndex != _controller.index) {
-      _controller.index = selectedIndex;
+      _isSyncingController = true;
+      try {
+        _controller.index = selectedIndex;
+      } finally {
+        _isSyncingController = false;
+      }
     }
   }
 
@@ -1490,6 +1677,9 @@ class _MacosMatterViewModeControlState
   }
 
   void _onControllerChanged() {
+    if (_isSyncingController) {
+      return;
+    }
     widget.onChanged(_matterViewModes[_controller.index]);
   }
 
@@ -1529,6 +1719,7 @@ class _MacosPhaseControl extends StatefulWidget {
 
 class _MacosPhaseControlState extends State<_MacosPhaseControl> {
   MacosTabController? _controller;
+  bool _isSyncingController = false;
 
   @override
   void dispose() {
@@ -1575,7 +1766,12 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
         length: entries.length,
       )..addListener(_onControllerChanged);
     } else if (_controller!.index != selectedIndex) {
-      _controller!.index = selectedIndex;
+      _isSyncingController = true;
+      try {
+        _controller!.index = selectedIndex;
+      } finally {
+        _isSyncingController = false;
+      }
     }
 
     return KeyedSubtree(
@@ -1603,6 +1799,9 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
   }
 
   void _onControllerChanged() {
+    if (_isSyncingController) {
+      return;
+    }
     final controller = _controller;
     if (controller == null) {
       return;

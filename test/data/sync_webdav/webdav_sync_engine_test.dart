@@ -11,7 +11,10 @@ import 'package:chronicle/data/sync_webdav/in_memory_webdav_client.dart';
 import 'package:chronicle/data/sync_webdav/local_sync_state_store.dart';
 import 'package:chronicle/data/sync_webdav/webdav_sync_engine.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
+import 'package:chronicle/domain/entities/sync_blocker.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
+import 'package:chronicle/domain/entities/sync_run_options.dart';
+import 'package:chronicle/domain/entities/sync_result.dart';
 import 'package:chronicle/domain/repositories/settings_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,6 +24,8 @@ void main() {
   late _InMemorySettingsRepository settingsRepository;
   late WebDavSyncEngine syncEngine;
   late InMemoryWebDavClient webDavClient;
+  const syncTargetUrl = 'https://example.com/dav/Chronicle';
+  const syncUsername = 'tester';
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('chronicle-sync-test-');
@@ -61,6 +66,17 @@ void main() {
     }
   });
 
+  Future<SyncResult> runSync({SyncRunMode mode = SyncRunMode.normal}) {
+    return syncEngine.run(
+      client: webDavClient,
+      clientId: 'client-sync',
+      failSafe: true,
+      options: SyncRunOptions(mode: mode),
+      syncTargetUrl: syncTargetUrl,
+      syncUsername: syncUsername,
+    );
+  }
+
   test('classifies uploads and downloads', () async {
     final layout = ChronicleLayout(rootDir);
     await const FileSystemUtils().atomicWriteString(
@@ -73,11 +89,7 @@ void main() {
       utf8.encode('remote'),
     );
 
-    final result = await syncEngine.run(
-      client: webDavClient,
-      clientId: 'client-sync',
-      failSafe: true,
-    );
+    final result = await runSync();
 
     expect(result.uploadedCount, greaterThanOrEqualTo(1));
     expect(result.downloadedCount, greaterThanOrEqualTo(1));
@@ -99,11 +111,7 @@ void main() {
       utf8.encode('v1'),
     );
 
-    await syncEngine.run(
-      client: webDavClient,
-      clientId: 'client-sync',
-      failSafe: true,
-    );
+    await runSync();
 
     await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
     await webDavClient.uploadFile(
@@ -111,11 +119,7 @@ void main() {
       utf8.encode('v2-remote'),
     );
 
-    final result = await syncEngine.run(
-      client: webDavClient,
-      clientId: 'client-sync',
-      failSafe: true,
-    );
+    final result = await runSync();
 
     expect(result.conflictCount, 1);
 
@@ -135,22 +139,14 @@ void main() {
     await const FileSystemUtils().atomicWriteBytes(localFile, baseBytes);
     await webDavClient.uploadFile('resources/photo.png', baseBytes);
 
-    await syncEngine.run(
-      client: webDavClient,
-      clientId: 'client-sync',
-      failSafe: true,
-    );
+    await runSync();
 
     final localVersion = <int>[137, 80, 78, 71, 1, 2, 3, 4];
     final remoteVersion = <int>[137, 80, 78, 71, 9, 8, 7, 6];
     await const FileSystemUtils().atomicWriteBytes(localFile, localVersion);
     await webDavClient.uploadFile('resources/photo.png', remoteVersion);
 
-    final result = await syncEngine.run(
-      client: webDavClient,
-      clientId: 'client-sync',
-      failSafe: true,
-    );
+    final result = await runSync();
     expect(result.conflictCount, 1);
 
     final localAfterSync = await localFile.readAsBytes();
@@ -175,11 +171,7 @@ void main() {
       );
     }
 
-    await syncEngine.run(
-      client: webDavClient,
-      clientId: 'client-sync',
-      failSafe: true,
-    );
+    await runSync();
 
     final remoteFiles = await webDavClient.listFilesRecursively('/');
     for (final file in remoteFiles) {
@@ -188,14 +180,84 @@ void main() {
       }
     }
 
-    expect(
-      () => syncEngine.run(
-        client: webDavClient,
-        clientId: 'client-sync',
-        failSafe: true,
+    final result = await runSync();
+    expect(result.blocker, isNotNull);
+    expect(result.blocker!.type, SyncBlockerType.failSafeDeletionBlocked);
+    expect(result.blocker!.candidateDeletionCount, 8);
+    expect(result.blocker!.trackedCount, 9);
+  });
+
+  test('blocks normal sync when remote format version is older', () async {
+    await webDavClient.uploadFile(
+      'info.json',
+      utf8.encode(
+        const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
+          'app': 'chronicle',
+          'formatVersion': 1,
+          'createdAt': '2026-02-16T00:00:00Z',
+        }),
       ),
-      throwsException,
     );
+
+    final result = await runSync();
+    expect(result.blocker, isNotNull);
+    expect(result.blocker!.type, SyncBlockerType.versionMismatchRemoteOlder);
+  });
+
+  test(
+    'recover local wins upgrades remote format and prunes stale remote files',
+    () async {
+      final layout = ChronicleLayout(rootDir);
+      await const FileSystemUtils().atomicWriteString(
+        layout.orphanNoteFile('local-note'),
+        'local content',
+      );
+      await webDavClient.uploadFile(
+        'info.json',
+        utf8.encode(
+          const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
+            'app': 'chronicle',
+            'formatVersion': 1,
+            'createdAt': '2026-02-16T00:00:00Z',
+          }),
+        ),
+      );
+      await webDavClient.uploadFile(
+        'orphans/stale-remote.md',
+        utf8.encode('stale'),
+      );
+
+      final result = await runSync(mode: SyncRunMode.recoverLocalWins);
+      expect(result.blocker, isNull);
+      expect(result.deletedCount, greaterThanOrEqualTo(1));
+
+      final remoteInfoRaw = utf8.decode(
+        await webDavClient.downloadFile('info.json'),
+      );
+      final remoteInfo = json.decode(remoteInfoRaw) as Map<String, dynamic>;
+      expect((remoteInfo['formatVersion'] as num).toInt(), 2);
+      expect(
+        () => webDavClient.downloadFile('orphans/stale-remote.md'),
+        throwsException,
+      );
+    },
+  );
+
+  test('recover remote wins is blocked when remote format is older', () async {
+    await webDavClient.uploadFile(
+      'info.json',
+      utf8.encode(
+        const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
+          'app': 'chronicle',
+          'formatVersion': 1,
+          'createdAt': '2026-02-16T00:00:00Z',
+        }),
+      ),
+    );
+
+    final result = await runSync(mode: SyncRunMode.recoverRemoteWins);
+    expect(result.blocker, isNotNull);
+    expect(result.blocker!.type, SyncBlockerType.versionMismatchRemoteOlder);
   });
 }
 

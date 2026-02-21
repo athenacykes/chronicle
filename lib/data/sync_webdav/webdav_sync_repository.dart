@@ -2,6 +2,7 @@ import '../../core/clock.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/sync_config.dart';
 import '../../domain/entities/sync_result.dart';
+import '../../domain/entities/sync_run_options.dart';
 import '../../domain/repositories/settings_repository.dart';
 import '../../domain/repositories/sync_repository.dart';
 import 'webdav_client.dart';
@@ -44,7 +45,9 @@ class WebDavSyncRepository implements SyncRepository {
   }
 
   @override
-  Future<SyncResult> syncNow({bool allowMassDeletion = false}) async {
+  Future<SyncResult> syncNow({
+    SyncRunOptions options = const SyncRunOptions(),
+  }) async {
     final settings = await _settingsRepository.loadSettings();
     final config = settings.syncConfig;
     if (config.type != SyncTargetType.webdav || config.url.isEmpty) {
@@ -63,6 +66,7 @@ class WebDavSyncRepository implements SyncRepository {
         startedAt: now,
         endedAt: now,
         errors: const <String>['Sync password is missing'],
+        blocker: null,
       );
     }
 
@@ -76,7 +80,9 @@ class WebDavSyncRepository implements SyncRepository {
       client: client,
       clientId: settings.clientId,
       failSafe: config.failSafe,
-      allowMassDeletion: allowMassDeletion,
+      options: options,
+      syncTargetUrl: config.url.trim(),
+      syncUsername: config.username.trim(),
     );
 
     await _settingsRepository.setLastSyncAt(result.endedAt);

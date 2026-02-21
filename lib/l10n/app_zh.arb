@@ -314,6 +314,34 @@
   "webDavPasswordLabel": "WebDAV 密码",
   "autoSyncIntervalMinutesLabel": "自动同步间隔（分钟）",
   "deletionFailSafeLabel": "删除保护",
+  "syncAdvancedActionsTooltip": "高级同步操作",
+  "syncRecoverLocalWinsAction": "将本地重新上传到远端",
+  "syncRecoverRemoteWinsAction": "将远端重新下载到本地",
+  "syncForceDeletionNextRunAction": "下次同步强制应用删除",
+  "syncRecoverLocalWinsTitle": "本地优先恢复",
+  "syncRecoverLocalWinsWarning": "此操作会用本地数据覆盖远端，并可能删除远端中本地不存在的文件。建议先备份。",
+  "syncRecoverRemoteWinsTitle": "远端优先恢复",
+  "syncRecoverRemoteWinsWarning": "此操作会用远端数据覆盖本地，并可能删除本地中远端不存在的文件。建议先备份。",
+  "syncForceDeletionTitle": "强制应用删除",
+  "syncForceDeletionWarning": "这会为下一次同步启用一次性删除保护绕过。{summary}\n仅在已完成备份时继续。",
+  "@syncForceDeletionWarning": {
+    "placeholders": {
+      "summary": {}
+    }
+  },
+  "syncForceDeletionSummary": "当前阻止计划：{candidate} 个删除，跟踪文件共 {tracked} 个。",
+  "@syncForceDeletionSummary": {
+    "placeholders": {
+      "candidate": {
+        "type": "int"
+      },
+      "tracked": {
+        "type": "int"
+      }
+    }
+  },
+  "syncForceDeletionSummaryUnknown": "当前没有可用的删除数量估算。",
+  "syncForceDeletionArmedStatus": "已启用强制删除绕过",
   "createMatterTitle": "新建 Matter",
   "editMatterTitle": "编辑 Matter",
   "statusLabel": "状态",
