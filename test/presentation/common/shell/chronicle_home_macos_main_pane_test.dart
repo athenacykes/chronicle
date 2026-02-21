@@ -23,6 +23,7 @@ import 'package:chronicle/presentation/matters/matters_controller.dart';
 import 'package:chronicle/presentation/notes/notes_controller.dart';
 import 'package:chronicle/presentation/sync/conflicts_controller.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -180,6 +181,187 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(MacosPulldownButton), findsWidgets);
+  });
+
+  testWidgets('matter New Note creates untitled draft without dialog', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          noteEditorViewModeProvider.overrideWith(
+            (ref) => NoteEditorViewMode.read,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('macos_matter_new_note_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create Note'), findsNothing);
+    final created = noteRepository.noteById('note-3');
+    expect(created, isNotNull);
+    expect(created?.title, 'Untitled Note');
+    expect(created?.matterId, 'matter-1');
+    expect(created?.phaseId, 'phase-start');
+
+    final modeToggle = tester
+        .widget<CupertinoSlidingSegmentedControl<NoteEditorViewMode>>(
+          find.byKey(const Key('note_editor_mode_toggle')),
+        );
+    expect(modeToggle.groupValue, NoteEditorViewMode.edit);
+  });
+
+  testWidgets('orphan New Note creates untitled orphan draft without dialog', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          showOrphansProvider.overrideWith((ref) => true),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-2'),
+          noteEditorViewModeProvider.overrideWith(
+            (ref) => NoteEditorViewMode.read,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('macos_orphan_new_note_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create Note'), findsNothing);
+    final created = noteRepository.noteById('note-3');
+    expect(created, isNotNull);
+    expect(created?.title, 'Untitled Note');
+    expect(created?.matterId, isNull);
+    expect(created?.phaseId, isNull);
+
+    final modeToggle = tester
+        .widget<CupertinoSlidingSegmentedControl<NoteEditorViewMode>>(
+          find.byKey(const Key('note_editor_mode_toggle')),
+        );
+    expect(modeToggle.groupValue, NoteEditorViewMode.edit);
+  });
+
+  testWidgets('macOS sidebar renders mapped matter icons', (tester) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[
+        matter.copyWith(icon: 'science'),
+      ]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is MacosIcon && widget.icon == Icons.science_outlined,
+      ),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('material matter list renders mapped matter icons', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[
+        matter.copyWith(icon: 'science'),
+      ]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.science_outlined), findsWidgets);
+  });
+
+  testWidgets('unknown matter icon key falls back to description icon', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[
+        matter.copyWith(icon: 'legacy_unknown_icon'),
+      ]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is MacosIcon && widget.icon == Icons.description_outlined,
+      ),
+      findsWidgets,
+    );
   });
 
   testWidgets('macOS conflicts mode uses native controls', (tester) async {
@@ -460,6 +642,92 @@ void main() {
       ),
       findsNothing,
     );
+  });
+
+  testWidgets('create matter dialog applies preset color and selected icon', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final matterRepository = _MemoryMatterRepository(<Matter>[matter]);
+    final repos = _TestRepos(
+      matterRepository: matterRepository,
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New Matter'));
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget);
+    await tester.enterText(
+      find.descendant(of: dialog, matching: find.byType(TextField)).at(0),
+      'Visual Matter',
+    );
+    await tester.enterText(
+      find.descendant(of: dialog, matching: find.byType(TextField)).at(1),
+      'Color + icon picker',
+    );
+    await tester.tap(find.byTooltip('#EF4444'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Science'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create').last);
+    await tester.pumpAndSettle();
+
+    final matters = await matterRepository.listMatters();
+    final created = matters.firstWhere((item) => item.title == 'Visual Matter');
+    expect(created.color, '#EF4444');
+    expect(created.icon, 'science');
+  });
+
+  testWidgets('create matter dialog opens custom color picker', (tester) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New Matter'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('matter_color_custom_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ColorPicker), findsOneWidget);
+    await tester.tap(find.text('Use color'));
+    await tester.pumpAndSettle();
+
+    final preview = tester.widget<TextField>(
+      find.byKey(const Key('matter_color_preview_field')),
+    );
+    expect(preview.controller?.text, '#4C956C');
   });
 
   testWidgets('force deletion override is one-time in material shell', (

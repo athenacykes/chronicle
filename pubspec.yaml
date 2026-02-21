@@ -53,6 +53,7 @@ dependencies:
   xml: ^6.6.1
   macos_ui: ^2.1.12
   macos_window_utils: ^1.7.4
+  flutter_colorpicker: ^1.1.0
 
 dev_dependencies:
   flutter_test:

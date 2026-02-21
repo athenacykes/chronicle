@@ -62,15 +62,16 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }
 
   Future<void> selectNote(String? noteId) async {
-    ref.read(selectedNoteIdProvider.notifier).state = noteId;
     if (noteId == null) {
       state = const AsyncData(null);
+      ref.read(selectedNoteIdProvider.notifier).state = null;
       return;
     }
 
     state = const AsyncLoading();
     final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
     state = AsyncData(note);
+    ref.read(selectedNoteIdProvider.notifier).state = noteId;
   }
 
   Future<Note?> createNoteForSelectedMatter() async {
@@ -134,6 +135,23 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
       title: l10n.defaultQuickCaptureTitle,
       content: '# ${l10n.defaultQuickCaptureTitle}\n',
+      matterId: null,
+      phaseId: null,
+    );
+
+    await _refreshCollections();
+    await selectNote(created.id);
+    return created;
+  }
+
+  Future<Note> createUntitledOrphanNote() async {
+    final l10n = appLocalizationsForTag(
+      ref.read(settingsControllerProvider).valueOrNull?.localeTag,
+    );
+
+    final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
+      title: l10n.defaultUntitledNoteTitle,
+      content: '# ${l10n.defaultUntitledNoteTitle}\n',
       matterId: null,
       phaseId: null,
     );

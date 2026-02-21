@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -566,9 +567,10 @@ class _MatterSidebar extends ConsumerWidget {
         );
         sidebarItems.add(
           SidebarItem(
-            leading: MacosIcon(
-              matter.isPinned ? CupertinoIcons.pin_fill : CupertinoIcons.folder,
-              size: 14,
+            leading: _MatterLeadingIcon(
+              iconKey: matter.icon,
+              isPinned: matter.isPinned,
+              isMacOS: true,
             ),
             label: Text(
               matter.title.trim().isEmpty
@@ -1377,9 +1379,10 @@ class _MatterList extends StatelessWidget {
             (matter) => ListTile(
               dense: true,
               selected: selectedMatterId == matter.id,
-              leading: Icon(
-                matter.isPinned ? Icons.push_pin : Icons.folder_open,
-                size: 18,
+              leading: _MatterLeadingIcon(
+                iconKey: matter.icon,
+                isPinned: matter.isPinned,
+                isMacOS: false,
               ),
               title: Row(
                 children: <Widget>[
@@ -1462,6 +1465,41 @@ class _MatterStatusChip extends StatelessWidget {
   }
 }
 
+class _MatterLeadingIcon extends StatelessWidget {
+  const _MatterLeadingIcon({
+    required this.iconKey,
+    required this.isPinned,
+    required this.isMacOS,
+  });
+
+  final String iconKey;
+  final bool isPinned;
+  final bool isMacOS;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconData = _matterIconDataForKey(iconKey);
+    final iconWidget = isMacOS
+        ? MacosIcon(iconData, size: 14)
+        : Icon(iconData, size: 18);
+    if (!isPinned) {
+      return iconWidget;
+    }
+
+    final pin = isMacOS
+        ? const MacosIcon(CupertinoIcons.pin_fill, size: 8)
+        : const Icon(Icons.push_pin, size: 10);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: <Widget>[
+        iconWidget,
+        Positioned(right: -5, top: -4, child: pin),
+      ],
+    );
+  }
+}
+
 class SearchListItem {
   const SearchListItem({
     required this.noteId,
@@ -1494,7 +1532,60 @@ const Key _kNoteEditorUtilityLinkedKey = Key('note_editor_utility_linked');
 const Key _kSidebarSyncNowButtonKey = Key('sidebar_sync_now_button');
 const Key _kSidebarSyncStatusKey = Key('sidebar_sync_status');
 const Key _kSidebarSyncAdvancedButtonKey = Key('sidebar_sync_advanced_button');
+const Key _kSettingsDialogNavPaneKey = Key('settings_dialog_nav_pane');
+const Key _kSettingsDialogContentPaneKey = Key('settings_dialog_content_pane');
+const Key _kMatterColorCustomButtonKey = Key('matter_color_custom_button');
+const Key _kMatterColorPreviewFieldKey = Key('matter_color_preview_field');
 const bool _kEnableAdvancedSyncRecovery = true;
+
+const List<String> _kMatterPresetColors = <String>[
+  '#EF4444',
+  '#F97316',
+  '#F59E0B',
+  '#EAB308',
+  '#84CC16',
+  '#22C55E',
+  '#10B981',
+  '#14B8A6',
+  '#06B6D4',
+  '#3B82F6',
+  '#6366F1',
+  '#8B5CF6',
+  '#A855F7',
+  '#EC4899',
+  '#64748B',
+];
+
+class _MatterIconOption {
+  const _MatterIconOption({required this.key, required this.iconData});
+
+  final String key;
+  final IconData iconData;
+}
+
+const List<_MatterIconOption> _kMatterIconOptions = <_MatterIconOption>[
+  _MatterIconOption(key: 'description', iconData: Icons.description_outlined),
+  _MatterIconOption(key: 'folder', iconData: Icons.folder_open),
+  _MatterIconOption(key: 'work', iconData: Icons.work_outline),
+  _MatterIconOption(key: 'gavel', iconData: Icons.gavel),
+  _MatterIconOption(key: 'school', iconData: Icons.school_outlined),
+  _MatterIconOption(
+    key: 'account_balance',
+    iconData: Icons.account_balance_outlined,
+  ),
+  _MatterIconOption(key: 'home', iconData: Icons.home_outlined),
+  _MatterIconOption(key: 'build', iconData: Icons.build_outlined),
+  _MatterIconOption(key: 'bolt', iconData: Icons.bolt_outlined),
+  _MatterIconOption(key: 'assignment', iconData: Icons.assignment_outlined),
+  _MatterIconOption(key: 'event', iconData: Icons.event_outlined),
+  _MatterIconOption(key: 'campaign', iconData: Icons.campaign_outlined),
+  _MatterIconOption(
+    key: 'local_hospital',
+    iconData: Icons.local_hospital_outlined,
+  ),
+  _MatterIconOption(key: 'science', iconData: Icons.science_outlined),
+  _MatterIconOption(key: 'terminal', iconData: Icons.terminal_outlined),
+];
 
 enum _SyncAdvancedAction {
   recoverLocalWins,
@@ -2317,31 +2408,11 @@ class _MatterWorkspace extends ConsumerWidget {
                       key: _kMacosMatterNewNoteButtonKey,
                       controlSize: ControlSize.large,
                       onPressed: () async {
-                        final result = await showDialog<_NoteDialogResult>(
-                          context: context,
-                          builder: (_) =>
-                              const _NoteDialog(mode: _NoteDialogMode.create),
-                        );
-
-                        if (result == null || result.title.trim().isEmpty) {
-                          return;
-                        }
-
                         await ref
                             .read(noteEditorControllerProvider.notifier)
-                            .createCustomNote(
-                              title: result.title,
-                              content: result.content,
-                              tags: result.tags,
-                              isPinned: result.isPinned,
-                              matterId: matter.id,
-                              phaseId:
-                                  selectedPhaseId ??
-                                  matter.currentPhaseId ??
-                                  (matter.phases.isEmpty
-                                      ? null
-                                      : matter.phases.first.id),
-                            );
+                            .createNoteForSelectedMatter();
+                        ref.read(noteEditorViewModeProvider.notifier).state =
+                            NoteEditorViewMode.edit;
                       },
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -2354,31 +2425,11 @@ class _MatterWorkspace extends ConsumerWidget {
                     )
                   : FilledButton.icon(
                       onPressed: () async {
-                        final result = await showDialog<_NoteDialogResult>(
-                          context: context,
-                          builder: (_) =>
-                              const _NoteDialog(mode: _NoteDialogMode.create),
-                        );
-
-                        if (result == null || result.title.trim().isEmpty) {
-                          return;
-                        }
-
                         await ref
                             .read(noteEditorControllerProvider.notifier)
-                            .createCustomNote(
-                              title: result.title,
-                              content: result.content,
-                              tags: result.tags,
-                              isPinned: result.isPinned,
-                              matterId: matter.id,
-                              phaseId:
-                                  selectedPhaseId ??
-                                  matter.currentPhaseId ??
-                                  (matter.phases.isEmpty
-                                      ? null
-                                      : matter.phases.first.id),
-                            );
+                            .createNoteForSelectedMatter();
+                        ref.read(noteEditorViewModeProvider.notifier).state =
+                            NoteEditorViewMode.edit;
                       },
                       icon: const Icon(Icons.note_add),
                       label: Text(l10n.newNoteAction),
@@ -3226,26 +3277,11 @@ class _OrphanWorkspace extends ConsumerWidget {
                       key: _kMacosOrphanNewNoteButtonKey,
                       controlSize: ControlSize.large,
                       onPressed: () async {
-                        final result = await showDialog<_NoteDialogResult>(
-                          context: context,
-                          builder: (_) =>
-                              const _NoteDialog(mode: _NoteDialogMode.create),
-                        );
-
-                        if (result == null || result.title.trim().isEmpty) {
-                          return;
-                        }
-
                         await ref
                             .read(noteEditorControllerProvider.notifier)
-                            .createCustomNote(
-                              title: result.title,
-                              content: result.content,
-                              tags: result.tags,
-                              isPinned: result.isPinned,
-                              matterId: null,
-                              phaseId: null,
-                            );
+                            .createUntitledOrphanNote();
+                        ref.read(noteEditorViewModeProvider.notifier).state =
+                            NoteEditorViewMode.edit;
                       },
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -3258,26 +3294,11 @@ class _OrphanWorkspace extends ConsumerWidget {
                     )
                   : FilledButton.icon(
                       onPressed: () async {
-                        final result = await showDialog<_NoteDialogResult>(
-                          context: context,
-                          builder: (_) =>
-                              const _NoteDialog(mode: _NoteDialogMode.create),
-                        );
-
-                        if (result == null || result.title.trim().isEmpty) {
-                          return;
-                        }
-
                         await ref
                             .read(noteEditorControllerProvider.notifier)
-                            .createCustomNote(
-                              title: result.title,
-                              content: result.content,
-                              tags: result.tags,
-                              isPinned: result.isPinned,
-                              matterId: null,
-                              phaseId: null,
-                            );
+                            .createUntitledOrphanNote();
+                        ref.read(noteEditorViewModeProvider.notifier).state =
+                            NoteEditorViewMode.edit;
                       },
                       icon: const Icon(Icons.add),
                       label: Text(l10n.newOrphanNoteAction),
@@ -5273,26 +5294,43 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
       _SettingsSection.sync => buildSyncSection(),
     };
 
+    final viewportSize = MediaQuery.sizeOf(context);
+    final availableWidth = math.max(360.0, viewportSize.width - 64);
+    final availableHeight = math.max(280.0, viewportSize.height - 180);
+    final contentWidth = math.min(960.0, availableWidth);
+    final contentHeight = math.min(560.0, availableHeight);
+    final sectionNav = ListView(
+      padding: const EdgeInsets.only(top: 4),
+      children: <Widget>[
+        sectionNavItem(_SettingsSection.storage),
+        sectionNavItem(_SettingsSection.language),
+        sectionNavItem(_SettingsSection.sync),
+      ],
+    );
+
     final content = SizedBox(
-      width: 720,
-      height: 360,
+      width: contentWidth,
+      height: contentHeight,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           SizedBox(
-            width: 170,
-            child: ListView(
-              children: <Widget>[
-                sectionNavItem(_SettingsSection.storage),
-                sectionNavItem(_SettingsSection.language),
-                sectionNavItem(_SettingsSection.sync),
-              ],
-            ),
+            key: _kSettingsDialogNavPaneKey,
+            width: 146,
+            child: Align(alignment: Alignment.topLeft, child: sectionNav),
           ),
           const VerticalDivider(width: 1),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-              child: sectionContent,
+            key: _kSettingsDialogContentPaneKey,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: sectionContent,
+                ),
+              ),
             ),
           ),
         ],
@@ -5751,10 +5789,11 @@ class _MatterDialog extends StatefulWidget {
 class _MatterDialogState extends State<_MatterDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
-  late final TextEditingController _colorController;
-  late final TextEditingController _iconController;
+  late final TextEditingController _colorPreviewController;
   late MatterStatus _status;
   late bool _isPinned;
+  late String _selectedColorHex;
+  late String _selectedIconKey;
 
   @override
   void initState() {
@@ -5763,8 +5802,9 @@ class _MatterDialogState extends State<_MatterDialog> {
     _descriptionController = TextEditingController(
       text: widget.initialDescription,
     );
-    _colorController = TextEditingController(text: widget.initialColor);
-    _iconController = TextEditingController(text: widget.initialIcon);
+    _selectedColorHex = _normalizeHexColor(widget.initialColor);
+    _selectedIconKey = _normalizeMatterIconKey(widget.initialIcon);
+    _colorPreviewController = TextEditingController(text: _selectedColorHex);
     _status = widget.initialStatus;
     _isPinned = widget.initialPinned;
   }
@@ -5773,9 +5813,49 @@ class _MatterDialogState extends State<_MatterDialog> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _colorController.dispose();
-    _iconController.dispose();
+    _colorPreviewController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickCustomColor(BuildContext context) async {
+    var draftColor = _colorFromHex(_selectedColorHex);
+    final l10n = context.l10n;
+    final selectedColor = await showDialog<Color>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.matterCustomColorAction),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: draftColor,
+            onColorChanged: (value) {
+              draftColor = value;
+            },
+            enableAlpha: false,
+            labelTypes: const <ColorLabelType>[
+              ColorLabelType.hex,
+              ColorLabelType.rgb,
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancelAction),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(draftColor),
+            child: Text(l10n.matterUseColorAction),
+          ),
+        ],
+      ),
+    );
+    if (selectedColor == null) {
+      return;
+    }
+    setState(() {
+      _selectedColorHex = _colorToHex(selectedColor);
+      _colorPreviewController.text = _selectedColorHex;
+    });
   }
 
   @override
@@ -5786,8 +5866,83 @@ class _MatterDialogState extends State<_MatterDialog> {
         : l10n.editMatterTitle;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
 
+    Widget buildColorSwatch(String hexColor) {
+      final selected = _selectedColorHex == hexColor;
+      return Tooltip(
+        message: hexColor,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () {
+              setState(() {
+                _selectedColorHex = hexColor;
+                _colorPreviewController.text = _selectedColorHex;
+              });
+            },
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: _colorFromHex(hexColor),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outlineVariant,
+                  width: selected ? 2.5 : 1.2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget buildIconOption(_MatterIconOption option) {
+      final selected = _selectedIconKey == option.key;
+      return Tooltip(
+        message: _matterIconLabel(l10n, option.key),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => setState(() => _selectedIconKey = option.key),
+            child: Container(
+              width: 112,
+              height: 58,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: selected
+                    ? Theme.of(context).colorScheme.primary.withAlpha(24)
+                    : null,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Icon(option.iconData, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _matterIconLabel(l10n, option.key),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final content = SizedBox(
-      width: 480,
+      width: 660,
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -5864,32 +6019,69 @@ class _MatterDialogState extends State<_MatterDialog> {
                     },
                   ),
             const SizedBox(height: 8),
-            isMacOSNativeUI
-                ? MacosTextField(
-                    controller: _colorController,
-                    placeholder: l10n.colorHexLabel,
-                  )
-                : TextField(
-                    controller: _colorController,
-                    decoration: InputDecoration(
-                      labelText: l10n.colorHexLabel,
-                      hintText: l10n.colorHexHint,
-                    ),
-                  ),
+            Text(l10n.matterPresetColorsLabel),
             const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _kMatterPresetColors
+                  .map((hexColor) => buildColorSwatch(hexColor))
+                  .toList(),
+            ),
+            const SizedBox(height: 10),
             isMacOSNativeUI
-                ? MacosTextField(
-                    controller: _iconController,
-                    placeholder: l10n.iconNameLabel,
+                ? Row(
+                    children: <Widget>[
+                      PushButton(
+                        key: _kMatterColorCustomButtonKey,
+                        controlSize: ControlSize.regular,
+                        secondary: true,
+                        onPressed: () => _pickCustomColor(context),
+                        child: Text(l10n.matterCustomColorAction),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: MacosTextField(
+                          key: _kMatterColorPreviewFieldKey,
+                          controller: _colorPreviewController,
+                          readOnly: true,
+                          placeholder: l10n.colorHexLabel,
+                        ),
+                      ),
+                    ],
                   )
-                : TextField(
-                    controller: _iconController,
-                    decoration: InputDecoration(
-                      labelText: l10n.iconNameLabel,
-                      hintText: l10n.iconNameHint,
-                    ),
+                : Row(
+                    children: <Widget>[
+                      OutlinedButton(
+                        key: _kMatterColorCustomButtonKey,
+                        onPressed: () => _pickCustomColor(context),
+                        child: Text(l10n.matterCustomColorAction),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          key: _kMatterColorPreviewFieldKey,
+                          controller: _colorPreviewController,
+                          readOnly: true,
+                          decoration: InputDecoration(
+                            labelText: l10n.colorHexLabel,
+                            hintText: l10n.colorHexHint,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+            const SizedBox(height: 12),
+            Text(l10n.matterIconPickerLabel),
             const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _kMatterIconOptions
+                  .map((option) => buildIconOption(option))
+                  .toList(),
+            ),
+            const SizedBox(height: 12),
             isMacOSNativeUI
                 ? Row(
                     children: <Widget>[
@@ -5918,12 +6110,8 @@ class _MatterDialogState extends State<_MatterDialog> {
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
           status: _status,
-          color: _colorController.text.trim().isEmpty
-              ? '#4C956C'
-              : _colorController.text.trim(),
-          icon: _iconController.text.trim().isEmpty
-              ? 'description'
-              : _iconController.text.trim(),
+          color: _normalizeHexColor(_selectedColorHex),
+          icon: _normalizeMatterIconKey(_selectedIconKey),
           isPinned: _isPinned,
         ),
       );
@@ -6232,6 +6420,69 @@ class _NoteDialogResult {
   final String content;
   final List<String> tags;
   final bool isPinned;
+}
+
+String _normalizeHexColor(String value, {String fallback = '#4C956C'}) {
+  final normalizedFallback = fallback.trim().toUpperCase();
+  final trimmed = value.trim().toUpperCase();
+  if (RegExp(r'^#[0-9A-F]{6}$').hasMatch(trimmed)) {
+    return trimmed;
+  }
+  if (RegExp(r'^[0-9A-F]{6}$').hasMatch(trimmed)) {
+    return '#$trimmed';
+  }
+  return RegExp(r'^#[0-9A-F]{6}$').hasMatch(normalizedFallback)
+      ? normalizedFallback
+      : '#4C956C';
+}
+
+Color _colorFromHex(String value, {String fallback = '#4C956C'}) {
+  final normalized = _normalizeHexColor(value, fallback: fallback);
+  final rgbValue = int.parse(normalized.substring(1), radix: 16);
+  return Color(0xFF000000 | rgbValue);
+}
+
+String _colorToHex(Color color) {
+  final rgb = color.toARGB32() & 0x00FFFFFF;
+  return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
+_MatterIconOption _matterIconOptionForKey(String iconKey) {
+  for (final option in _kMatterIconOptions) {
+    if (option.key == iconKey.trim()) {
+      return option;
+    }
+  }
+  return _kMatterIconOptions.first;
+}
+
+String _normalizeMatterIconKey(String iconKey) {
+  return _matterIconOptionForKey(iconKey).key;
+}
+
+IconData _matterIconDataForKey(String iconKey) {
+  return _matterIconOptionForKey(iconKey).iconData;
+}
+
+String _matterIconLabel(AppLocalizations l10n, String iconKey) {
+  return switch (_normalizeMatterIconKey(iconKey)) {
+    'description' => l10n.matterIconDescriptionLabel,
+    'folder' => l10n.matterIconFolderLabel,
+    'work' => l10n.matterIconWorkLabel,
+    'gavel' => l10n.matterIconGavelLabel,
+    'school' => l10n.matterIconSchoolLabel,
+    'account_balance' => l10n.matterIconAccountBalanceLabel,
+    'home' => l10n.matterIconHomeLabel,
+    'build' => l10n.matterIconBuildLabel,
+    'bolt' => l10n.matterIconBoltLabel,
+    'assignment' => l10n.matterIconAssignmentLabel,
+    'event' => l10n.matterIconEventLabel,
+    'campaign' => l10n.matterIconCampaignLabel,
+    'local_hospital' => l10n.matterIconLocalHospitalLabel,
+    'science' => l10n.matterIconScienceLabel,
+    'terminal' => l10n.matterIconTerminalLabel,
+    _ => l10n.matterIconDescriptionLabel,
+  };
 }
 
 String _matterStatusLabel(AppLocalizations l10n, MatterStatus status) {
