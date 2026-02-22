@@ -742,6 +742,53 @@ void main() {
     expect(editorMenus, isNotEmpty);
   });
 
+  testWidgets('macOS matter sidebar menu exposes matter actions', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final buttons = tester
+        .widgetList<MacosPulldownButton>(find.byType(MacosPulldownButton))
+        .toList();
+    final matterActionMenus = buttons.where((button) {
+      final titles = _macosPulldownTitles(button);
+      return titles.contains('Set Active') &&
+          titles.contains('Set Paused') &&
+          titles.contains('Set Completed') &&
+          titles.contains('Set Archived');
+    }).toList();
+
+    expect(matterActionMenus, isNotEmpty);
+    expect(
+      _macosPulldownTitles(matterActionMenus.first),
+      containsAll(<String>[
+        'Edit',
+        'Pin',
+        'Set Active',
+        'Set Paused',
+        'Set Completed',
+        'Set Archived',
+        'Delete',
+      ]),
+    );
+  });
+
   testWidgets('macOS Manage Phases dialog uses native controls without crash', (
     tester,
   ) async {

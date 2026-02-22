@@ -1652,107 +1652,54 @@ class _MacosMatterActionMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return MacosIconButton(
-      icon: const MacosIcon(CupertinoIcons.ellipsis, size: 12),
-      backgroundColor: MacosColors.transparent,
-      boxConstraints: const BoxConstraints(
-        minHeight: 18,
-        minWidth: 18,
-        maxHeight: 18,
-        maxWidth: 18,
-      ),
-      padding: const EdgeInsets.all(3),
-      onPressed: () async {
-        final action = await showDialog<_MatterAction>(
-          context: context,
-          builder: (dialogContext) => MacosSheet(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Text(
-                    l10n.matterActionsTitle,
-                    style: MacosTheme.of(dialogContext).typography.title3,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    matter.title,
-                    style: MacosTheme.of(dialogContext).typography.subheadline,
-                  ),
-                  const SizedBox(height: 12),
-                  _ActionSheetButton(
-                    label: l10n.editAction,
-                    action: _MatterAction.edit,
-                  ),
-                  _ActionSheetButton(
-                    label: matter.isPinned ? l10n.unpinAction : l10n.pinAction,
-                    action: _MatterAction.togglePinned,
-                  ),
-                  _ActionSheetButton(
-                    label: l10n.setActiveAction,
-                    action: _MatterAction.setActive,
-                  ),
-                  _ActionSheetButton(
-                    label: l10n.setPausedAction,
-                    action: _MatterAction.setPaused,
-                  ),
-                  _ActionSheetButton(
-                    label: l10n.setCompletedAction,
-                    action: _MatterAction.setCompleted,
-                  ),
-                  _ActionSheetButton(
-                    label: l10n.setArchivedAction,
-                    action: _MatterAction.setArchived,
-                  ),
-                  _ActionSheetButton(
-                    label: l10n.deleteAction,
-                    action: _MatterAction.delete,
-                    destructive: true,
-                  ),
-                  const SizedBox(height: 8),
-                  PushButton(
-                    controlSize: ControlSize.regular,
-                    secondary: true,
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: Text(l10n.cancelAction),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-        if (action != null) {
-          onSelected(action);
-        }
-      },
-    );
-  }
-}
-
-class _ActionSheetButton extends StatelessWidget {
-  const _ActionSheetButton({
-    required this.label,
-    required this.action,
-    this.destructive = false,
-  });
-
-  final String label;
-  final _MatterAction action;
-  final bool destructive;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: PushButton(
-        controlSize: ControlSize.regular,
-        color: destructive ? MacosColors.systemRedColor : null,
-        secondary: destructive ? null : true,
-        onPressed: () => Navigator.of(context).pop(action),
-        child: Align(alignment: Alignment.centerLeft, child: Text(label)),
-      ),
+    return MacosPulldownButton(
+      icon: CupertinoIcons.ellipsis,
+      items: <MacosPulldownMenuEntry>[
+        MacosPulldownMenuItem(
+          title: Text(l10n.editAction),
+          onTap: () {
+            onSelected(_MatterAction.edit);
+          },
+        ),
+        MacosPulldownMenuItem(
+          title: Text(matter.isPinned ? l10n.unpinAction : l10n.pinAction),
+          onTap: () {
+            onSelected(_MatterAction.togglePinned);
+          },
+        ),
+        const MacosPulldownMenuDivider(),
+        MacosPulldownMenuItem(
+          title: Text(l10n.setActiveAction),
+          onTap: () {
+            onSelected(_MatterAction.setActive);
+          },
+        ),
+        MacosPulldownMenuItem(
+          title: Text(l10n.setPausedAction),
+          onTap: () {
+            onSelected(_MatterAction.setPaused);
+          },
+        ),
+        MacosPulldownMenuItem(
+          title: Text(l10n.setCompletedAction),
+          onTap: () {
+            onSelected(_MatterAction.setCompleted);
+          },
+        ),
+        MacosPulldownMenuItem(
+          title: Text(l10n.setArchivedAction),
+          onTap: () {
+            onSelected(_MatterAction.setArchived);
+          },
+        ),
+        const MacosPulldownMenuDivider(),
+        MacosPulldownMenuItem(
+          title: Text(l10n.deleteAction),
+          onTap: () {
+            onSelected(_MatterAction.delete);
+          },
+        ),
+      ],
     );
   }
 }
