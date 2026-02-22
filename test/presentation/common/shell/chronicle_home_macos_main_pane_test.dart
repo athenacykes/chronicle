@@ -270,6 +270,69 @@ void main() {
     expect(modeToggle.groupValue, NoteEditorViewMode.edit);
   });
 
+  testWidgets('macOS Manage Phases dialog uses native controls without crash', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Manage Phases').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Manage Phases'), findsWidgets);
+    expect(find.text('Current'), findsWidgets);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Edit in Phase does not use disposed ref after timeline switch', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          matterViewModeProvider.overrideWith((ref) => MatterViewMode.timeline),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Edit in Phase').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Manage Phases'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('macOS sidebar renders mapped matter icons', (tester) async {
     _setDesktopViewport(tester);
     final repos = _TestRepos(

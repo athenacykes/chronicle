@@ -2637,23 +2637,31 @@ class _MatterNotesWorkspace extends ConsumerWidget {
 }
 
 Future<void> _openNoteInPhaseEditor(WidgetRef ref, Note note) async {
-  ref.read(showOrphansProvider.notifier).state = false;
-  ref.read(showConflictsProvider.notifier).state = false;
-  ref.read(selectedMatterIdProvider.notifier).state = note.matterId;
-  ref.read(selectedPhaseIdProvider.notifier).state = note.phaseId;
-  ref.read(matterViewModeProvider.notifier).state = MatterViewMode.phase;
+  final showOrphansNotifier = ref.read(showOrphansProvider.notifier);
+  final showConflictsNotifier = ref.read(showConflictsProvider.notifier);
+  final selectedMatterNotifier = ref.read(selectedMatterIdProvider.notifier);
+  final selectedPhaseNotifier = ref.read(selectedPhaseIdProvider.notifier);
+  final matterViewModeNotifier = ref.read(matterViewModeProvider.notifier);
+  final mattersNotifier = ref.read(mattersControllerProvider.notifier);
+  final noteEditorNotifier = ref.read(noteEditorControllerProvider.notifier);
+
+  showOrphansNotifier.state = false;
+  showConflictsNotifier.state = false;
+  selectedMatterNotifier.state = note.matterId;
+  selectedPhaseNotifier.state = note.phaseId;
+  matterViewModeNotifier.state = MatterViewMode.phase;
   if (note.matterId != null && note.phaseId != null) {
-    final matter = ref
-        .read(mattersControllerProvider.notifier)
-        .findMatter(note.matterId!);
+    final matter = mattersNotifier.findMatter(note.matterId!);
     if (matter != null) {
-      await ref
-          .read(mattersControllerProvider.notifier)
-          .setMatterCurrentPhase(matter: matter, phaseId: note.phaseId!);
+      unawaited(
+        mattersNotifier.setMatterCurrentPhase(
+          matter: matter,
+          phaseId: note.phaseId!,
+        ),
+      );
     }
   }
-  ref.invalidate(noteListProvider);
-  await ref.read(noteEditorControllerProvider.notifier).selectNote(note.id);
+  await noteEditorNotifier.selectNote(note.id);
 }
 
 class _MatterTimelineWorkspace extends ConsumerWidget {
@@ -5603,62 +5611,122 @@ class _ManagePhasesDialogState extends ConsumerState<_ManagePhasesDialog> {
 
     Widget buildRow(_EditablePhaseItem item, int index) {
       final selected = item.phaseId == _currentPhaseId;
+      final selectCurrentButton = isMacOSNativeUI
+          ? SizedBox(
+              width: 86,
+              child: PushButton(
+                controlSize: ControlSize.regular,
+                secondary: !selected,
+                onPressed: () {
+                  setState(() {
+                    _currentPhaseId = item.phaseId;
+                  });
+                },
+                child: const Text('Current'),
+              ),
+            )
+          : ChoiceChip(
+              label: const Text('Current'),
+              selected: selected,
+              onSelected: (_) {
+                setState(() {
+                  _currentPhaseId = item.phaseId;
+                });
+              },
+            );
       return Row(
         children: <Widget>[
-          ChoiceChip(
-            label: const Text('Current'),
-            selected: selected,
-            onSelected: (_) {
-              setState(() {
-                _currentPhaseId = item.phaseId;
-              });
-            },
-          ),
+          selectCurrentButton,
+          const SizedBox(width: 8),
           Expanded(
             child: isMacOSNativeUI
                 ? MacosTextField(controller: item.nameController)
                 : TextField(controller: item.nameController),
           ),
-          IconButton(
-            onPressed: index == 0
-                ? null
-                : () {
-                    setState(() {
-                      final moved = _items!.removeAt(index);
-                      _items!.insert(index - 1, moved);
-                    });
-                  },
-            icon: const Icon(Icons.arrow_upward, size: 18),
-            tooltip: 'Move up',
-          ),
-          IconButton(
-            onPressed: index == _items!.length - 1
-                ? null
-                : () {
-                    setState(() {
-                      final moved = _items!.removeAt(index);
-                      _items!.insert(index + 1, moved);
-                    });
-                  },
-            icon: const Icon(Icons.arrow_downward, size: 18),
-            tooltip: 'Move down',
-          ),
-          IconButton(
-            onPressed: _items!.length <= 1
-                ? null
-                : () {
-                    setState(() {
-                      _items!.removeAt(index);
-                      if (selected) {
-                        _currentPhaseId = _items!.isEmpty
-                            ? null
-                            : _items!.first.phaseId;
-                      }
-                    });
-                  },
-            icon: const Icon(Icons.delete_outline, size: 18),
-            tooltip: l10n.deleteAction,
-          ),
+          const SizedBox(width: 6),
+          isMacOSNativeUI
+              ? _MacosCompactIconButton(
+                  tooltip: 'Move up',
+                  icon: const MacosIcon(CupertinoIcons.arrow_up, size: 12),
+                  onPressed: index == 0
+                      ? null
+                      : () {
+                          setState(() {
+                            final moved = _items!.removeAt(index);
+                            _items!.insert(index - 1, moved);
+                          });
+                        },
+                )
+              : IconButton(
+                  onPressed: index == 0
+                      ? null
+                      : () {
+                          setState(() {
+                            final moved = _items!.removeAt(index);
+                            _items!.insert(index - 1, moved);
+                          });
+                        },
+                  icon: const Icon(Icons.arrow_upward, size: 18),
+                  tooltip: 'Move up',
+                ),
+          isMacOSNativeUI
+              ? _MacosCompactIconButton(
+                  tooltip: 'Move down',
+                  icon: const MacosIcon(CupertinoIcons.arrow_down, size: 12),
+                  onPressed: index == _items!.length - 1
+                      ? null
+                      : () {
+                          setState(() {
+                            final moved = _items!.removeAt(index);
+                            _items!.insert(index + 1, moved);
+                          });
+                        },
+                )
+              : IconButton(
+                  onPressed: index == _items!.length - 1
+                      ? null
+                      : () {
+                          setState(() {
+                            final moved = _items!.removeAt(index);
+                            _items!.insert(index + 1, moved);
+                          });
+                        },
+                  icon: const Icon(Icons.arrow_downward, size: 18),
+                  tooltip: 'Move down',
+                ),
+          isMacOSNativeUI
+              ? _MacosCompactIconButton(
+                  tooltip: l10n.deleteAction,
+                  icon: const MacosIcon(CupertinoIcons.delete, size: 12),
+                  onPressed: _items!.length <= 1
+                      ? null
+                      : () {
+                          setState(() {
+                            _items!.removeAt(index);
+                            if (selected) {
+                              _currentPhaseId = _items!.isEmpty
+                                  ? null
+                                  : _items!.first.phaseId;
+                            }
+                          });
+                        },
+                )
+              : IconButton(
+                  onPressed: _items!.length <= 1
+                      ? null
+                      : () {
+                          setState(() {
+                            _items!.removeAt(index);
+                            if (selected) {
+                              _currentPhaseId = _items!.isEmpty
+                                  ? null
+                                  : _items!.first.phaseId;
+                            }
+                          });
+                        },
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  tooltip: l10n.deleteAction,
+                ),
         ],
       );
     }
