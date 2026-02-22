@@ -12,6 +12,7 @@ void main() {
     });
 
     expect(settings.localeTag, 'en');
+    expect(settings.collapsedCategoryIds, isEmpty);
   });
 
   test('toJson/fromJson roundtrip preserves localeTag', () {
@@ -26,5 +27,19 @@ void main() {
     final restored = AppSettings.fromJson(original.toJson());
 
     expect(restored.localeTag, 'zh');
+  });
+
+  test('toJson/fromJson roundtrip preserves collapsedCategoryIds', () {
+    final original = AppSettings(
+      storageRootPath: '/tmp/chronicle',
+      clientId: 'client-id',
+      syncConfig: SyncConfig.initial(),
+      lastSyncAt: null,
+      localeTag: 'en',
+      collapsedCategoryIds: const <String>['a', 'b'],
+    );
+
+    final restored = AppSettings.fromJson(original.toJson());
+    expect(restored.collapsedCategoryIds, <String>['a', 'b']);
   });
 }

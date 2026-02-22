@@ -68,6 +68,32 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     state = AsyncData(updated);
   }
 
+  Future<void> setCollapsedCategoryIds(List<String> categoryIds) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final updated = settings.copyWith(
+      collapsedCategoryIds: categoryIds.toSet().toList(growable: false),
+    );
+    await repository.saveSettings(updated);
+    state = AsyncData(updated);
+  }
+
+  Future<void> setCategoryCollapsed(String categoryId, bool collapsed) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final collapsedSet = settings.collapsedCategoryIds.toSet();
+    if (collapsed) {
+      collapsedSet.add(categoryId);
+    } else {
+      collapsedSet.remove(categoryId);
+    }
+    final updated = settings.copyWith(
+      collapsedCategoryIds: collapsedSet.toList(growable: false),
+    );
+    await repository.saveSettings(updated);
+    state = AsyncData(updated);
+  }
+
   Future<void> refresh() async {
     final settings = await ref.read(settingsRepositoryProvider).loadSettings();
     state = AsyncData(settings);

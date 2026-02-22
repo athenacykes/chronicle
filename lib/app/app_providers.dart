@@ -8,6 +8,7 @@ import '../data/cache_sqlite/sqlite_search_repository.dart';
 import '../data/local_fs/chronicle_storage_initializer.dart';
 import '../data/local_fs/conflict_service.dart';
 import '../data/local_fs/link_file_codec.dart';
+import '../data/local_fs/local_category_repository.dart';
 import '../data/local_fs/local_link_repository.dart';
 import '../data/local_fs/local_matter_repository.dart';
 import '../data/local_fs/local_note_repository.dart';
@@ -18,6 +19,7 @@ import '../data/local_fs/storage_root_locator.dart';
 import '../data/sync_webdav/local_sync_state_store.dart';
 import '../data/sync_webdav/webdav_sync_engine.dart';
 import '../data/sync_webdav/webdav_sync_repository.dart';
+import '../domain/repositories/category_repository.dart';
 import '../domain/repositories/link_repository.dart';
 import '../domain/repositories/matter_repository.dart';
 import '../domain/repositories/note_repository.dart';
@@ -62,6 +64,16 @@ final matterRepositoryProvider = Provider<MatterRepository>((ref) {
     storageRootLocator: ref.watch(storageRootLocatorProvider),
     storageInitializer: ref.watch(storageInitializerProvider),
     codec: const MatterFileCodec(),
+    fileSystemUtils: ref.watch(fileSystemUtilsProvider),
+    clock: ref.watch(clockProvider),
+    idGenerator: ref.watch(idGeneratorProvider),
+  );
+});
+
+final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
+  return LocalCategoryRepository(
+    storageRootLocator: ref.watch(storageRootLocatorProvider),
+    storageInitializer: ref.watch(storageInitializerProvider),
     fileSystemUtils: ref.watch(fileSystemUtilsProvider),
     clock: ref.watch(clockProvider),
     idGenerator: ref.watch(idGeneratorProvider),

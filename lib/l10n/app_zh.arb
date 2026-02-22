@@ -35,7 +35,17 @@
   },
   "neverLabel": "从未",
   "newMatterAction": "新建 Matter",
+  "newCategoryAction": "新建分类",
   "pinnedLabel": "置顶",
+  "uncategorizedSectionLabel": "未分类（{count}）",
+  "@uncategorizedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "untitledCategoryLabel": "（未命名分类）",
   "activeSectionLabel": "进行中（{count}）",
   "@activeSectionLabel": {
     "placeholders": {
@@ -87,6 +97,13 @@
   "@deleteMatterConfirmation": {
     "placeholders": {
       "title": {}
+    }
+  },
+  "deleteCategoryTitle": "删除分类",
+  "deleteCategoryConfirmation": "删除“{name}”？该分类下的 Matter 将移动到未分类。",
+  "@deleteCategoryConfirmation": {
+    "placeholders": {
+      "name": {}
     }
   },
   "matterStatusActive": "进行中",
@@ -363,7 +380,11 @@
   "syncForceDeletionArmedStatus": "已启用强制删除绕过",
   "createMatterTitle": "新建 Matter",
   "editMatterTitle": "编辑 Matter",
+  "createCategoryTitle": "新建分类",
+  "editCategoryTitle": "编辑分类",
   "statusLabel": "状态",
+  "categoryNameLabel": "分类名称",
+  "categoryIconLabel": "分类图标",
   "descriptionLabel": "描述",
   "matterPresetColorsLabel": "预设颜色",
   "matterCustomColorAction": "自定义颜色",

@@ -1,17 +1,21 @@
+import 'category.dart';
 import 'matter.dart';
+
+class MatterCategorySection {
+  const MatterCategorySection({required this.category, required this.matters});
+
+  final Category category;
+  final List<Matter> matters;
+}
 
 class MatterSections {
   const MatterSections({
     required this.pinned,
-    required this.active,
-    required this.paused,
-    required this.completed,
-    required this.archived,
+    required this.categorySections,
+    required this.uncategorized,
   });
 
   final List<Matter> pinned;
-  final List<Matter> active;
-  final List<Matter> paused;
-  final List<Matter> completed;
-  final List<Matter> archived;
+  final List<MatterCategorySection> categorySections;
+  final List<Matter> uncategorized;
 }

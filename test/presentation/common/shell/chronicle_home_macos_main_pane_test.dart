@@ -1,6 +1,7 @@
 import 'package:chronicle/app/app.dart';
 import 'package:chronicle/app/app_providers.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
+import 'package:chronicle/domain/entities/category.dart';
 import 'package:chronicle/domain/entities/enums.dart';
 import 'package:chronicle/domain/entities/matter.dart';
 import 'package:chronicle/domain/entities/note.dart';
@@ -14,6 +15,7 @@ import 'package:chronicle/domain/entities/sync_config.dart';
 import 'package:chronicle/domain/entities/sync_run_options.dart';
 import 'package:chronicle/domain/entities/sync_result.dart';
 import 'package:chronicle/domain/repositories/link_repository.dart';
+import 'package:chronicle/domain/repositories/category_repository.dart';
 import 'package:chronicle/domain/repositories/matter_repository.dart';
 import 'package:chronicle/domain/repositories/note_repository.dart';
 import 'package:chronicle/domain/repositories/search_repository.dart';
@@ -56,6 +58,7 @@ void main() {
   ];
   final matter = Matter(
     id: 'matter-1',
+    categoryId: null,
     title: 'Matter One',
     description: 'Simple matter',
     status: MatterStatus.active,
@@ -1501,6 +1504,7 @@ Widget _buildApp({
     overrides: <Override>[
       settingsRepositoryProvider.overrideWithValue(settingsRepository),
       matterRepositoryProvider.overrideWithValue(repos.matterRepository),
+      categoryRepositoryProvider.overrideWithValue(_MemoryCategoryRepository()),
       noteRepositoryProvider.overrideWithValue(repos.noteRepository),
       linkRepositoryProvider.overrideWithValue(repos.linkRepository),
       searchRepositoryProvider.overrideWithValue(
@@ -1528,6 +1532,60 @@ class _TestRepos {
   final _MemoryLinkRepository linkRepository;
 }
 
+class _MemoryCategoryRepository implements CategoryRepository {
+  _MemoryCategoryRepository([List<Category> categories = const <Category>[]])
+    : _categories = List<Category>.of(categories);
+
+  final List<Category> _categories;
+
+  @override
+  Future<Category> createCategory({
+    required String name,
+    String color = '#4C956C',
+    String icon = 'folder',
+  }) async {
+    final now = DateTime.now().toUtc();
+    final category = Category(
+      id: 'category-${_categories.length + 1}',
+      name: name,
+      color: color,
+      icon: icon,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _categories.add(category);
+    return category;
+  }
+
+  @override
+  Future<void> deleteCategory(String categoryId) async {
+    _categories.removeWhere((category) => category.id == categoryId);
+  }
+
+  @override
+  Future<Category?> getCategoryById(String categoryId) async {
+    for (final category in _categories) {
+      if (category.id == categoryId) {
+        return category;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<List<Category>> listCategories() async {
+    return List<Category>.of(_categories);
+  }
+
+  @override
+  Future<void> updateCategory(Category category) async {
+    final index = _categories.indexWhere((item) => item.id == category.id);
+    if (index >= 0) {
+      _categories[index] = category;
+    }
+  }
+}
+
 class _MemoryMatterRepository implements MatterRepository {
   _MemoryMatterRepository(List<Matter> matters)
     : _matters = List<Matter>.of(matters);
@@ -1538,6 +1596,7 @@ class _MemoryMatterRepository implements MatterRepository {
   Future<Matter> createMatter({
     required String title,
     String description = '',
+    String? categoryId,
     String color = '#4C956C',
     String icon = 'description',
     bool isPinned = false,
@@ -1546,6 +1605,7 @@ class _MemoryMatterRepository implements MatterRepository {
     final id = 'matter-${_matters.length + 1}';
     final matter = Matter(
       id: id,
+      categoryId: categoryId,
       title: title,
       description: description,
       status: MatterStatus.active,
@@ -1599,6 +1659,18 @@ class _MemoryMatterRepository implements MatterRepository {
       return;
     }
     _matters[index] = _matters[index].copyWith(status: status);
+  }
+
+  @override
+  Future<void> setMatterCategory(String matterId, String? categoryId) async {
+    final index = _matters.indexWhere((matter) => matter.id == matterId);
+    if (index < 0) {
+      return;
+    }
+    _matters[index] = _matters[index].copyWith(
+      categoryId: categoryId,
+      clearCategoryId: categoryId == null,
+    );
   }
 
   @override

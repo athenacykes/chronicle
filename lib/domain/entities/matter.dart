@@ -5,6 +5,7 @@ import 'phase.dart';
 class Matter {
   const Matter({
     required this.id,
+    required this.categoryId,
     required this.title,
     required this.description,
     required this.status,
@@ -20,6 +21,7 @@ class Matter {
   });
 
   final String id;
+  final String? categoryId;
   final String title;
   final String description;
   final MatterStatus status;
@@ -35,6 +37,8 @@ class Matter {
 
   Matter copyWith({
     String? id,
+    String? categoryId,
+    bool clearCategoryId = false,
     String? title,
     String? description,
     MatterStatus? status,
@@ -53,6 +57,7 @@ class Matter {
   }) {
     return Matter(
       id: id ?? this.id,
+      categoryId: clearCategoryId ? null : categoryId ?? this.categoryId,
       title: title ?? this.title,
       description: description ?? this.description,
       status: status ?? this.status,
@@ -73,6 +78,7 @@ class Matter {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'categoryId': categoryId,
       'title': title,
       'description': description,
       'status': status.name,
@@ -94,6 +100,7 @@ class Matter {
         .toList();
     return Matter(
       id: json['id'] as String,
+      categoryId: json['categoryId'] as String?,
       title: json['title'] as String,
       description: (json['description'] as String?) ?? '',
       status: MatterStatus.values.firstWhere(

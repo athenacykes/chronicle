@@ -1,3 +1,7 @@
+export 'categories/create_category.dart';
+export 'categories/delete_category.dart';
+export 'categories/list_categories.dart';
+export 'categories/update_category.dart';
 export 'matters/archive_matter.dart';
 export 'matters/create_matter.dart';
 export 'matters/list_matter_sections.dart';

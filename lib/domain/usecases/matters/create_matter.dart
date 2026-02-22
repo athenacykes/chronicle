@@ -9,6 +9,7 @@ class CreateMatter {
   Future<Matter> call({
     required String title,
     String description = '',
+    String? categoryId,
     String color = '#4C956C',
     String icon = 'description',
     bool isPinned = false,
@@ -16,6 +17,7 @@ class CreateMatter {
     return _matterRepository.createMatter(
       title: title,
       description: description,
+      categoryId: categoryId,
       color: color,
       icon: icon,
       isPinned: isPinned,

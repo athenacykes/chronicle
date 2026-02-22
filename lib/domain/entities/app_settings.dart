@@ -8,6 +8,7 @@ class AppSettings {
     required this.syncConfig,
     required this.lastSyncAt,
     this.localeTag = 'en',
+    this.collapsedCategoryIds = const <String>[],
   });
 
   final String? storageRootPath;
@@ -15,6 +16,7 @@ class AppSettings {
   final SyncConfig syncConfig;
   final DateTime? lastSyncAt;
   final String localeTag;
+  final List<String> collapsedCategoryIds;
 
   AppSettings copyWith({
     String? storageRootPath,
@@ -24,6 +26,7 @@ class AppSettings {
     DateTime? lastSyncAt,
     bool clearLastSyncAt = false,
     String? localeTag,
+    List<String>? collapsedCategoryIds,
   }) {
     return AppSettings(
       storageRootPath: clearStorageRootPath
@@ -33,6 +36,7 @@ class AppSettings {
       syncConfig: syncConfig ?? this.syncConfig,
       lastSyncAt: clearLastSyncAt ? null : lastSyncAt ?? this.lastSyncAt,
       localeTag: localeTag ?? this.localeTag,
+      collapsedCategoryIds: collapsedCategoryIds ?? this.collapsedCategoryIds,
     );
   }
 
@@ -43,6 +47,7 @@ class AppSettings {
       'syncConfig': syncConfig.toJson(),
       'lastSyncAt': lastSyncAt == null ? null : formatIsoUtc(lastSyncAt!),
       'localeTag': localeTag,
+      'collapsedCategoryIds': collapsedCategoryIds,
     };
   }
 
@@ -57,6 +62,10 @@ class AppSettings {
           ? null
           : parseIsoUtc(json['lastSyncAt'] as String),
       localeTag: (json['localeTag'] as String?) ?? 'en',
+      collapsedCategoryIds:
+          (json['collapsedCategoryIds'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<String>()
+              .toList(growable: false),
     );
   }
 
@@ -67,6 +76,7 @@ class AppSettings {
       syncConfig: SyncConfig.initial(),
       lastSyncAt: null,
       localeTag: 'en',
+      collapsedCategoryIds: const <String>[],
     );
   }
 }

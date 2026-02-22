@@ -15,6 +15,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../app/app_providers.dart';
+import '../../../domain/entities/category.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/matter.dart';
 import '../../../domain/entities/matter_graph_data.dart';
@@ -61,6 +62,16 @@ class _NoteDragPayload {
   final String? phaseId;
 }
 
+class _MatterReassignPayload {
+  const _MatterReassignPayload({
+    required this.matterId,
+    required this.categoryId,
+  });
+
+  final String matterId;
+  final String? categoryId;
+}
+
 final _activeNoteDragPayloadProvider = StateProvider<_NoteDragPayload?>(
   (ref) => null,
 );
@@ -71,10 +82,8 @@ Future<List<Matter>> _allMattersForMove(WidgetRef ref) async {
       await ref.read(mattersControllerProvider.future);
   return <Matter>[
     ...sections.pinned,
-    ...sections.active,
-    ...sections.paused,
-    ...sections.completed,
-    ...sections.archived,
+    ...sections.uncategorized,
+    ...sections.categorySections.expand((section) => section.matters),
   ];
 }
 
@@ -82,6 +91,14 @@ String _displayMatterTitle(BuildContext context, Matter matter) {
   final trimmed = matter.title.trim();
   if (trimmed.isEmpty) {
     return context.l10n.untitledMatterLabel;
+  }
+  return trimmed;
+}
+
+String _displayCategoryName(BuildContext context, Category category) {
+  final trimmed = category.name.trim();
+  if (trimmed.isEmpty) {
+    return context.l10n.untitledCategoryLabel;
   }
   return trimmed;
 }
@@ -638,12 +655,14 @@ class _MatterSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = context.l10n;
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
     final showOrphans = ref.watch(showOrphansProvider);
     final showConflicts = ref.watch(showConflictsProvider);
     final conflictCount = ref.watch(conflictCountProvider);
-    final dragPayload = ref.watch(_activeNoteDragPayloadProvider);
+    final noteDragPayload = ref.watch(_activeNoteDragPayloadProvider);
+    final settings = ref.watch(settingsControllerProvider).valueOrNull;
+    final collapsedCategoryIds =
+        settings?.collapsedCategoryIds.toSet() ?? <String>{};
 
     if (_isMacOSNativeUIContext(context)) {
       return _buildMacOSSidebar(
@@ -653,10 +672,34 @@ class _MatterSidebar extends ConsumerWidget {
         showOrphans: showOrphans,
         showConflicts: showConflicts,
         conflictCount: conflictCount,
-        dragPayload: dragPayload,
+        noteDragPayload: noteDragPayload,
+        collapsedCategoryIds: collapsedCategoryIds,
       );
     }
 
+    return _buildMaterialSidebar(
+      context: context,
+      ref: ref,
+      selectedMatterId: selectedMatterId,
+      showOrphans: showOrphans,
+      showConflicts: showConflicts,
+      conflictCount: conflictCount,
+      noteDragPayload: noteDragPayload,
+      collapsedCategoryIds: collapsedCategoryIds,
+    );
+  }
+
+  Widget _buildMaterialSidebar({
+    required BuildContext context,
+    required WidgetRef ref,
+    required String? selectedMatterId,
+    required bool showOrphans,
+    required bool showConflicts,
+    required int conflictCount,
+    required _NoteDragPayload? noteDragPayload,
+    required Set<String> collapsedCategoryIds,
+  }) {
+    final l10n = context.l10n;
     return Column(
       children: <Widget>[
         Expanded(
@@ -668,6 +711,12 @@ class _MatterSidebar extends ConsumerWidget {
                 onPressed: () => _createMatter(context: context, ref: ref),
                 icon: const Icon(Icons.add),
                 label: Text(l10n.newMatterAction),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _createCategory(context: context, ref: ref),
+                icon: const Icon(Icons.create_new_folder_outlined),
+                label: Text(l10n.newCategoryAction),
               ),
               const SizedBox(height: 12),
               _SectionHeader(title: l10n.pinnedLabel),
@@ -681,7 +730,7 @@ class _MatterSidebar extends ConsumerWidget {
                   matter: matter,
                   action: action,
                 ),
-                dragPayload: dragPayload,
+                noteDragPayload: noteDragPayload,
                 onDropNoteToMatter: (payload, matter) =>
                     _moveDroppedNoteToMatter(
                       context: context,
@@ -690,20 +739,63 @@ class _MatterSidebar extends ConsumerWidget {
                       matter: matter,
                     ),
               ),
-              _SectionHeader(
-                title: l10n.activeSectionLabel(sections.active.length),
-              ),
-              _MatterList(
-                matters: sections.active,
+              for (final section in sections.categorySections)
+                _MaterialCategorySection(
+                  section: section,
+                  collapsed: collapsedCategoryIds.contains(section.category.id),
+                  selectedMatterId: selectedMatterId,
+                  noteDragPayload: noteDragPayload,
+                  onToggleCollapsed: () => _toggleCategoryCollapsed(
+                    ref,
+                    section.category.id,
+                    !collapsedCategoryIds.contains(section.category.id),
+                  ),
+                  onAction: (matter, action) => _handleMatterAction(
+                    context: context,
+                    ref: ref,
+                    matter: matter,
+                    action: action,
+                  ),
+                  onSelect: (matter) => _selectMatter(ref, matter),
+                  onDropNoteToMatter: (payload, matter) =>
+                      _moveDroppedNoteToMatter(
+                        context: context,
+                        ref: ref,
+                        payload: payload,
+                        matter: matter,
+                      ),
+                  onDropMatterToCategory: (payload) =>
+                      _moveDroppedMatterToCategory(
+                        context: context,
+                        ref: ref,
+                        payload: payload,
+                        categoryId: section.category.id,
+                      ),
+                  onEditCategory: () => _editCategory(
+                    context: context,
+                    ref: ref,
+                    category: section.category,
+                  ),
+                  onDeleteCategory: () => _deleteCategory(
+                    context: context,
+                    ref: ref,
+                    category: section.category,
+                  ),
+                ),
+              _MaterialUncategorizedSection(
+                title: l10n.uncategorizedSectionLabel(
+                  sections.uncategorized.length,
+                ),
+                matters: sections.uncategorized,
                 selectedMatterId: selectedMatterId,
-                onSelect: (matter) => _selectMatter(ref, matter),
+                noteDragPayload: noteDragPayload,
                 onAction: (matter, action) => _handleMatterAction(
                   context: context,
                   ref: ref,
                   matter: matter,
                   action: action,
                 ),
-                dragPayload: dragPayload,
+                onSelect: (matter) => _selectMatter(ref, matter),
                 onDropNoteToMatter: (payload, matter) =>
                     _moveDroppedNoteToMatter(
                       context: context,
@@ -711,71 +803,12 @@ class _MatterSidebar extends ConsumerWidget {
                       payload: payload,
                       matter: matter,
                     ),
-              ),
-              _SectionHeader(
-                title: l10n.pausedSectionLabel(sections.paused.length),
-              ),
-              _MatterList(
-                matters: sections.paused,
-                selectedMatterId: selectedMatterId,
-                onSelect: (matter) => _selectMatter(ref, matter),
-                onAction: (matter, action) => _handleMatterAction(
-                  context: context,
-                  ref: ref,
-                  matter: matter,
-                  action: action,
-                ),
-                dragPayload: dragPayload,
-                onDropNoteToMatter: (payload, matter) =>
-                    _moveDroppedNoteToMatter(
+                onDropMatterToUncategorized: (payload) =>
+                    _moveDroppedMatterToCategory(
                       context: context,
                       ref: ref,
                       payload: payload,
-                      matter: matter,
-                    ),
-              ),
-              _SectionHeader(
-                title: l10n.completedSectionLabel(sections.completed.length),
-              ),
-              _MatterList(
-                matters: sections.completed,
-                selectedMatterId: selectedMatterId,
-                onSelect: (matter) => _selectMatter(ref, matter),
-                onAction: (matter, action) => _handleMatterAction(
-                  context: context,
-                  ref: ref,
-                  matter: matter,
-                  action: action,
-                ),
-                dragPayload: dragPayload,
-                onDropNoteToMatter: (payload, matter) =>
-                    _moveDroppedNoteToMatter(
-                      context: context,
-                      ref: ref,
-                      payload: payload,
-                      matter: matter,
-                    ),
-              ),
-              _SectionHeader(
-                title: l10n.archivedSectionLabel(sections.archived.length),
-              ),
-              _MatterList(
-                matters: sections.archived,
-                selectedMatterId: selectedMatterId,
-                onSelect: (matter) => _selectMatter(ref, matter),
-                onAction: (matter, action) => _handleMatterAction(
-                  context: context,
-                  ref: ref,
-                  matter: matter,
-                  action: action,
-                ),
-                dragPayload: dragPayload,
-                onDropNoteToMatter: (payload, matter) =>
-                    _moveDroppedNoteToMatter(
-                      context: context,
-                      ref: ref,
-                      payload: payload,
-                      matter: matter,
+                      categoryId: null,
                     ),
               ),
               const SizedBox(height: 8),
@@ -845,7 +878,8 @@ class _MatterSidebar extends ConsumerWidget {
     required bool showOrphans,
     required bool showConflicts,
     required int conflictCount,
-    required _NoteDragPayload? dragPayload,
+    required _NoteDragPayload? noteDragPayload,
+    required Set<String> collapsedCategoryIds,
   }) {
     final l10n = context.l10n;
     final sidebarItems = <SidebarItem>[];
@@ -921,30 +955,51 @@ class _MatterSidebar extends ConsumerWidget {
               },
               builder: (targetContext, candidateData, rejectedData) {
                 final canAccept =
-                    dragPayload != null && matter.phases.isNotEmpty;
+                    noteDragPayload != null && matter.phases.isNotEmpty;
                 final highlight = candidateData.isNotEmpty;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 100),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: highlight
-                        ? MacosTheme.of(context).primaryColor.withAlpha(64)
-                        : null,
-                    borderRadius: BorderRadius.circular(6),
-                    border: canAccept && !highlight
-                        ? Border.all(
-                            color: MacosTheme.of(
-                              context,
-                            ).primaryColor.withAlpha(30),
-                          )
-                        : null,
+                return LongPressDraggable<_MatterReassignPayload>(
+                  data: _MatterReassignPayload(
+                    matterId: matter.id,
+                    categoryId: matter.categoryId,
                   ),
-                  child: Text(
-                    matter.title.trim().isEmpty
-                        ? l10n.untitledMatterLabel
-                        : matter.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  feedback: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Text(_displayMatterTitle(context, matter)),
+                    ),
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 100),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: highlight
+                          ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                          : null,
+                      borderRadius: BorderRadius.circular(6),
+                      border: canAccept && !highlight
+                          ? Border.all(
+                              color: MacosTheme.of(
+                                context,
+                              ).primaryColor.withAlpha(30),
+                            )
+                          : null,
+                    ),
+                    child: Text(
+                      _displayMatterTitle(context, matter),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 );
               },
@@ -973,17 +1028,80 @@ class _MatterSidebar extends ConsumerWidget {
     addSection(l10n.pinnedLabel);
     addMatterItems(sections.pinned);
 
-    addSection(l10n.activeSectionLabel(sections.active.length));
-    addMatterItems(sections.active);
+    for (final section in sections.categorySections) {
+      final category = section.category;
+      final collapsed = collapsedCategoryIds.contains(category.id);
+      selectableEntries.add(
+        _MacSidebarSelectableEntry(
+          key: 'category:${category.id}',
+          onSelected: () =>
+              _toggleCategoryCollapsed(ref, category.id, !collapsed),
+        ),
+      );
+      sidebarItems.add(
+        SidebarItem(
+          leading: MacosIcon(_matterIconDataForKey(category.icon), size: 14),
+          label: DragTarget<_MatterReassignPayload>(
+            onWillAcceptWithDetails: (details) =>
+                details.data.categoryId != category.id,
+            onAcceptWithDetails: (details) {
+              unawaited(
+                _moveDroppedMatterToCategory(
+                  context: context,
+                  ref: ref,
+                  payload: details.data,
+                  categoryId: category.id,
+                ),
+              );
+            },
+            builder: (targetContext, candidateData, rejectedData) {
+              final highlight = candidateData.isNotEmpty;
+              return Row(
+                children: <Widget>[
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 100),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: highlight
+                            ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                            : null,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${_displayCategoryName(context, category)} (${section.matters.length})',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    collapsed
+                        ? CupertinoIcons.chevron_right
+                        : CupertinoIcons.chevron_down,
+                    size: 12,
+                  ),
+                ],
+              );
+            },
+          ),
+          trailing: _MacosCategoryActionMenu(
+            category: category,
+            onEdit: () =>
+                _editCategory(context: context, ref: ref, category: category),
+            onDelete: () =>
+                _deleteCategory(context: context, ref: ref, category: category),
+          ),
+        ),
+      );
+      if (!collapsed) {
+        addMatterItems(section.matters);
+      }
+    }
 
-    addSection(l10n.pausedSectionLabel(sections.paused.length));
-    addMatterItems(sections.paused);
-
-    addSection(l10n.completedSectionLabel(sections.completed.length));
-    addMatterItems(sections.completed);
-
-    addSection(l10n.archivedSectionLabel(sections.archived.length));
-    addMatterItems(sections.archived);
+    addSection(l10n.uncategorizedSectionLabel(sections.uncategorized.length));
+    addMatterItems(sections.uncategorized);
 
     addSection(l10n.viewsSectionLabel);
     selectableEntries.add(
@@ -1098,26 +1216,69 @@ class _MatterSidebar extends ConsumerWidget {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-          child: PushButton(
-            controlSize: ControlSize.large,
-            onPressed: () => _createMatter(context: context, ref: ref),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const MacosIcon(CupertinoIcons.add, size: 14),
-                const SizedBox(width: 6),
-                Text(l10n.newMatterAction),
-              ],
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              PushButton(
+                controlSize: ControlSize.large,
+                onPressed: () => _createMatter(context: context, ref: ref),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const MacosIcon(CupertinoIcons.add, size: 14),
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(l10n.newMatterAction)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              PushButton(
+                controlSize: ControlSize.large,
+                secondary: true,
+                onPressed: () => _createCategory(context: context, ref: ref),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const MacosIcon(CupertinoIcons.folder_badge_plus, size: 14),
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(l10n.newCategoryAction)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
         Expanded(
-          child: SidebarItems(
-            scrollController: scrollController,
-            items: sidebarItems,
-            currentIndex: selectedIndex,
-            onChanged: (index) => selectableEntries[index].onSelected(),
-            itemSize: SidebarItemSize.large,
+          child: DragTarget<_MatterReassignPayload>(
+            onWillAcceptWithDetails: (details) =>
+                details.data.categoryId != null,
+            onAcceptWithDetails: (details) {
+              unawaited(
+                _moveDroppedMatterToCategory(
+                  context: context,
+                  ref: ref,
+                  payload: details.data,
+                  categoryId: null,
+                ),
+              );
+            },
+            builder: (targetContext, candidateData, rejectedData) {
+              final highlight = candidateData.isNotEmpty;
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  color: highlight
+                      ? MacosTheme.of(context).primaryColor.withAlpha(28)
+                      : null,
+                ),
+                child: SidebarItems(
+                  scrollController: scrollController,
+                  items: sidebarItems,
+                  currentIndex: selectedIndex,
+                  onChanged: (index) => selectableEntries[index].onSelected(),
+                  itemSize: SidebarItemSize.large,
+                ),
+              );
+            },
           ),
         ),
         const Divider(height: 1),
@@ -1152,10 +1313,130 @@ class _MatterSidebar extends ConsumerWidget {
     );
   }
 
+  Future<void> _moveDroppedMatterToCategory({
+    required BuildContext context,
+    required WidgetRef ref,
+    required _MatterReassignPayload payload,
+    required String? categoryId,
+  }) async {
+    if (payload.categoryId == categoryId) {
+      return;
+    }
+    await ref
+        .read(mattersControllerProvider.notifier)
+        .setMatterCategory(payload.matterId, categoryId);
+  }
+
+  String? _defaultCategoryIdForNewMatter(WidgetRef ref) {
+    final selectedMatterId = ref.read(selectedMatterIdProvider);
+    if (selectedMatterId == null) {
+      return null;
+    }
+    return ref
+        .read(mattersControllerProvider.notifier)
+        .findMatter(selectedMatterId)
+        ?.categoryId;
+  }
+
+  Future<void> _createCategory({
+    required BuildContext context,
+    required WidgetRef ref,
+  }) async {
+    final result = await showDialog<_CategoryDialogResult>(
+      context: context,
+      builder: (_) => const _CategoryDialog(mode: _CategoryDialogMode.create),
+    );
+    if (result == null || result.name.trim().isEmpty) {
+      return;
+    }
+    await ref
+        .read(mattersControllerProvider.notifier)
+        .createCategory(
+          name: result.name,
+          color: result.color,
+          icon: result.icon,
+        );
+  }
+
+  Future<void> _editCategory({
+    required BuildContext context,
+    required WidgetRef ref,
+    required Category category,
+  }) async {
+    final result = await showDialog<_CategoryDialogResult>(
+      context: context,
+      builder: (_) => _CategoryDialog(
+        mode: _CategoryDialogMode.edit,
+        initialName: category.name,
+        initialColor: category.color,
+        initialIcon: category.icon,
+      ),
+    );
+    if (result == null || result.name.trim().isEmpty) {
+      return;
+    }
+    await ref
+        .read(mattersControllerProvider.notifier)
+        .updateCategory(
+          category: category,
+          name: result.name,
+          color: result.color,
+          icon: result.icon,
+        );
+  }
+
+  Future<void> _deleteCategory({
+    required BuildContext context,
+    required WidgetRef ref,
+    required Category category,
+  }) async {
+    final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.deleteCategoryTitle),
+        content: Text(
+          l10n.deleteCategoryConfirmation(
+            _displayCategoryName(dialogContext, category),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.cancelAction),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.deleteAction),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) {
+      return;
+    }
+    await ref
+        .read(mattersControllerProvider.notifier)
+        .deleteCategory(category.id);
+  }
+
+  void _toggleCategoryCollapsed(
+    WidgetRef ref,
+    String categoryId,
+    bool collapsed,
+  ) {
+    unawaited(
+      ref
+          .read(settingsControllerProvider.notifier)
+          .setCategoryCollapsed(categoryId, collapsed),
+    );
+  }
+
   Future<void> _createMatter({
     required BuildContext context,
     required WidgetRef ref,
   }) async {
+    final defaultCategoryId = _defaultCategoryIdForNewMatter(ref);
     final result = await showDialog<_MatterDialogResult>(
       context: context,
       builder: (_) => const _MatterDialog(mode: _MatterDialogMode.create),
@@ -1170,6 +1451,7 @@ class _MatterSidebar extends ConsumerWidget {
         .createMatter(
           title: result.title,
           description: result.description,
+          categoryId: defaultCategoryId,
           status: result.status,
           color: result.color,
           icon: result.icon,
@@ -1210,6 +1492,7 @@ class _MatterSidebar extends ConsumerWidget {
           matter: matter,
           title: result.title,
           description: result.description,
+          categoryId: matter.categoryId,
           status: result.status,
           color: result.color,
           icon: result.icon,
@@ -1704,6 +1987,39 @@ class _MacosMatterActionMenu extends StatelessWidget {
   }
 }
 
+class _MacosCategoryActionMenu extends StatelessWidget {
+  const _MacosCategoryActionMenu({
+    required this.category,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final Category category;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return MacosPulldownButton(
+      icon: CupertinoIcons.ellipsis,
+      items: <MacosPulldownMenuEntry>[
+        MacosPulldownMenuItem(
+          title: Text(context.l10n.editAction),
+          onTap: () {
+            unawaited(onEdit());
+          },
+        ),
+        MacosPulldownMenuItem(
+          title: Text(context.l10n.deleteAction),
+          onTap: () {
+            unawaited(onDelete());
+          },
+        ),
+      ],
+    );
+  }
+}
+
 class _SidebarMessageView extends StatelessWidget {
   const _SidebarMessageView({
     required this.scrollController,
@@ -1738,6 +2054,201 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+enum _CategoryAction { edit, delete }
+
+class _MaterialCategorySection extends StatelessWidget {
+  const _MaterialCategorySection({
+    required this.section,
+    required this.collapsed,
+    required this.selectedMatterId,
+    required this.noteDragPayload,
+    required this.onToggleCollapsed,
+    required this.onSelect,
+    required this.onAction,
+    required this.onDropNoteToMatter,
+    required this.onDropMatterToCategory,
+    required this.onEditCategory,
+    required this.onDeleteCategory,
+  });
+
+  final MatterCategorySection section;
+  final bool collapsed;
+  final String? selectedMatterId;
+  final _NoteDragPayload? noteDragPayload;
+  final VoidCallback onToggleCollapsed;
+  final void Function(Matter matter) onSelect;
+  final Future<void> Function(Matter matter, _MatterAction action) onAction;
+  final Future<void> Function(_NoteDragPayload payload, Matter matter)
+  onDropNoteToMatter;
+  final Future<void> Function(_MatterReassignPayload payload)
+  onDropMatterToCategory;
+  final Future<void> Function() onEditCategory;
+  final Future<void> Function() onDeleteCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<_MatterReassignPayload>(
+      onWillAcceptWithDetails: (details) =>
+          details.data.categoryId != section.category.id,
+      onAcceptWithDetails: (details) {
+        unawaited(onDropMatterToCategory(details.data));
+      },
+      builder: (targetContext, candidateData, rejectedData) {
+        final highlight = candidateData.isNotEmpty;
+        return Container(
+          decoration: highlight
+              ? BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withAlpha(72),
+                  borderRadius: BorderRadius.circular(8),
+                )
+              : null,
+          child: Column(
+            children: <Widget>[
+              _MaterialCategoryHeader(
+                section: section,
+                collapsed: collapsed,
+                onToggleCollapsed: onToggleCollapsed,
+                onEdit: onEditCategory,
+                onDelete: onDeleteCategory,
+              ),
+              if (!collapsed)
+                _MatterList(
+                  matters: section.matters,
+                  selectedMatterId: selectedMatterId,
+                  onSelect: onSelect,
+                  onAction: onAction,
+                  noteDragPayload: noteDragPayload,
+                  onDropNoteToMatter: onDropNoteToMatter,
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MaterialUncategorizedSection extends StatelessWidget {
+  const _MaterialUncategorizedSection({
+    required this.title,
+    required this.matters,
+    required this.selectedMatterId,
+    required this.noteDragPayload,
+    required this.onSelect,
+    required this.onAction,
+    required this.onDropNoteToMatter,
+    required this.onDropMatterToUncategorized,
+  });
+
+  final String title;
+  final List<Matter> matters;
+  final String? selectedMatterId;
+  final _NoteDragPayload? noteDragPayload;
+  final void Function(Matter matter) onSelect;
+  final Future<void> Function(Matter matter, _MatterAction action) onAction;
+  final Future<void> Function(_NoteDragPayload payload, Matter matter)
+  onDropNoteToMatter;
+  final Future<void> Function(_MatterReassignPayload payload)
+  onDropMatterToUncategorized;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<_MatterReassignPayload>(
+      onWillAcceptWithDetails: (details) => details.data.categoryId != null,
+      onAcceptWithDetails: (details) {
+        unawaited(onDropMatterToUncategorized(details.data));
+      },
+      builder: (targetContext, candidateData, rejectedData) {
+        final highlight = candidateData.isNotEmpty;
+        return Container(
+          decoration: highlight
+              ? BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withAlpha(72),
+                  borderRadius: BorderRadius.circular(8),
+                )
+              : null,
+          child: Column(
+            children: <Widget>[
+              _SectionHeader(title: title),
+              _MatterList(
+                matters: matters,
+                selectedMatterId: selectedMatterId,
+                onSelect: onSelect,
+                onAction: onAction,
+                noteDragPayload: noteDragPayload,
+                onDropNoteToMatter: onDropNoteToMatter,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MaterialCategoryHeader extends StatelessWidget {
+  const _MaterialCategoryHeader({
+    required this.section,
+    required this.collapsed,
+    required this.onToggleCollapsed,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final MatterCategorySection section;
+  final bool collapsed;
+  final VoidCallback onToggleCollapsed;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconData = _matterIconDataForKey(section.category.icon);
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.only(left: 8, right: 0),
+      onTap: onToggleCollapsed,
+      leading: Icon(iconData, color: _colorFromHex(section.category.color)),
+      title: Text(
+        '${_displayCategoryName(context, section.category)} (${section.matters.length})',
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            collapsed ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_down,
+            size: 18,
+          ),
+          PopupMenuButton<_CategoryAction>(
+            onSelected: (value) async {
+              switch (value) {
+                case _CategoryAction.edit:
+                  await onEdit();
+                case _CategoryAction.delete:
+                  await onDelete();
+              }
+            },
+            itemBuilder: (_) => <PopupMenuEntry<_CategoryAction>>[
+              PopupMenuItem<_CategoryAction>(
+                value: _CategoryAction.edit,
+                child: Text(context.l10n.editAction),
+              ),
+              PopupMenuItem<_CategoryAction>(
+                value: _CategoryAction.delete,
+                child: Text(context.l10n.deleteAction),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 enum _MatterAction {
   edit,
   togglePinned,
@@ -1754,7 +2265,7 @@ class _MatterList extends StatelessWidget {
     required this.selectedMatterId,
     required this.onSelect,
     required this.onAction,
-    this.dragPayload,
+    this.noteDragPayload,
     this.onDropNoteToMatter,
   });
 
@@ -1762,7 +2273,7 @@ class _MatterList extends StatelessWidget {
   final String? selectedMatterId;
   final void Function(Matter matter) onSelect;
   final Future<void> Function(Matter matter, _MatterAction action) onAction;
-  final _NoteDragPayload? dragPayload;
+  final _NoteDragPayload? noteDragPayload;
   final Future<void> Function(_NoteDragPayload payload, Matter matter)?
   onDropNoteToMatter;
 
@@ -1839,39 +2350,62 @@ class _MatterList extends StatelessWidget {
           onTap: () => onSelect(matter),
         );
 
-        if (onDropNoteToMatter == null) {
-          return tile;
-        }
-        return DragTarget<_NoteDragPayload>(
-          key: ValueKey<String>('sidebar_matter_drop_target_${matter.id}'),
-          onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
-          onAcceptWithDetails: (details) {
-            unawaited(onDropNoteToMatter!(details.data, matter));
-          },
-          builder: (targetContext, candidateData, rejectedData) {
-            final canAccept = dragPayload != null && matter.phases.isNotEmpty;
-            final highlight = candidateData.isNotEmpty;
-            return Container(
-              decoration: highlight
-                  ? BoxDecoration(
-                      color: Theme.of(
-                        targetContext,
-                      ).colorScheme.primaryContainer.withAlpha(110),
-                      borderRadius: BorderRadius.circular(8),
-                    )
-                  : canAccept
-                  ? BoxDecoration(
-                      border: Border.all(
+        Widget content = tile;
+        if (onDropNoteToMatter != null) {
+          content = DragTarget<_NoteDragPayload>(
+            key: ValueKey<String>('sidebar_matter_drop_target_${matter.id}'),
+            onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
+            onAcceptWithDetails: (details) {
+              unawaited(onDropNoteToMatter!(details.data, matter));
+            },
+            builder: (targetContext, candidateData, rejectedData) {
+              final canAccept =
+                  noteDragPayload != null && matter.phases.isNotEmpty;
+              final highlight = candidateData.isNotEmpty;
+              return Container(
+                decoration: highlight
+                    ? BoxDecoration(
                         color: Theme.of(
                           targetContext,
-                        ).colorScheme.primary.withAlpha(40),
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    )
-                  : null,
-              child: tile,
-            );
-          },
+                        ).colorScheme.primaryContainer.withAlpha(110),
+                        borderRadius: BorderRadius.circular(8),
+                      )
+                    : canAccept
+                    ? BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(
+                            targetContext,
+                          ).colorScheme.primary.withAlpha(40),
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      )
+                    : null,
+                child: tile,
+              );
+            },
+          );
+        }
+
+        return LongPressDraggable<_MatterReassignPayload>(
+          data: _MatterReassignPayload(
+            matterId: matter.id,
+            categoryId: matter.categoryId,
+          ),
+          feedback: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
+              child: Text(_displayMatterTitle(context, matter)),
+            ),
+          ),
+          child: content,
         );
       }).toList(),
     );
@@ -2443,10 +2977,8 @@ class _MainWorkspace extends ConsumerWidget {
     Matter? selected;
     final all = <Matter>{
       ...sections.pinned,
-      ...sections.active,
-      ...sections.paused,
-      ...sections.completed,
-      ...sections.archived,
+      ...sections.uncategorized,
+      ...sections.categorySections.expand((section) => section.matters),
     };
     for (final matter in all) {
       if (matter.id == selectedMatterId) {
@@ -6615,10 +7147,8 @@ class _ManagePhasesDialogState extends ConsumerState<_ManagePhasesDialog> {
     if (sections != null) {
       final all = <Matter>{
         ...sections.pinned,
-        ...sections.active,
-        ...sections.paused,
-        ...sections.completed,
-        ...sections.archived,
+        ...sections.uncategorized,
+        ...sections.categorySections.expand((section) => section.matters),
       };
       for (final candidate in all) {
         if (candidate.id == widget.matterId) {
@@ -7448,6 +7978,228 @@ class _MatterDialogResult {
   final String color;
   final String icon;
   final bool isPinned;
+}
+
+enum _CategoryDialogMode { create, edit }
+
+class _CategoryDialog extends StatefulWidget {
+  const _CategoryDialog({
+    required this.mode,
+    this.initialName = '',
+    this.initialColor = '#4C956C',
+    this.initialIcon = 'folder',
+  });
+
+  final _CategoryDialogMode mode;
+  final String initialName;
+  final String initialColor;
+  final String initialIcon;
+
+  @override
+  State<_CategoryDialog> createState() => _CategoryDialogState();
+}
+
+class _CategoryDialogState extends State<_CategoryDialog> {
+  late final TextEditingController _nameController;
+  late String _selectedColorHex;
+  late String _selectedIconKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.initialName);
+    _selectedColorHex = _normalizeHexColor(widget.initialColor);
+    _selectedIconKey = _normalizeMatterIconKey(widget.initialIcon);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final title = widget.mode == _CategoryDialogMode.create
+        ? l10n.createCategoryTitle
+        : l10n.editCategoryTitle;
+
+    Widget iconOption(_MatterIconOption option) {
+      final selected = _selectedIconKey == option.key;
+      return GestureDetector(
+        onTap: () => setState(() => _selectedIconKey = option.key),
+        child: Container(
+          width: 108,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected
+                ? Theme.of(context).colorScheme.primary.withAlpha(18)
+                : null,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(option.iconData, size: 18),
+              const SizedBox(height: 4),
+              Text(
+                _matterIconLabel(l10n, option.key),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    Widget colorSwatch(String colorHex) {
+      final selected = _selectedColorHex == colorHex;
+      return GestureDetector(
+        onTap: () => setState(() => _selectedColorHex = colorHex),
+        child: Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: _colorFromHex(colorHex),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outlineVariant,
+              width: selected ? 2 : 1,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final content = SizedBox(
+      width: 540,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            isMacOSNativeUI
+                ? MacosTextField(
+                    controller: _nameController,
+                    placeholder: l10n.categoryNameLabel,
+                  )
+                : TextField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: l10n.categoryNameLabel,
+                    ),
+                  ),
+            const SizedBox(height: 10),
+            Text(l10n.matterPresetColorsLabel),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _kMatterPresetColors.map(colorSwatch).toList(),
+            ),
+            const SizedBox(height: 12),
+            Text(l10n.categoryIconLabel),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _kMatterIconOptions.map(iconOption).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    void onSave() {
+      Navigator.of(context).pop(
+        _CategoryDialogResult(
+          name: _nameController.text.trim(),
+          color: _selectedColorHex,
+          icon: _selectedIconKey,
+        ),
+      );
+    }
+
+    if (isMacOSNativeUI) {
+      return MacosSheet(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(title, style: const TextStyle(fontSize: 18)),
+              const SizedBox(height: 12),
+              content,
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  PushButton(
+                    controlSize: ControlSize.large,
+                    secondary: true,
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(l10n.cancelAction),
+                  ),
+                  const SizedBox(width: 8),
+                  PushButton(
+                    controlSize: ControlSize.large,
+                    onPressed: onSave,
+                    child: Text(
+                      widget.mode == _CategoryDialogMode.create
+                          ? l10n.createAction
+                          : l10n.saveAction,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return AlertDialog(
+      title: Text(title),
+      content: content,
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancelAction),
+        ),
+        FilledButton(
+          onPressed: onSave,
+          child: Text(
+            widget.mode == _CategoryDialogMode.create
+                ? l10n.createAction
+                : l10n.saveAction,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CategoryDialogResult {
+  const _CategoryDialogResult({
+    required this.name,
+    required this.color,
+    required this.icon,
+  });
+
+  final String name;
+  final String color;
+  final String icon;
 }
 
 enum _NoteDialogMode { create, edit }

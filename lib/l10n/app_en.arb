@@ -36,7 +36,17 @@
   },
   "neverLabel": "never",
   "newMatterAction": "New Matter",
+  "newCategoryAction": "New Category",
   "pinnedLabel": "Pinned",
+  "uncategorizedSectionLabel": "Uncategorized ({count})",
+  "@uncategorizedSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "untitledCategoryLabel": "(untitled category)",
   "activeSectionLabel": "Active ({count})",
   "@activeSectionLabel": {
     "placeholders": {
@@ -88,6 +98,13 @@
   "@deleteMatterConfirmation": {
     "placeholders": {
       "title": {}
+    }
+  },
+  "deleteCategoryTitle": "Delete Category",
+  "deleteCategoryConfirmation": "Delete \"{name}\"? Matters in it will be moved to Uncategorized.",
+  "@deleteCategoryConfirmation": {
+    "placeholders": {
+      "name": {}
     }
   },
   "matterStatusActive": "Active",
@@ -364,7 +381,11 @@
   "syncForceDeletionArmedStatus": "Force deletion override armed",
   "createMatterTitle": "Create Matter",
   "editMatterTitle": "Edit Matter",
+  "createCategoryTitle": "Create Category",
+  "editCategoryTitle": "Edit Category",
   "statusLabel": "Status",
+  "categoryNameLabel": "Category name",
+  "categoryIconLabel": "Category icon",
   "descriptionLabel": "Description",
   "matterPresetColorsLabel": "Preset colors",
   "matterCustomColorAction": "Custom color",

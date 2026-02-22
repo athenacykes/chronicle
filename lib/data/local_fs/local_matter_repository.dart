@@ -81,6 +81,7 @@ class LocalMatterRepository implements MatterRepository {
   Future<Matter> createMatter({
     required String title,
     String description = '',
+    String? categoryId,
     String color = '#4C956C',
     String icon = 'description',
     bool isPinned = false,
@@ -91,6 +92,7 @@ class LocalMatterRepository implements MatterRepository {
 
     final matter = Matter(
       id: id,
+      categoryId: categoryId,
       title: title,
       description: description,
       status: MatterStatus.active,
@@ -135,6 +137,21 @@ class LocalMatterRepository implements MatterRepository {
     );
 
     await _writeMatter(updated);
+  }
+
+  @override
+  Future<void> setMatterCategory(String matterId, String? categoryId) async {
+    final matter = await getMatterById(matterId);
+    if (matter == null) {
+      return;
+    }
+    await _writeMatter(
+      matter.copyWith(
+        categoryId: categoryId,
+        clearCategoryId: categoryId == null,
+        updatedAt: _clock.nowUtc(),
+      ),
+    );
   }
 
   @override

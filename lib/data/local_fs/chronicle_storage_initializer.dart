@@ -33,6 +33,7 @@ class ChronicleStorageInitializer {
     await _fileSystemUtils.ensureDirectory(layout.locksDirectory);
     await _fileSystemUtils.ensureDirectory(layout.orphansDirectory);
     await _fileSystemUtils.ensureDirectory(layout.mattersDirectory);
+    await _fileSystemUtils.ensureDirectory(layout.categoriesDirectory);
     await _fileSystemUtils.ensureDirectory(layout.linksDirectory);
     await _fileSystemUtils.ensureDirectory(layout.resourcesDirectory);
 

@@ -14,6 +14,8 @@ class ChronicleLayout {
       Directory(p.join(rootDirectory.path, 'orphans'));
   Directory get mattersDirectory =>
       Directory(p.join(rootDirectory.path, 'matters'));
+  Directory get categoriesDirectory =>
+      Directory(p.join(rootDirectory.path, 'categories'));
   Directory get linksDirectory =>
       Directory(p.join(rootDirectory.path, 'links'));
   Directory get resourcesDirectory =>
@@ -52,6 +54,10 @@ class ChronicleLayout {
 
   File linkFile(String linkId) {
     return File(p.join(linksDirectory.path, '$linkId.json'));
+  }
+
+  File categoryJsonFile(String categoryId) {
+    return File(p.join(categoriesDirectory.path, '$categoryId.json'));
   }
 
   String relativePath(File file) {

@@ -1,10 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
+import '../../domain/entities/category.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/matter.dart';
 import '../../domain/entities/matter_sections.dart';
 import '../../domain/entities/phase.dart';
+import '../../domain/usecases/categories/create_category.dart';
+import '../../domain/usecases/categories/delete_category.dart';
+import '../../domain/usecases/categories/update_category.dart';
 import '../../domain/usecases/matters/create_matter.dart';
 import '../../domain/usecases/matters/list_matter_sections.dart';
 import '../../domain/usecases/matters/update_matter.dart';
@@ -35,6 +39,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
   Future<void> createMatter({
     required String title,
     String description = '',
+    String? categoryId,
     MatterStatus status = MatterStatus.active,
     String color = '#4C956C',
     String icon = 'description',
@@ -43,6 +48,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
     final created = await CreateMatter(ref.read(matterRepositoryProvider))(
       title: title,
       description: description,
+      categoryId: categoryId,
       color: color,
       icon: icon,
       isPinned: isPinned,
@@ -69,6 +75,13 @@ class MattersController extends AsyncNotifier<MatterSections> {
     state = AsyncData(await _loadSections());
   }
 
+  Future<void> setMatterCategory(String matterId, String? categoryId) async {
+    await ref
+        .read(matterRepositoryProvider)
+        .setMatterCategory(matterId, categoryId);
+    state = AsyncData(await _loadSections());
+  }
+
   Future<void> setMatterPinned(String matterId, bool value) async {
     await ref.read(matterRepositoryProvider).setMatterPinned(matterId, value);
     state = AsyncData(await _loadSections());
@@ -78,6 +91,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
     required Matter matter,
     required String title,
     required String description,
+    required String? categoryId,
     required MatterStatus status,
     required String color,
     required String icon,
@@ -86,6 +100,8 @@ class MattersController extends AsyncNotifier<MatterSections> {
     final updated = matter.copyWith(
       title: title,
       description: description,
+      categoryId: categoryId,
+      clearCategoryId: categoryId == null,
       status: status,
       color: color,
       icon: icon,
@@ -94,12 +110,72 @@ class MattersController extends AsyncNotifier<MatterSections> {
     );
 
     await UpdateMatter(ref.read(matterRepositoryProvider)).call(updated);
+    if (matter.categoryId != categoryId) {
+      await ref
+          .read(matterRepositoryProvider)
+          .setMatterCategory(matter.id, categoryId);
+    }
     if (matter.status != status) {
       await ref
           .read(matterRepositoryProvider)
           .setMatterStatus(matter.id, status);
     }
 
+    state = AsyncData(await _loadSections());
+  }
+
+  Future<void> createCategory({
+    required String name,
+    String color = '#4C956C',
+    String icon = 'folder',
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    await CreateCategory(ref.read(categoryRepositoryProvider))(
+      name: trimmed,
+      color: color,
+      icon: icon,
+    );
+    state = AsyncData(await _loadSections());
+  }
+
+  Future<void> updateCategory({
+    required Category category,
+    required String name,
+    required String color,
+    required String icon,
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return;
+    }
+    final updated = category.copyWith(
+      name: trimmed,
+      color: color,
+      icon: icon,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await UpdateCategory(ref.read(categoryRepositoryProvider))(updated);
+    state = AsyncData(await _loadSections());
+  }
+
+  Future<void> deleteCategory(String categoryId) async {
+    final sections = state.valueOrNull ?? await _loadSections();
+    final mattersToClear = <Matter>[];
+    for (final section in sections.categorySections) {
+      if (section.category.id == categoryId) {
+        mattersToClear.addAll(section.matters);
+        break;
+      }
+    }
+    for (final matter in mattersToClear) {
+      await ref
+          .read(matterRepositoryProvider)
+          .setMatterCategory(matter.id, null);
+    }
+    await DeleteCategory(ref.read(categoryRepositoryProvider))(categoryId);
     state = AsyncData(await _loadSections());
   }
 
@@ -205,16 +281,17 @@ class MattersController extends AsyncNotifier<MatterSections> {
   }
 
   Future<MatterSections> _loadSections() {
-    return ListMatterSections(ref.read(matterRepositoryProvider)).call();
+    return ListMatterSections(
+      ref.read(matterRepositoryProvider),
+      ref.read(categoryRepositoryProvider),
+    ).call();
   }
 
   List<Matter> _allMatters(MatterSections sections) {
-    return <Matter>{
+    return <Matter>[
       ...sections.pinned,
-      ...sections.active,
-      ...sections.paused,
-      ...sections.completed,
-      ...sections.archived,
-    }.toList();
+      ...sections.uncategorized,
+      ...sections.categorySections.expand((section) => section.matters),
+    ];
   }
 }
