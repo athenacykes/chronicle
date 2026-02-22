@@ -208,6 +208,25 @@
   "deleteNoteAction": "删除笔记",
   "tagsCommaSeparatedLabel": "标签（逗号分隔）",
   "moveToOrphansAction": "移动到孤立笔记",
+  "moveNoteToMatterAction": "移动到 Matter...",
+  "moveNoteToPhaseAction": "移动到阶段...",
+  "moveNoteToMatterDialogTitle": "将笔记移动到 Matter",
+  "moveNoteToPhaseDialogTitle": "将笔记移动到阶段",
+  "moveNoteCurrentMatterLabel": "当前 Matter",
+  "moveSourceMatterMissingMessage": "无法移动笔记：源 Matter 不可用。",
+  "movePhaseRequiresSameMatterMessage": "只能在同一 Matter 内移动到其他阶段。",
+  "moveTargetMatterHasNoPhases": "无法移动笔记。\"{matter}\" 没有阶段。",
+  "@moveTargetMatterHasNoPhases": {
+    "placeholders": {
+      "matter": {}
+    }
+  },
+  "moveNoteFailed": "移动笔记失败：{error}",
+  "@moveNoteFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "assignToSelectedMatterAction": "分配到当前 Matter",
   "writeMarkdownHereHint": "在此输入 Markdown...",
   "saveAction": "保存",

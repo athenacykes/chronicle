@@ -49,6 +49,246 @@ Future<void> showChronicleSettingsDialog({
   );
 }
 
+class _NoteDragPayload {
+  const _NoteDragPayload({
+    required this.noteId,
+    required this.matterId,
+    required this.phaseId,
+  });
+
+  final String noteId;
+  final String? matterId;
+  final String? phaseId;
+}
+
+final _activeNoteDragPayloadProvider = StateProvider<_NoteDragPayload?>(
+  (ref) => null,
+);
+
+Future<List<Matter>> _allMattersForMove(WidgetRef ref) async {
+  final MatterSections sections =
+      ref.read(mattersControllerProvider).valueOrNull ??
+      await ref.read(mattersControllerProvider.future);
+  return <Matter>[
+    ...sections.pinned,
+    ...sections.active,
+    ...sections.paused,
+    ...sections.completed,
+    ...sections.archived,
+  ];
+}
+
+String _displayMatterTitle(BuildContext context, Matter matter) {
+  final trimmed = matter.title.trim();
+  if (trimmed.isEmpty) {
+    return context.l10n.untitledMatterLabel;
+  }
+  return trimmed;
+}
+
+String _displayNoteTitleForMove(BuildContext context, Note note) {
+  final trimmed = note.title.trim();
+  if (trimmed.isEmpty) {
+    return context.l10n.untitledLabel;
+  }
+  return trimmed;
+}
+
+String? _resolvedPhaseForMatter(Matter matter) {
+  return matter.currentPhaseId ??
+      (matter.phases.isEmpty ? null : matter.phases.first.id);
+}
+
+Future<Matter?> _showMoveToMatterDialog({
+  required BuildContext context,
+  required WidgetRef ref,
+  required Note note,
+}) async {
+  final matters = await _allMattersForMove(ref);
+  if (!context.mounted || matters.isEmpty) {
+    return null;
+  }
+
+  return showDialog<Matter>(
+    context: context,
+    builder: (dialogContext) {
+      final l10n = dialogContext.l10n;
+      return AlertDialog(
+        title: Text(l10n.moveNoteToMatterDialogTitle),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: matters
+                  .map((matter) {
+                    final selected = note.matterId == matter.id;
+                    return ListTile(
+                      title: Text(_displayMatterTitle(dialogContext, matter)),
+                      subtitle: Text(
+                        selected
+                            ? l10n.moveNoteCurrentMatterLabel
+                            : _matterStatusBadgeLabel(l10n, matter.status),
+                      ),
+                      trailing: selected ? const Icon(Icons.check) : null,
+                      onTap: () => Navigator.of(dialogContext).pop(matter),
+                    );
+                  })
+                  .toList(growable: false),
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancelAction),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Future<Phase?> _showMoveToPhaseDialog({
+  required BuildContext context,
+  required Matter matter,
+  required Note note,
+}) async {
+  if (matter.phases.isEmpty) {
+    return null;
+  }
+
+  final orderedPhases = matter.phases.toList()
+    ..sort((a, b) => a.order.compareTo(b.order));
+
+  return showDialog<Phase>(
+    context: context,
+    builder: (dialogContext) {
+      final l10n = dialogContext.l10n;
+      return AlertDialog(
+        title: Text(l10n.moveNoteToPhaseDialogTitle),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: orderedPhases
+                  .map((phase) {
+                    final selected = note.phaseId == phase.id;
+                    return ListTile(
+                      title: Text(phase.name),
+                      trailing: selected ? const Icon(Icons.check) : null,
+                      onTap: () => Navigator.of(dialogContext).pop(phase),
+                    );
+                  })
+                  .toList(growable: false),
+            ),
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancelAction),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+void _showMoveMessage(BuildContext context, String message) {
+  if (!context.mounted) {
+    return;
+  }
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+}
+
+Future<bool> _moveNoteToMatter({
+  required BuildContext context,
+  required WidgetRef ref,
+  required String noteId,
+  required Matter targetMatter,
+}) async {
+  final l10n = context.l10n;
+  final targetPhaseId = _resolvedPhaseForMatter(targetMatter);
+  if (targetPhaseId == null) {
+    _showMoveMessage(
+      context,
+      l10n.moveTargetMatterHasNoPhases(
+        _displayMatterTitle(context, targetMatter),
+      ),
+    );
+    return false;
+  }
+
+  try {
+    await ref
+        .read(noteEditorControllerProvider.notifier)
+        .moveNoteById(
+          noteId: noteId,
+          matterId: targetMatter.id,
+          phaseId: targetPhaseId,
+        );
+    return true;
+  } catch (error) {
+    if (!context.mounted) {
+      return false;
+    }
+    _showMoveMessage(context, l10n.moveNoteFailed(error.toString()));
+    return false;
+  }
+}
+
+Future<bool> _moveNoteToPhase({
+  required BuildContext context,
+  required WidgetRef ref,
+  required String noteId,
+  required String sourceMatterId,
+  required Phase phase,
+}) async {
+  final l10n = context.l10n;
+  if (phase.matterId != sourceMatterId) {
+    _showMoveMessage(context, l10n.movePhaseRequiresSameMatterMessage);
+    return false;
+  }
+  try {
+    await ref
+        .read(noteEditorControllerProvider.notifier)
+        .moveNoteById(
+          noteId: noteId,
+          matterId: phase.matterId,
+          phaseId: phase.id,
+        );
+    return true;
+  } catch (error) {
+    if (!context.mounted) {
+      return false;
+    }
+    _showMoveMessage(context, l10n.moveNoteFailed(error.toString()));
+    return false;
+  }
+}
+
+Future<bool> _moveNoteToOrphans({
+  required BuildContext context,
+  required WidgetRef ref,
+  required String noteId,
+}) async {
+  final l10n = context.l10n;
+  try {
+    await ref
+        .read(noteEditorControllerProvider.notifier)
+        .moveNoteById(noteId: noteId, matterId: null, phaseId: null);
+    return true;
+  } catch (error) {
+    if (!context.mounted) {
+      return false;
+    }
+    _showMoveMessage(context, l10n.moveNoteFailed(error.toString()));
+    return false;
+  }
+}
+
 class ChronicleHomeScreen extends ConsumerStatefulWidget {
   const ChronicleHomeScreen({super.key, required this.useMacOSNativeUI});
 
@@ -403,6 +643,7 @@ class _MatterSidebar extends ConsumerWidget {
     final showOrphans = ref.watch(showOrphansProvider);
     final showConflicts = ref.watch(showConflictsProvider);
     final conflictCount = ref.watch(conflictCountProvider);
+    final dragPayload = ref.watch(_activeNoteDragPayloadProvider);
 
     if (_isMacOSNativeUIContext(context)) {
       return _buildMacOSSidebar(
@@ -412,6 +653,7 @@ class _MatterSidebar extends ConsumerWidget {
         showOrphans: showOrphans,
         showConflicts: showConflicts,
         conflictCount: conflictCount,
+        dragPayload: dragPayload,
       );
     }
 
@@ -439,6 +681,14 @@ class _MatterSidebar extends ConsumerWidget {
                   matter: matter,
                   action: action,
                 ),
+                dragPayload: dragPayload,
+                onDropNoteToMatter: (payload, matter) =>
+                    _moveDroppedNoteToMatter(
+                      context: context,
+                      ref: ref,
+                      payload: payload,
+                      matter: matter,
+                    ),
               ),
               _SectionHeader(
                 title: l10n.activeSectionLabel(sections.active.length),
@@ -453,6 +703,14 @@ class _MatterSidebar extends ConsumerWidget {
                   matter: matter,
                   action: action,
                 ),
+                dragPayload: dragPayload,
+                onDropNoteToMatter: (payload, matter) =>
+                    _moveDroppedNoteToMatter(
+                      context: context,
+                      ref: ref,
+                      payload: payload,
+                      matter: matter,
+                    ),
               ),
               _SectionHeader(
                 title: l10n.pausedSectionLabel(sections.paused.length),
@@ -467,6 +725,14 @@ class _MatterSidebar extends ConsumerWidget {
                   matter: matter,
                   action: action,
                 ),
+                dragPayload: dragPayload,
+                onDropNoteToMatter: (payload, matter) =>
+                    _moveDroppedNoteToMatter(
+                      context: context,
+                      ref: ref,
+                      payload: payload,
+                      matter: matter,
+                    ),
               ),
               _SectionHeader(
                 title: l10n.completedSectionLabel(sections.completed.length),
@@ -481,6 +747,14 @@ class _MatterSidebar extends ConsumerWidget {
                   matter: matter,
                   action: action,
                 ),
+                dragPayload: dragPayload,
+                onDropNoteToMatter: (payload, matter) =>
+                    _moveDroppedNoteToMatter(
+                      context: context,
+                      ref: ref,
+                      payload: payload,
+                      matter: matter,
+                    ),
               ),
               _SectionHeader(
                 title: l10n.archivedSectionLabel(sections.archived.length),
@@ -495,18 +769,51 @@ class _MatterSidebar extends ConsumerWidget {
                   matter: matter,
                   action: action,
                 ),
+                dragPayload: dragPayload,
+                onDropNoteToMatter: (payload, matter) =>
+                    _moveDroppedNoteToMatter(
+                      context: context,
+                      ref: ref,
+                      payload: payload,
+                      matter: matter,
+                    ),
               ),
               const SizedBox(height: 8),
-              ListTile(
-                selected: showOrphans,
-                leading: const Icon(Icons.note_alt_outlined),
-                title: Text(l10n.orphansLabel),
-                onTap: () {
-                  ref.read(showOrphansProvider.notifier).state = true;
-                  ref.read(showConflictsProvider.notifier).state = false;
-                  ref.read(selectedMatterIdProvider.notifier).state = null;
-                  ref.read(selectedPhaseIdProvider.notifier).state = null;
-                  ref.invalidate(noteListProvider);
+              DragTarget<_NoteDragPayload>(
+                key: _kSidebarOrphansDropTargetKey,
+                onWillAcceptWithDetails: (details) => true,
+                onAcceptWithDetails: (details) async {
+                  await _moveDroppedNoteToOrphans(
+                    context: context,
+                    ref: ref,
+                    payload: details.data,
+                  );
+                },
+                builder: (targetContext, candidateData, rejectedData) {
+                  final highlight = candidateData.isNotEmpty;
+                  return Container(
+                    decoration: highlight
+                        ? BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer.withAlpha(110),
+                            borderRadius: BorderRadius.circular(8),
+                          )
+                        : null,
+                    child: ListTile(
+                      selected: showOrphans,
+                      leading: const Icon(Icons.note_alt_outlined),
+                      title: Text(l10n.orphansLabel),
+                      onTap: () {
+                        ref.read(showOrphansProvider.notifier).state = true;
+                        ref.read(showConflictsProvider.notifier).state = false;
+                        ref.read(selectedMatterIdProvider.notifier).state =
+                            null;
+                        ref.read(selectedPhaseIdProvider.notifier).state = null;
+                        ref.invalidate(noteListProvider);
+                      },
+                    ),
+                  );
                 },
               ),
               ListTile(
@@ -538,6 +845,7 @@ class _MatterSidebar extends ConsumerWidget {
     required bool showOrphans,
     required bool showConflicts,
     required int conflictCount,
+    required _NoteDragPayload? dragPayload,
   }) {
     final l10n = context.l10n;
     final sidebarItems = <SidebarItem>[];
@@ -567,16 +875,79 @@ class _MatterSidebar extends ConsumerWidget {
         );
         sidebarItems.add(
           SidebarItem(
-            leading: _MatterLeadingIcon(
-              iconKey: matter.icon,
-              isPinned: matter.isPinned,
-              isMacOS: true,
+            leading: DragTarget<_NoteDragPayload>(
+              onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
+              onAcceptWithDetails: (details) {
+                unawaited(
+                  _moveDroppedNoteToMatter(
+                    context: context,
+                    ref: ref,
+                    payload: details.data,
+                    matter: matter,
+                  ),
+                );
+              },
+              builder: (targetContext, candidateData, rejectedData) {
+                final highlight = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  decoration: BoxDecoration(
+                    color: highlight
+                        ? MacosTheme.of(context).primaryColor.withAlpha(56)
+                        : null,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: _MatterLeadingIcon(
+                    iconKey: matter.icon,
+                    isPinned: matter.isPinned,
+                    isMacOS: true,
+                  ),
+                );
+              },
             ),
-            label: Text(
-              matter.title.trim().isEmpty
-                  ? l10n.untitledMatterLabel
-                  : matter.title,
-              overflow: TextOverflow.ellipsis,
+            label: DragTarget<_NoteDragPayload>(
+              key: ValueKey<String>('sidebar_matter_drop_target_${matter.id}'),
+              onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
+              onAcceptWithDetails: (details) {
+                unawaited(
+                  _moveDroppedNoteToMatter(
+                    context: context,
+                    ref: ref,
+                    payload: details.data,
+                    matter: matter,
+                  ),
+                );
+              },
+              builder: (targetContext, candidateData, rejectedData) {
+                final canAccept =
+                    dragPayload != null && matter.phases.isNotEmpty;
+                final highlight = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: highlight
+                        ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                        : null,
+                    borderRadius: BorderRadius.circular(6),
+                    border: canAccept && !highlight
+                        ? Border.all(
+                            color: MacosTheme.of(
+                              context,
+                            ).primaryColor.withAlpha(30),
+                          )
+                        : null,
+                  ),
+                  child: Text(
+                    matter.title.trim().isEmpty
+                        ? l10n.untitledMatterLabel
+                        : matter.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              },
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -629,8 +1000,59 @@ class _MatterSidebar extends ConsumerWidget {
     );
     sidebarItems.add(
       SidebarItem(
-        leading: const MacosIcon(CupertinoIcons.doc_text),
-        label: Text(l10n.orphansLabel),
+        leading: DragTarget<_NoteDragPayload>(
+          onWillAcceptWithDetails: (details) => true,
+          onAcceptWithDetails: (details) {
+            unawaited(
+              _moveDroppedNoteToOrphans(
+                context: context,
+                ref: ref,
+                payload: details.data,
+              ),
+            );
+          },
+          builder: (targetContext, candidateData, rejectedData) {
+            final highlight = candidateData.isNotEmpty;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                color: highlight
+                    ? MacosTheme.of(context).primaryColor.withAlpha(56)
+                    : null,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const MacosIcon(CupertinoIcons.doc_text),
+            );
+          },
+        ),
+        label: DragTarget<_NoteDragPayload>(
+          key: _kSidebarOrphansDropTargetKey,
+          onWillAcceptWithDetails: (details) => true,
+          onAcceptWithDetails: (details) {
+            unawaited(
+              _moveDroppedNoteToOrphans(
+                context: context,
+                ref: ref,
+                payload: details.data,
+              ),
+            );
+          },
+          builder: (targetContext, candidateData, rejectedData) {
+            final highlight = candidateData.isNotEmpty;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: highlight
+                    ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                    : null,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(l10n.orphansLabel),
+            );
+          },
+        ),
       ),
     );
 
@@ -695,12 +1117,38 @@ class _MatterSidebar extends ConsumerWidget {
             items: sidebarItems,
             currentIndex: selectedIndex,
             onChanged: (index) => selectableEntries[index].onSelected(),
-            itemSize: SidebarItemSize.medium,
+            itemSize: SidebarItemSize.large,
           ),
         ),
         const Divider(height: 1),
         const _SidebarSyncPanel(),
       ],
+    );
+  }
+
+  Future<void> _moveDroppedNoteToMatter({
+    required BuildContext context,
+    required WidgetRef ref,
+    required _NoteDragPayload payload,
+    required Matter matter,
+  }) async {
+    await _moveNoteToMatter(
+      context: context,
+      ref: ref,
+      noteId: payload.noteId,
+      targetMatter: matter,
+    );
+  }
+
+  Future<void> _moveDroppedNoteToOrphans({
+    required BuildContext context,
+    required WidgetRef ref,
+    required _NoteDragPayload payload,
+  }) async {
+    await _moveNoteToOrphans(
+      context: context,
+      ref: ref,
+      noteId: payload.noteId,
     );
   }
 
@@ -1359,12 +1807,17 @@ class _MatterList extends StatelessWidget {
     required this.selectedMatterId,
     required this.onSelect,
     required this.onAction,
+    this.dragPayload,
+    this.onDropNoteToMatter,
   });
 
   final List<Matter> matters;
   final String? selectedMatterId;
   final void Function(Matter matter) onSelect;
   final Future<void> Function(Matter matter, _MatterAction action) onAction;
+  final _NoteDragPayload? dragPayload;
+  final Future<void> Function(_NoteDragPayload payload, Matter matter)?
+  onDropNoteToMatter;
 
   @override
   Widget build(BuildContext context) {
@@ -1374,73 +1827,106 @@ class _MatterList extends StatelessWidget {
     }
 
     return Column(
-      children: matters
-          .map(
-            (matter) => ListTile(
-              dense: true,
-              selected: selectedMatterId == matter.id,
-              leading: _MatterLeadingIcon(
-                iconKey: matter.icon,
-                isPinned: matter.isPinned,
-                isMacOS: false,
+      children: matters.map((matter) {
+        final tile = ListTile(
+          dense: true,
+          selected: selectedMatterId == matter.id,
+          leading: _MatterLeadingIcon(
+            iconKey: matter.icon,
+            isPinned: matter.isPinned,
+            isMacOS: false,
+          ),
+          title: Row(
+            children: <Widget>[
+              Expanded(child: Text(matter.title)),
+              const SizedBox(width: 4),
+              _MatterStatusChip(status: matter.status),
+            ],
+          ),
+          subtitle: matter.description.isEmpty
+              ? null
+              : Text(
+                  matter.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+          trailing: PopupMenuButton<_MatterAction>(
+            onSelected: (value) async {
+              await onAction(matter, value);
+            },
+            itemBuilder: (_) => <PopupMenuEntry<_MatterAction>>[
+              PopupMenuItem<_MatterAction>(
+                value: _MatterAction.edit,
+                child: Text(l10n.editAction),
               ),
-              title: Row(
-                children: <Widget>[
-                  Expanded(child: Text(matter.title)),
-                  const SizedBox(width: 4),
-                  _MatterStatusChip(status: matter.status),
-                ],
+              PopupMenuItem<_MatterAction>(
+                value: _MatterAction.togglePinned,
+                child: Text(
+                  matter.isPinned ? l10n.unpinAction : l10n.pinAction,
+                ),
               ),
-              subtitle: matter.description.isEmpty
-                  ? null
-                  : Text(
-                      matter.description,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-              trailing: PopupMenuButton<_MatterAction>(
-                onSelected: (value) async {
-                  await onAction(matter, value);
-                },
-                itemBuilder: (_) => <PopupMenuEntry<_MatterAction>>[
-                  PopupMenuItem<_MatterAction>(
-                    value: _MatterAction.edit,
-                    child: Text(l10n.editAction),
-                  ),
-                  PopupMenuItem<_MatterAction>(
-                    value: _MatterAction.togglePinned,
-                    child: Text(
-                      matter.isPinned ? l10n.unpinAction : l10n.pinAction,
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<_MatterAction>(
-                    value: _MatterAction.setActive,
-                    child: Text(l10n.setActiveAction),
-                  ),
-                  PopupMenuItem<_MatterAction>(
-                    value: _MatterAction.setPaused,
-                    child: Text(l10n.setPausedAction),
-                  ),
-                  PopupMenuItem<_MatterAction>(
-                    value: _MatterAction.setCompleted,
-                    child: Text(l10n.setCompletedAction),
-                  ),
-                  PopupMenuItem<_MatterAction>(
-                    value: _MatterAction.setArchived,
-                    child: Text(l10n.setArchivedAction),
-                  ),
-                  const PopupMenuDivider(),
-                  PopupMenuItem<_MatterAction>(
-                    value: _MatterAction.delete,
-                    child: Text(l10n.deleteAction),
-                  ),
-                ],
+              const PopupMenuDivider(),
+              PopupMenuItem<_MatterAction>(
+                value: _MatterAction.setActive,
+                child: Text(l10n.setActiveAction),
               ),
-              onTap: () => onSelect(matter),
-            ),
-          )
-          .toList(),
+              PopupMenuItem<_MatterAction>(
+                value: _MatterAction.setPaused,
+                child: Text(l10n.setPausedAction),
+              ),
+              PopupMenuItem<_MatterAction>(
+                value: _MatterAction.setCompleted,
+                child: Text(l10n.setCompletedAction),
+              ),
+              PopupMenuItem<_MatterAction>(
+                value: _MatterAction.setArchived,
+                child: Text(l10n.setArchivedAction),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem<_MatterAction>(
+                value: _MatterAction.delete,
+                child: Text(l10n.deleteAction),
+              ),
+            ],
+          ),
+          onTap: () => onSelect(matter),
+        );
+
+        if (onDropNoteToMatter == null) {
+          return tile;
+        }
+        return DragTarget<_NoteDragPayload>(
+          key: ValueKey<String>('sidebar_matter_drop_target_${matter.id}'),
+          onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
+          onAcceptWithDetails: (details) {
+            unawaited(onDropNoteToMatter!(details.data, matter));
+          },
+          builder: (targetContext, candidateData, rejectedData) {
+            final canAccept = dragPayload != null && matter.phases.isNotEmpty;
+            final highlight = candidateData.isNotEmpty;
+            return Container(
+              decoration: highlight
+                  ? BoxDecoration(
+                      color: Theme.of(
+                        targetContext,
+                      ).colorScheme.primaryContainer.withAlpha(110),
+                      borderRadius: BorderRadius.circular(8),
+                    )
+                  : canAccept
+                  ? BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(
+                          targetContext,
+                        ).colorScheme.primary.withAlpha(40),
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    )
+                  : null,
+              child: tile,
+            );
+          },
+        );
+      }).toList(),
     );
   }
 }
@@ -1516,6 +2002,7 @@ const Key _kMacosMatterModeSegmentedKey = Key(
   'macos_matter_mode_segmented_control',
 );
 const Key _kMacosPhaseSegmentedKey = Key('macos_phase_segmented_control');
+const Key _kSidebarOrphansDropTargetKey = Key('sidebar_orphans_drop_target');
 const Key _kMacosMatterNewNoteButtonKey = Key('macos_matter_new_note_button');
 const Key _kMacosOrphanNewNoteButtonKey = Key('macos_orphan_new_note_button');
 const Key _kMacosConflictsRefreshButtonKey = Key('macos_conflicts_refresh');
@@ -1902,6 +2389,72 @@ class _MacosPhaseControlState extends State<_MacosPhaseControl> {
       return;
     }
     widget.onSelected(widget.phases[controller.index - 1].id);
+  }
+}
+
+class _MacosPhaseDropStrip extends StatelessWidget {
+  const _MacosPhaseDropStrip({
+    required this.matter,
+    required this.dragPayload,
+    required this.onDrop,
+  });
+
+  final Matter matter;
+  final _NoteDragPayload dragPayload;
+  final Future<void> Function(_NoteDragPayload payload, Phase phase) onDrop;
+
+  @override
+  Widget build(BuildContext context) {
+    final orderedPhases = matter.phases.toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+    if (orderedPhases.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final canAcceptAny = dragPayload.matterId == matter.id;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: orderedPhases
+          .map((phase) {
+            return DragTarget<_NoteDragPayload>(
+              key: ValueKey<String>('macos_phase_drop_target_${phase.id}'),
+              onWillAcceptWithDetails: (details) =>
+                  details.data.matterId == matter.id,
+              onAcceptWithDetails: (details) {
+                unawaited(onDrop(details.data, phase));
+              },
+              builder: (targetContext, candidateData, rejectedData) {
+                final highlight = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: highlight
+                        ? MacosTheme.of(context).primaryColor.withAlpha(72)
+                        : canAcceptAny
+                        ? MacosTheme.of(context).primaryColor.withAlpha(20)
+                        : MacosTheme.of(context).canvasColor.withAlpha(130),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: highlight
+                          ? MacosTheme.of(context).primaryColor
+                          : MacosTheme.of(context).dividerColor,
+                    ),
+                  ),
+                  child: Text(
+                    phase.name,
+                    style: MacosTheme.of(context).typography.subheadline,
+                  ),
+                );
+              },
+            );
+          })
+          .toList(growable: false),
+    );
   }
 }
 
@@ -2327,6 +2880,7 @@ class _MatterWorkspace extends ConsumerWidget {
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final viewMode = ref.watch(matterViewModeProvider);
     final selectedPhaseId = ref.watch(selectedPhaseIdProvider);
+    final dragPayload = ref.watch(_activeNoteDragPayloadProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2481,26 +3035,83 @@ class _MatterWorkspace extends ConsumerWidget {
                               },
                             ),
                             ...matter.phases.map(
-                              (phase) => ChoiceChip(
-                                label: Text(phase.name),
-                                selected: selectedPhaseId == phase.id,
-                                onSelected: (_) {
-                                  ref
-                                      .read(selectedPhaseIdProvider.notifier)
-                                      .state = phase
-                                      .id;
+                              (phase) => DragTarget<_NoteDragPayload>(
+                                key: ValueKey<String>(
+                                  'phase_drop_target_${phase.id}',
+                                ),
+                                onWillAcceptWithDetails: (details) =>
+                                    details.data.matterId == matter.id,
+                                onAcceptWithDetails: (details) {
                                   unawaited(
-                                    ref
-                                        .read(
-                                          mattersControllerProvider.notifier,
-                                        )
-                                        .setMatterCurrentPhase(
-                                          matter: matter,
-                                          phaseId: phase.id,
-                                        ),
+                                    _moveNoteToPhase(
+                                      context: context,
+                                      ref: ref,
+                                      noteId: details.data.noteId,
+                                      sourceMatterId: matter.id,
+                                      phase: phase,
+                                    ),
                                   );
-                                  ref.invalidate(noteListProvider);
                                 },
+                                builder:
+                                    (
+                                      targetContext,
+                                      candidateData,
+                                      rejectedData,
+                                    ) {
+                                      final canAccept =
+                                          dragPayload != null &&
+                                          dragPayload.matterId == matter.id;
+                                      final highlight =
+                                          candidateData.isNotEmpty;
+                                      return Container(
+                                        decoration: highlight
+                                            ? BoxDecoration(
+                                                color: Theme.of(targetContext)
+                                                    .colorScheme
+                                                    .primaryContainer
+                                                    .withAlpha(110),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              )
+                                            : canAccept
+                                            ? BoxDecoration(
+                                                border: Border.all(
+                                                  color: Theme.of(targetContext)
+                                                      .colorScheme
+                                                      .primary
+                                                      .withAlpha(40),
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              )
+                                            : null,
+                                        child: ChoiceChip(
+                                          label: Text(phase.name),
+                                          selected: selectedPhaseId == phase.id,
+                                          onSelected: (_) {
+                                            ref
+                                                    .read(
+                                                      selectedPhaseIdProvider
+                                                          .notifier,
+                                                    )
+                                                    .state =
+                                                phase.id;
+                                            unawaited(
+                                              ref
+                                                  .read(
+                                                    mattersControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .setMatterCurrentPhase(
+                                                    matter: matter,
+                                                    phaseId: phase.id,
+                                                  ),
+                                            );
+                                            ref.invalidate(noteListProvider);
+                                          },
+                                        ),
+                                      );
+                                    },
                               ),
                             ),
                           ],
@@ -2531,6 +3142,25 @@ class _MatterWorkspace extends ConsumerWidget {
                         child: const Text('Manage Phases'),
                       ),
               ],
+            ),
+          ),
+        if (viewMode == MatterViewMode.phase &&
+            isMacOSNativeUI &&
+            dragPayload != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: _MacosPhaseDropStrip(
+              matter: matter,
+              dragPayload: dragPayload,
+              onDrop: (payload, phase) async {
+                await _moveNoteToPhase(
+                  context: context,
+                  ref: ref,
+                  noteId: payload.noteId,
+                  sourceMatterId: matter.id,
+                  phase: phase,
+                );
+              },
             ),
           ),
         const SizedBox(height: 8),
@@ -2626,6 +3256,72 @@ class _MatterNotesWorkspace extends ConsumerWidget {
                   sourceNote: note,
                 );
               },
+              onMoveToMatter: (note) async {
+                final targetMatter = await _showMoveToMatterDialog(
+                  context: context,
+                  ref: ref,
+                  note: note,
+                );
+                if (!context.mounted || targetMatter == null) {
+                  return;
+                }
+                await _moveNoteToMatter(
+                  context: context,
+                  ref: ref,
+                  noteId: note.id,
+                  targetMatter: targetMatter,
+                );
+              },
+              onMoveToPhase: (note) async {
+                final matterId = note.matterId;
+                if (matterId == null) {
+                  return;
+                }
+                Matter? sourceMatter = ref
+                    .read(mattersControllerProvider.notifier)
+                    .findMatter(matterId);
+                if (sourceMatter == null) {
+                  final matters = await _allMattersForMove(ref);
+                  if (!context.mounted) {
+                    return;
+                  }
+                  for (final candidate in matters) {
+                    if (candidate.id == matterId) {
+                      sourceMatter = candidate;
+                      break;
+                    }
+                  }
+                }
+                if (sourceMatter == null) {
+                  _showMoveMessage(
+                    context,
+                    context.l10n.moveSourceMatterMissingMessage,
+                  );
+                  return;
+                }
+                final phase = await _showMoveToPhaseDialog(
+                  context: context,
+                  matter: sourceMatter,
+                  note: note,
+                );
+                if (!context.mounted || phase == null) {
+                  return;
+                }
+                await _moveNoteToPhase(
+                  context: context,
+                  ref: ref,
+                  noteId: note.id,
+                  sourceMatterId: sourceMatter.id,
+                  phase: phase,
+                );
+              },
+              onMoveToOrphans: (note) async {
+                await _moveNoteToOrphans(
+                  context: context,
+                  ref: ref,
+                  noteId: note.id,
+                );
+              },
             ),
           ),
         ),
@@ -2672,6 +3368,9 @@ class _MatterTimelineWorkspace extends ConsumerWidget {
     final l10n = context.l10n;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final notes = ref.watch(noteListProvider);
+    final dragPayloadNotifier = ref.read(
+      _activeNoteDragPayloadProvider.notifier,
+    );
 
     return notes.when(
       loading: () => Center(child: _adaptiveLoadingIndicator(context)),
@@ -2734,28 +3433,231 @@ class _MatterTimelineWorkspace extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: isMacOSNativeUI
-                        ? PushButton(
-                            controlSize: ControlSize.regular,
-                            onPressed: () async {
-                              await _openNoteInPhaseEditor(ref, note);
-                            },
-                            child: const Text('Edit in Phase'),
-                          )
-                        : OutlinedButton(
-                            onPressed: () async {
-                              await _openNoteInPhaseEditor(ref, note);
-                            },
-                            child: const Text('Edit in Phase'),
-                          ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: <Widget>[
+                      isMacOSNativeUI
+                          ? MacosPulldownButton(
+                              icon: CupertinoIcons.ellipsis_circle,
+                              items: <MacosPulldownMenuEntry>[
+                                MacosPulldownMenuItem(
+                                  title: Text(l10n.moveNoteToMatterAction),
+                                  onTap: () async {
+                                    final targetMatter =
+                                        await _showMoveToMatterDialog(
+                                          context: context,
+                                          ref: ref,
+                                          note: note,
+                                        );
+                                    if (!context.mounted ||
+                                        targetMatter == null) {
+                                      return;
+                                    }
+                                    await _moveNoteToMatter(
+                                      context: context,
+                                      ref: ref,
+                                      noteId: note.id,
+                                      targetMatter: targetMatter,
+                                    );
+                                  },
+                                ),
+                                MacosPulldownMenuItem(
+                                  title: Text(l10n.moveNoteToPhaseAction),
+                                  enabled: note.matterId != null,
+                                  onTap: () async {
+                                    final matterId = note.matterId;
+                                    if (matterId == null) {
+                                      return;
+                                    }
+                                    final sourceMatter = ref
+                                        .read(
+                                          mattersControllerProvider.notifier,
+                                        )
+                                        .findMatter(matterId);
+                                    if (sourceMatter == null) {
+                                      _showMoveMessage(
+                                        context,
+                                        context
+                                            .l10n
+                                            .moveSourceMatterMissingMessage,
+                                      );
+                                      return;
+                                    }
+                                    final phase = await _showMoveToPhaseDialog(
+                                      context: context,
+                                      matter: sourceMatter,
+                                      note: note,
+                                    );
+                                    if (!context.mounted || phase == null) {
+                                      return;
+                                    }
+                                    await _moveNoteToPhase(
+                                      context: context,
+                                      ref: ref,
+                                      noteId: note.id,
+                                      sourceMatterId: sourceMatter.id,
+                                      phase: phase,
+                                    );
+                                  },
+                                ),
+                                MacosPulldownMenuItem(
+                                  title: Text(l10n.moveToOrphansAction),
+                                  onTap: () async {
+                                    await _moveNoteToOrphans(
+                                      context: context,
+                                      ref: ref,
+                                      noteId: note.id,
+                                    );
+                                  },
+                                ),
+                              ],
+                            )
+                          : PopupMenuButton<String>(
+                              itemBuilder: (_) => <PopupMenuEntry<String>>[
+                                PopupMenuItem<String>(
+                                  value: 'move_matter',
+                                  child: Text(l10n.moveNoteToMatterAction),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'move_phase',
+                                  enabled: note.matterId != null,
+                                  child: Text(l10n.moveNoteToPhaseAction),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'move_orphans',
+                                  child: Text(l10n.moveToOrphansAction),
+                                ),
+                              ],
+                              onSelected: (value) async {
+                                switch (value) {
+                                  case 'move_matter':
+                                    final targetMatter =
+                                        await _showMoveToMatterDialog(
+                                          context: context,
+                                          ref: ref,
+                                          note: note,
+                                        );
+                                    if (!context.mounted ||
+                                        targetMatter == null) {
+                                      return;
+                                    }
+                                    await _moveNoteToMatter(
+                                      context: context,
+                                      ref: ref,
+                                      noteId: note.id,
+                                      targetMatter: targetMatter,
+                                    );
+                                    return;
+                                  case 'move_phase':
+                                    final matterId = note.matterId;
+                                    if (matterId == null) {
+                                      return;
+                                    }
+                                    final sourceMatter = ref
+                                        .read(
+                                          mattersControllerProvider.notifier,
+                                        )
+                                        .findMatter(matterId);
+                                    if (sourceMatter == null) {
+                                      _showMoveMessage(
+                                        context,
+                                        context
+                                            .l10n
+                                            .moveSourceMatterMissingMessage,
+                                      );
+                                      return;
+                                    }
+                                    final phase = await _showMoveToPhaseDialog(
+                                      context: context,
+                                      matter: sourceMatter,
+                                      note: note,
+                                    );
+                                    if (!context.mounted || phase == null) {
+                                      return;
+                                    }
+                                    await _moveNoteToPhase(
+                                      context: context,
+                                      ref: ref,
+                                      noteId: note.id,
+                                      sourceMatterId: sourceMatter.id,
+                                      phase: phase,
+                                    );
+                                    return;
+                                  case 'move_orphans':
+                                    await _moveNoteToOrphans(
+                                      context: context,
+                                      ref: ref,
+                                      noteId: note.id,
+                                    );
+                                    return;
+                                }
+                              },
+                            ),
+                      const SizedBox(width: 6),
+                      isMacOSNativeUI
+                          ? PushButton(
+                              controlSize: ControlSize.regular,
+                              onPressed: () async {
+                                await _openNoteInPhaseEditor(ref, note);
+                              },
+                              child: const Text('Edit in Phase'),
+                            )
+                          : OutlinedButton(
+                              onPressed: () async {
+                                await _openNoteInPhaseEditor(ref, note);
+                              },
+                              child: const Text('Edit in Phase'),
+                            ),
+                    ],
                   ),
                 ],
               ),
             );
 
-            return card;
+            final payload = _NoteDragPayload(
+              noteId: note.id,
+              matterId: note.matterId,
+              phaseId: note.phaseId,
+            );
+            return LongPressDraggable<_NoteDragPayload>(
+              key: ValueKey<String>('note_drag_timeline_${note.id}'),
+              data: payload,
+              delay: const Duration(milliseconds: 180),
+              onDragStarted: () {
+                dragPayloadNotifier.state = payload;
+              },
+              onDraggableCanceled: (velocity, offset) {
+                dragPayloadNotifier.state = null;
+              },
+              onDragCompleted: () {
+                dragPayloadNotifier.state = null;
+              },
+              onDragEnd: (_) {
+                dragPayloadNotifier.state = null;
+              },
+              feedback: Material(
+                type: MaterialType.transparency,
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 300),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(188),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _displayNoteTitleForMove(context, note),
+                    style: const TextStyle(color: Colors.white),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              childWhenDragging: Opacity(opacity: 0.45, child: card),
+              child: card,
+            );
           },
         );
       },
@@ -3035,7 +3937,7 @@ Future<void> _showGraphNodePreview({
   );
 }
 
-class _GraphCanvas extends StatelessWidget {
+class _GraphCanvas extends ConsumerWidget {
   const _GraphCanvas({
     required this.graph,
     required this.selectedNoteId,
@@ -3047,9 +3949,12 @@ class _GraphCanvas extends StatelessWidget {
   final Future<void> Function(String noteId) onTapNode;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final layout = _deterministicGraphLayout(graph);
     final theme = Theme.of(context);
+    final dragPayloadNotifier = ref.read(
+      _activeNoteDragPayloadProvider.notifier,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -3098,38 +4003,89 @@ class _GraphCanvas extends StatelessWidget {
                     ? 20.0
                     : 17.0;
 
-                return Positioned(
-                  left: offset.dx - radius,
-                  top: offset.dy - radius,
-                  child: Tooltip(
-                    message: node.title.isEmpty
-                        ? context.l10n.untitledLabel
-                        : node.title,
-                    child: InkWell(
-                      onTap: () async => onTapNode(node.noteId),
-                      borderRadius: BorderRadius.circular(radius),
-                      child: Container(
-                        width: radius * 2,
-                        height: radius * 2,
-                        decoration: BoxDecoration(
-                          color: nodeColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: theme.colorScheme.outline,
-                            width: node.isInSelectedMatter ? 1.2 : 0.8,
-                          ),
+                final nodeWidget = Tooltip(
+                  message: node.title.isEmpty
+                      ? context.l10n.untitledLabel
+                      : node.title,
+                  child: InkWell(
+                    onTap: () async => onTapNode(node.noteId),
+                    borderRadius: BorderRadius.circular(radius),
+                    child: Container(
+                      width: radius * 2,
+                      height: radius * 2,
+                      decoration: BoxDecoration(
+                        color: nodeColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: theme.colorScheme.outline,
+                          width: node.isInSelectedMatter ? 1.2 : 0.8,
                         ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          _nodeLabel(node),
-                          style: TextStyle(
-                            color: textColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        _nodeLabel(node),
+                        style: TextStyle(
+                          color: textColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
+                  ),
+                );
+
+                final payload = _NoteDragPayload(
+                  noteId: node.noteId,
+                  matterId: node.matterId,
+                  phaseId: node.phaseId,
+                );
+
+                return Positioned(
+                  left: offset.dx - radius,
+                  top: offset.dy - radius,
+                  child: LongPressDraggable<_NoteDragPayload>(
+                    key: ValueKey<String>('note_drag_graph_${node.noteId}'),
+                    data: payload,
+                    delay: const Duration(milliseconds: 180),
+                    onDragStarted: () {
+                      dragPayloadNotifier.state = payload;
+                    },
+                    onDraggableCanceled: (velocity, offset) {
+                      dragPayloadNotifier.state = null;
+                    },
+                    onDragCompleted: () {
+                      dragPayloadNotifier.state = null;
+                    },
+                    onDragEnd: (_) {
+                      dragPayloadNotifier.state = null;
+                    },
+                    feedback: Material(
+                      type: MaterialType.transparency,
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 280),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(188),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          node.title.trim().isEmpty
+                              ? context.l10n.untitledLabel
+                              : node.title.trim(),
+                          style: const TextStyle(color: Colors.white),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    childWhenDragging: Opacity(
+                      opacity: 0.35,
+                      child: nodeWidget,
+                    ),
+                    child: nodeWidget,
                   ),
                 );
               }),
@@ -3393,6 +4349,72 @@ class _OrphanWorkspace extends ConsumerWidget {
                         sourceNote: note,
                       );
                     },
+                    onMoveToMatter: (note) async {
+                      final targetMatter = await _showMoveToMatterDialog(
+                        context: context,
+                        ref: ref,
+                        note: note,
+                      );
+                      if (!context.mounted || targetMatter == null) {
+                        return;
+                      }
+                      await _moveNoteToMatter(
+                        context: context,
+                        ref: ref,
+                        noteId: note.id,
+                        targetMatter: targetMatter,
+                      );
+                    },
+                    onMoveToPhase: (note) async {
+                      final matterId = note.matterId;
+                      if (matterId == null) {
+                        return;
+                      }
+                      Matter? sourceMatter = ref
+                          .read(mattersControllerProvider.notifier)
+                          .findMatter(matterId);
+                      if (sourceMatter == null) {
+                        final matters = await _allMattersForMove(ref);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        for (final candidate in matters) {
+                          if (candidate.id == matterId) {
+                            sourceMatter = candidate;
+                            break;
+                          }
+                        }
+                      }
+                      if (sourceMatter == null) {
+                        _showMoveMessage(
+                          context,
+                          context.l10n.moveSourceMatterMissingMessage,
+                        );
+                        return;
+                      }
+                      final phase = await _showMoveToPhaseDialog(
+                        context: context,
+                        matter: sourceMatter,
+                        note: note,
+                      );
+                      if (!context.mounted || phase == null) {
+                        return;
+                      }
+                      await _moveNoteToPhase(
+                        context: context,
+                        ref: ref,
+                        noteId: note.id,
+                        sourceMatterId: sourceMatter.id,
+                        phase: phase,
+                      );
+                    },
+                    onMoveToOrphans: (note) async {
+                      await _moveNoteToOrphans(
+                        context: context,
+                        ref: ref,
+                        noteId: note.id,
+                      );
+                    },
                   ),
                 ),
               ),
@@ -3413,6 +4435,9 @@ class _NoteList extends ConsumerWidget {
     required this.onTogglePinned,
     required this.onDelete,
     required this.onLink,
+    required this.onMoveToMatter,
+    required this.onMoveToPhase,
+    required this.onMoveToOrphans,
   });
 
   final List<Note> notes;
@@ -3420,12 +4445,67 @@ class _NoteList extends ConsumerWidget {
   final Future<void> Function(Note note) onTogglePinned;
   final Future<void> Function(Note note) onDelete;
   final Future<void> Function(Note note) onLink;
+  final Future<void> Function(Note note) onMoveToMatter;
+  final Future<void> Function(Note note) onMoveToPhase;
+  final Future<void> Function(Note note) onMoveToOrphans;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final selectedNoteId = ref.watch(selectedNoteIdProvider);
+    final dragPayloadNotifier = ref.read(
+      _activeNoteDragPayloadProvider.notifier,
+    );
+
+    Widget buildDraggable({
+      required Note note,
+      required String scope,
+      required Widget child,
+    }) {
+      final payload = _NoteDragPayload(
+        noteId: note.id,
+        matterId: note.matterId,
+        phaseId: note.phaseId,
+      );
+      return LongPressDraggable<_NoteDragPayload>(
+        key: ValueKey<String>('note_drag_${scope}_${note.id}'),
+        data: payload,
+        delay: const Duration(milliseconds: 180),
+        onDragStarted: () {
+          dragPayloadNotifier.state = payload;
+        },
+        onDraggableCanceled: (velocity, offset) {
+          dragPayloadNotifier.state = null;
+        },
+        onDragCompleted: () {
+          dragPayloadNotifier.state = null;
+        },
+        onDragEnd: (_) {
+          dragPayloadNotifier.state = null;
+        },
+        feedback: Material(
+          type: MaterialType.transparency,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 300),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withAlpha(188),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _displayNoteTitleForMove(context, note),
+              style: const TextStyle(color: Colors.white),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.45, child: child),
+        child: child,
+      );
+    }
+
     if (notes.isEmpty) {
       return Center(child: Text(l10n.noNotesYetMessage));
     }
@@ -3437,7 +4517,7 @@ class _NoteList extends ConsumerWidget {
         separatorBuilder: (_, index) => const SizedBox(height: 2),
         itemBuilder: (_, index) {
           final note = notes[index];
-          return _MacosSelectableRow(
+          final row = _MacosSelectableRow(
             selected: note.id == selectedNoteId,
             leading: MacosIcon(
               note.isPinned ? CupertinoIcons.pin_fill : CupertinoIcons.doc_text,
@@ -3478,6 +4558,26 @@ class _NoteList extends ConsumerWidget {
                 ),
                 const MacosPulldownMenuDivider(),
                 MacosPulldownMenuItem(
+                  title: Text(l10n.moveNoteToMatterAction),
+                  onTap: () {
+                    unawaited(onMoveToMatter(note));
+                  },
+                ),
+                MacosPulldownMenuItem(
+                  title: Text(l10n.moveNoteToPhaseAction),
+                  enabled: note.matterId != null,
+                  onTap: () {
+                    unawaited(onMoveToPhase(note));
+                  },
+                ),
+                MacosPulldownMenuItem(
+                  title: Text(l10n.moveToOrphansAction),
+                  onTap: () {
+                    unawaited(onMoveToOrphans(note));
+                  },
+                ),
+                const MacosPulldownMenuDivider(),
+                MacosPulldownMenuItem(
                   title: Text(l10n.deleteAction),
                   onTap: () {
                     unawaited(onDelete(note));
@@ -3491,6 +4591,7 @@ class _NoteList extends ConsumerWidget {
                   .selectNote(note.id);
             },
           );
+          return buildDraggable(note: note, scope: 'list_macos', child: row);
         },
       );
     }
@@ -3499,7 +4600,7 @@ class _NoteList extends ConsumerWidget {
       itemCount: notes.length,
       itemBuilder: (_, index) {
         final note = notes[index];
-        return ListTile(
+        final tile = ListTile(
           selected: note.id == selectedNoteId,
           title: Text(note.title.isEmpty ? l10n.untitledLabel : note.title),
           subtitle: Text(
@@ -3512,12 +4613,25 @@ class _NoteList extends ConsumerWidget {
               switch (value) {
                 case 'edit':
                   await onEdit(note);
+                  return;
                 case 'toggle_pin':
                   await onTogglePinned(note);
+                  return;
                 case 'link':
                   await onLink(note);
+                  return;
+                case 'move_matter':
+                  await onMoveToMatter(note);
+                  return;
+                case 'move_phase':
+                  await onMoveToPhase(note);
+                  return;
+                case 'move_orphans':
+                  await onMoveToOrphans(note);
+                  return;
                 case 'delete':
                   await onDelete(note);
+                  return;
               }
             },
             itemBuilder: (_) => <PopupMenuEntry<String>>[
@@ -3535,6 +4649,20 @@ class _NoteList extends ConsumerWidget {
               ),
               const PopupMenuDivider(),
               PopupMenuItem<String>(
+                value: 'move_matter',
+                child: Text(l10n.moveNoteToMatterAction),
+              ),
+              PopupMenuItem<String>(
+                value: 'move_phase',
+                enabled: note.matterId != null,
+                child: Text(l10n.moveNoteToPhaseAction),
+              ),
+              PopupMenuItem<String>(
+                value: 'move_orphans',
+                child: Text(l10n.moveToOrphansAction),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem<String>(
                 value: 'delete',
                 child: Text(l10n.deleteAction),
               ),
@@ -3549,6 +4677,7 @@ class _NoteList extends ConsumerWidget {
                 .selectNote(note.id);
           },
         );
+        return buildDraggable(note: note, scope: 'list_material', child: tile);
       },
     );
   }
@@ -3666,8 +4795,6 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final noteAsync = ref.watch(noteEditorControllerProvider);
     final editorViewMode = ref.watch(noteEditorViewModeProvider);
-    final selectedMatterId = ref.watch(selectedMatterIdProvider);
-    final selectedPhaseId = ref.watch(selectedPhaseIdProvider);
     final storageRootPath = ref
         .watch(settingsControllerProvider)
         .valueOrNull
@@ -3954,24 +5081,66 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
         }
 
         Future<void> moveToOrphans() async {
-          await ref
-              .read(noteEditorControllerProvider.notifier)
-              .moveCurrent(matterId: null, phaseId: null);
-          ref.read(showOrphansProvider.notifier).state = true;
-          ref.read(showConflictsProvider.notifier).state = false;
+          await _moveNoteToOrphans(context: context, ref: ref, noteId: note.id);
         }
 
-        Future<void> assignToSelectedMatter() async {
-          if (selectedMatterId == null || selectedPhaseId == null) {
+        Future<void> moveToMatter() async {
+          final targetMatter = await _showMoveToMatterDialog(
+            context: context,
+            ref: ref,
+            note: note,
+          );
+          if (!context.mounted || targetMatter == null) {
             return;
           }
-          await ref
-              .read(noteEditorControllerProvider.notifier)
-              .moveCurrent(
-                matterId: selectedMatterId,
-                phaseId: selectedPhaseId,
-              );
-          ref.read(showOrphansProvider.notifier).state = false;
+          await _moveNoteToMatter(
+            context: context,
+            ref: ref,
+            noteId: note.id,
+            targetMatter: targetMatter,
+          );
+        }
+
+        Future<void> moveToPhase() async {
+          final matterId = note.matterId;
+          if (matterId == null) {
+            _showMoveMessage(context, l10n.moveSourceMatterMissingMessage);
+            return;
+          }
+          Matter? sourceMatter = ref
+              .read(mattersControllerProvider.notifier)
+              .findMatter(matterId);
+          if (sourceMatter == null) {
+            final matters = await _allMattersForMove(ref);
+            if (!context.mounted) {
+              return;
+            }
+            for (final candidate in matters) {
+              if (candidate.id == matterId) {
+                sourceMatter = candidate;
+                break;
+              }
+            }
+          }
+          if (sourceMatter == null) {
+            _showMoveMessage(context, l10n.moveSourceMatterMissingMessage);
+            return;
+          }
+          final phase = await _showMoveToPhaseDialog(
+            context: context,
+            matter: sourceMatter,
+            note: note,
+          );
+          if (!context.mounted || phase == null) {
+            return;
+          }
+          await _moveNoteToPhase(
+            context: context,
+            ref: ref,
+            noteId: note.id,
+            sourceMatterId: sourceMatter.id,
+            phase: phase,
+          );
         }
 
         final titleField = isMacOSNativeUI
@@ -4134,15 +5303,22 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                           icon: CupertinoIcons.ellipsis_circle,
                           items: <MacosPulldownMenuEntry>[
                             MacosPulldownMenuItem(
-                              title: Text(l10n.moveToOrphansAction),
+                              title: Text(l10n.moveNoteToMatterAction),
                               onTap: () {
-                                unawaited(moveToOrphans());
+                                unawaited(moveToMatter());
                               },
                             ),
                             MacosPulldownMenuItem(
-                              title: Text(l10n.assignToSelectedMatterAction),
+                              title: Text(l10n.moveNoteToPhaseAction),
+                              enabled: note.matterId != null,
                               onTap: () {
-                                unawaited(assignToSelectedMatter());
+                                unawaited(moveToPhase());
+                              },
+                            ),
+                            MacosPulldownMenuItem(
+                              title: Text(l10n.moveToOrphansAction),
+                              onTap: () {
+                                unawaited(moveToOrphans());
                               },
                             ),
                           ],
@@ -4152,23 +5328,30 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                           icon: const Icon(Icons.more_horiz),
                           onSelected: (value) async {
                             switch (value) {
+                              case 'move_matter':
+                                await moveToMatter();
+                                return;
+                              case 'move_phase':
+                                await moveToPhase();
+                                return;
                               case 'move_orphans':
                                 await moveToOrphans();
-                              case 'assign_selected':
-                                await assignToSelectedMatter();
+                                return;
                             }
                           },
                           itemBuilder: (_) => <PopupMenuEntry<String>>[
                             PopupMenuItem<String>(
-                              value: 'move_orphans',
-                              child: Text(l10n.moveToOrphansAction),
+                              value: 'move_matter',
+                              child: Text(l10n.moveNoteToMatterAction),
                             ),
                             PopupMenuItem<String>(
-                              value: 'assign_selected',
-                              enabled:
-                                  selectedMatterId != null &&
-                                  selectedPhaseId != null,
-                              child: Text(l10n.assignToSelectedMatterAction),
+                              value: 'move_phase',
+                              enabled: note.matterId != null,
+                              child: Text(l10n.moveNoteToPhaseAction),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'move_orphans',
+                              child: Text(l10n.moveToOrphansAction),
                             ),
                           ],
                         ),

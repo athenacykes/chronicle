@@ -270,6 +270,478 @@ void main() {
     expect(modeToggle.groupValue, NoteEditorViewMode.edit);
   });
 
+  testWidgets('macOS sidebar renders descender-heavy labels without clipping', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final matterTwo = matter.copyWith(
+      id: 'matter-2',
+      title: 'pqgy docket',
+      phases: const <Phase>[
+        Phase(
+          id: 'phase-2-start',
+          matterId: 'matter-2',
+          name: 'Start',
+          order: 0,
+        ),
+      ],
+      currentPhaseId: 'phase-2-start',
+    );
+    final descMatter = matter.copyWith(title: 'gypq matter 123');
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[
+        descMatter,
+        matterTwo,
+      ]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(ChronicleApp),
+      matchesGoldenFile('goldens/macos_sidebar_descenders_rest.png'),
+    );
+  });
+
+  testWidgets('macOS sidebar hover highlight keeps labels legible', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final descMatter = matter.copyWith(title: 'gypq matter 123');
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[descMatter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final drag = await _startLongPressDrag(
+      tester,
+      find.byKey(const ValueKey<String>('note_drag_list_macos_note-1')),
+    );
+    await drag.moveTo(
+      tester.getCenter(find.byKey(const Key('sidebar_orphans_drop_target'))),
+    );
+    await tester.pump(const Duration(milliseconds: 80));
+
+    await expectLater(
+      find.byType(ChronicleApp),
+      matchesGoldenFile('goldens/macos_sidebar_descenders_drag_hover.png'),
+    );
+
+    await drag.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('material list menu moves note to another matter', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final matterTwo = matter.copyWith(
+      id: 'matter-2',
+      title: 'Matter Two',
+      phases: const <Phase>[
+        Phase(
+          id: 'phase-2-start',
+          matterId: 'matter-2',
+          name: 'Start',
+          order: 0,
+        ),
+        Phase(
+          id: 'phase-2-review',
+          matterId: 'matter-2',
+          name: 'Review',
+          order: 1,
+        ),
+      ],
+      currentPhaseId: 'phase-2-review',
+    );
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter, matterTwo]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_horiz).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to Matter...').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Matter Two').last);
+    await tester.pumpAndSettle();
+
+    final moved = noteRepository.noteById('note-1');
+    expect(moved?.matterId, 'matter-2');
+    expect(moved?.phaseId, 'phase-2-review');
+
+    final container = _containerForApp(tester);
+    expect(container.read(selectedMatterIdProvider), 'matter-1');
+    expect(container.read(showOrphansProvider), isFalse);
+  });
+
+  testWidgets('material list menu moves note to another phase in same matter', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_horiz).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to Phase...').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Progress').last);
+    await tester.pumpAndSettle();
+
+    final moved = noteRepository.noteById('note-1');
+    expect(moved?.matterId, 'matter-1');
+    expect(moved?.phaseId, 'phase-progress');
+  });
+
+  testWidgets(
+    'material list menu moves note to orphans without switching view',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: <Override>[
+            selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+            selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+            selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_horiz).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Move to Orphans').last);
+      await tester.pumpAndSettle();
+
+      final moved = noteRepository.noteById('note-1');
+      expect(moved?.matterId, isNull);
+      expect(moved?.phaseId, isNull);
+
+      final container = _containerForApp(tester);
+      expect(container.read(selectedMatterIdProvider), 'matter-1');
+      expect(container.read(showOrphansProvider), isFalse);
+    },
+  );
+
+  testWidgets('drag from phase list to matter sidebar target moves note', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final matterTwo = matter.copyWith(
+      id: 'matter-2',
+      title: 'Matter Two',
+      phases: const <Phase>[
+        Phase(
+          id: 'phase-2-start',
+          matterId: 'matter-2',
+          name: 'Start',
+          order: 0,
+        ),
+      ],
+      currentPhaseId: 'phase-2-start',
+    );
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter, matterTwo]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _longPressDragTo(
+      tester,
+      find.byKey(const ValueKey<String>('note_drag_list_material_note-1')),
+      find.byKey(const ValueKey<String>('sidebar_matter_drop_target_matter-2')),
+    );
+
+    final moved = noteRepository.noteById('note-1');
+    expect(moved?.matterId, 'matter-2');
+    expect(moved?.phaseId, 'phase-2-start');
+  });
+
+  testWidgets('drag from phase list to phase target moves within same matter', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _longPressDragTo(
+      tester,
+      find.byKey(const ValueKey<String>('note_drag_list_material_note-1')),
+      find.byKey(const ValueKey<String>('phase_drop_target_phase-progress')),
+    );
+
+    final moved = noteRepository.noteById('note-1');
+    expect(moved?.matterId, 'matter-1');
+    expect(moved?.phaseId, 'phase-progress');
+  });
+
+  testWidgets('drag from timeline card to orphans target creates orphan', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          matterViewModeProvider.overrideWith((ref) => MatterViewMode.timeline),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _longPressDragTo(
+      tester,
+      find.byKey(const ValueKey<String>('note_drag_timeline_note-1')),
+      find.byKey(const Key('sidebar_orphans_drop_target')),
+    );
+
+    final moved = noteRepository.noteById('note-1');
+    expect(moved?.matterId, isNull);
+    expect(moved?.phaseId, isNull);
+  });
+
+  testWidgets('drag from graph node to matter target works', (tester) async {
+    _setDesktopViewport(tester);
+    final matterTwo = matter.copyWith(
+      id: 'matter-2',
+      title: 'Matter Two',
+      phases: const <Phase>[
+        Phase(
+          id: 'phase-2-start',
+          matterId: 'matter-2',
+          name: 'Start',
+          order: 0,
+        ),
+      ],
+      currentPhaseId: 'phase-2-start',
+    );
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter, matterTwo]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          matterViewModeProvider.overrideWith((ref) => MatterViewMode.graph),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _longPressDragTo(
+      tester,
+      find.byKey(const ValueKey<String>('note_drag_graph_note-1')),
+      find.byKey(const ValueKey<String>('sidebar_matter_drop_target_matter-2')),
+    );
+
+    final moved = noteRepository.noteById('note-1');
+    expect(moved?.matterId, 'matter-2');
+    expect(moved?.phaseId, 'phase-2-start');
+  });
+
+  testWidgets('material list and editor menus expose move actions', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.more_horiz).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Move to Matter...'), findsWidgets);
+    expect(find.text('Move to Phase...'), findsWidgets);
+    expect(find.text('Move to Orphans'), findsWidgets);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('More note actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Move to Matter...'), findsWidgets);
+    expect(find.text('Move to Phase...'), findsWidgets);
+    expect(find.text('Move to Orphans'), findsWidgets);
+  });
+
+  testWidgets('macOS list and editor menus expose move actions', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final buttons = tester
+        .widgetList<MacosPulldownButton>(find.byType(MacosPulldownButton))
+        .toList();
+    final moveMenuButtons = buttons.where((button) {
+      final titles = _macosPulldownTitles(button);
+      return titles.contains('Move to Matter...') &&
+          titles.contains('Move to Phase...') &&
+          titles.contains('Move to Orphans');
+    }).toList();
+
+    expect(moveMenuButtons.length, greaterThanOrEqualTo(2));
+
+    final rowMenus = moveMenuButtons.where(
+      (button) => _macosPulldownTitles(button).contains('Edit'),
+    );
+    final editorMenus = moveMenuButtons.where(
+      (button) => !_macosPulldownTitles(button).contains('Edit'),
+    );
+
+    expect(rowMenus, isNotEmpty);
+    expect(editorMenus, isNotEmpty);
+  });
+
   testWidgets('macOS Manage Phases dialog uses native controls without crash', (
     tester,
   ) async {
@@ -917,6 +1389,51 @@ void main() {
       findsNothing,
     );
   });
+}
+
+ProviderContainer _containerForApp(WidgetTester tester) {
+  final element = tester.element(find.byType(ChronicleApp));
+  return ProviderScope.containerOf(element);
+}
+
+Future<void> _longPressDragTo(
+  WidgetTester tester,
+  Finder source,
+  Finder target,
+) async {
+  final sourceCenter = tester.getCenter(source);
+  final targetCenter = tester.getCenter(target);
+  final gesture = await tester.startGesture(sourceCenter);
+  await tester.pump(const Duration(milliseconds: 220));
+  await gesture.moveTo(targetCenter);
+  await tester.pump(const Duration(milliseconds: 40));
+  await gesture.up();
+  await tester.pumpAndSettle();
+}
+
+Future<TestGesture> _startLongPressDrag(
+  WidgetTester tester,
+  Finder source,
+) async {
+  final sourceCenter = tester.getCenter(source);
+  final gesture = await tester.startGesture(sourceCenter);
+  await tester.pump(const Duration(milliseconds: 220));
+  return gesture;
+}
+
+List<String> _macosPulldownTitles(MacosPulldownButton button) {
+  final items = button.items ?? const <MacosPulldownMenuEntry>[];
+  return items
+      .whereType<MacosPulldownMenuItem>()
+      .map((entry) {
+        final title = entry.title;
+        if (title is Text) {
+          return title.data ?? '';
+        }
+        return '';
+      })
+      .where((title) => title.isNotEmpty)
+      .toList();
 }
 
 Widget _buildApp({

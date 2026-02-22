@@ -209,6 +209,25 @@
   "deleteNoteAction": "Delete Note",
   "tagsCommaSeparatedLabel": "Tags (comma separated)",
   "moveToOrphansAction": "Move to Orphans",
+  "moveNoteToMatterAction": "Move to Matter...",
+  "moveNoteToPhaseAction": "Move to Phase...",
+  "moveNoteToMatterDialogTitle": "Move Note to Matter",
+  "moveNoteToPhaseDialogTitle": "Move Note to Phase",
+  "moveNoteCurrentMatterLabel": "Current matter",
+  "moveSourceMatterMissingMessage": "Cannot move note because its source matter is unavailable.",
+  "movePhaseRequiresSameMatterMessage": "You can only move to another phase in the same matter.",
+  "moveTargetMatterHasNoPhases": "Cannot move note. \"{matter}\" has no phases.",
+  "@moveTargetMatterHasNoPhases": {
+    "placeholders": {
+      "matter": {}
+    }
+  },
+  "moveNoteFailed": "Failed to move note: {error}",
+  "@moveNoteFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "assignToSelectedMatterAction": "Assign to Selected Matter",
   "writeMarkdownHereHint": "Write markdown here...",
   "saveAction": "Save",

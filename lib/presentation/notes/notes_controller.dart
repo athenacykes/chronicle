@@ -229,12 +229,26 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       return;
     }
 
+    await moveNoteById(
+      noteId: current.id,
+      matterId: matterId,
+      phaseId: phaseId,
+    );
+  }
+
+  Future<void> moveNoteById({
+    required String noteId,
+    required String? matterId,
+    required String? phaseId,
+  }) async {
     await ref
         .read(noteRepositoryProvider)
-        .moveNote(noteId: current.id, matterId: matterId, phaseId: phaseId);
+        .moveNote(noteId: noteId, matterId: matterId, phaseId: phaseId);
 
     await _refreshCollections();
-    await selectNote(current.id);
+    if (ref.read(selectedNoteIdProvider) == noteId) {
+      await selectNote(noteId);
+    }
   }
 
   Future<void> deleteCurrent() async {
