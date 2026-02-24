@@ -18,9 +18,7 @@ void main() {
     );
 
     final container = ProviderContainer(
-      overrides: <Override>[
-        settingsRepositoryProvider.overrideWithValue(repository),
-      ],
+      overrides: [settingsRepositoryProvider.overrideWithValue(repository)],
     );
     addTearDown(container.dispose);
 
@@ -29,7 +27,7 @@ void main() {
         .read(settingsControllerProvider.notifier)
         .setLocaleTag('zh');
 
-    final state = container.read(settingsControllerProvider).valueOrNull;
+    final state = container.read(settingsControllerProvider).asData?.value;
     expect(state?.localeTag, 'zh');
     expect((await repository.loadSettings()).localeTag, 'zh');
   });

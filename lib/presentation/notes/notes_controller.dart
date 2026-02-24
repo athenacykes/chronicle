@@ -6,18 +6,27 @@ import '../../domain/entities/enums.dart';
 import '../../domain/entities/note.dart';
 import '../../domain/usecases/notes/create_note.dart';
 import '../../l10n/localization.dart';
+import '../common/state/value_notifier_provider.dart';
 import '../links/links_controller.dart';
 import '../matters/matters_controller.dart';
 import '../settings/settings_controller.dart';
 import '../sync/conflicts_controller.dart';
 
-final selectedNoteIdProvider = StateProvider<String?>((ref) => null);
+final selectedNoteIdProvider =
+    NotifierProvider<ValueNotifierController<String?>, String?>(
+      () => ValueNotifierController<String?>(null),
+    );
 
 enum NoteEditorViewMode { edit, read }
 
-final noteEditorViewModeProvider = StateProvider<NoteEditorViewMode>(
-  (ref) => NoteEditorViewMode.edit,
-);
+final noteEditorViewModeProvider =
+    NotifierProvider<
+      ValueNotifierController<NoteEditorViewMode>,
+      NoteEditorViewMode
+    >(
+      () =>
+          ValueNotifierController<NoteEditorViewMode>(NoteEditorViewMode.edit),
+    );
 
 final noteListProvider = FutureProvider<List<Note>>((ref) async {
   final repository = ref.watch(noteRepositoryProvider);
@@ -64,14 +73,14 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   Future<void> selectNote(String? noteId) async {
     if (noteId == null) {
       state = const AsyncData(null);
-      ref.read(selectedNoteIdProvider.notifier).state = null;
+      ref.read(selectedNoteIdProvider.notifier).set(null);
       return;
     }
 
     state = const AsyncLoading();
     final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
     state = AsyncData(note);
-    ref.read(selectedNoteIdProvider.notifier).state = noteId;
+    ref.read(selectedNoteIdProvider.notifier).set(noteId);
   }
 
   Future<Note?> createNoteForSelectedMatter() async {
@@ -81,7 +90,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     }
 
     final l10n = appLocalizationsForTag(
-      ref.read(settingsControllerProvider).valueOrNull?.localeTag,
+      ref.read(settingsControllerProvider).asData?.value.localeTag,
     );
 
     var phaseId = ref.read(selectedPhaseIdProvider);
@@ -129,7 +138,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
   Future<Note> createOrphan() async {
     final l10n = appLocalizationsForTag(
-      ref.read(settingsControllerProvider).valueOrNull?.localeTag,
+      ref.read(settingsControllerProvider).asData?.value.localeTag,
     );
 
     final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
@@ -146,7 +155,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
   Future<Note> createUntitledOrphanNote() async {
     final l10n = appLocalizationsForTag(
-      ref.read(settingsControllerProvider).valueOrNull?.localeTag,
+      ref.read(settingsControllerProvider).asData?.value.localeTag,
     );
 
     final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
@@ -167,7 +176,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     List<String>? tags,
     bool? isPinned,
   }) async {
-    final current = state.valueOrNull;
+    final current = state.asData?.value;
     if (current == null) {
       return;
     }
@@ -224,7 +233,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     required String? matterId,
     required String? phaseId,
   }) async {
-    final current = state.valueOrNull;
+    final current = state.asData?.value;
     if (current == null) {
       return;
     }
@@ -252,13 +261,13 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }
 
   Future<void> deleteCurrent() async {
-    final current = state.valueOrNull;
+    final current = state.asData?.value;
     if (current == null) {
       return;
     }
 
     await ref.read(noteRepositoryProvider).deleteNote(current.id);
-    ref.read(selectedNoteIdProvider.notifier).state = null;
+    ref.read(selectedNoteIdProvider.notifier).set(null);
 
     await _refreshCollections();
     state = const AsyncData(null);
@@ -267,14 +276,14 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   Future<void> deleteNote(String noteId) async {
     await ref.read(noteRepositoryProvider).deleteNote(noteId);
     if (ref.read(selectedNoteIdProvider) == noteId) {
-      ref.read(selectedNoteIdProvider.notifier).state = null;
+      ref.read(selectedNoteIdProvider.notifier).set(null);
       state = const AsyncData(null);
     }
     await _refreshCollections();
   }
 
   Future<Note?> attachFilesToCurrent() async {
-    final current = state.valueOrNull;
+    final current = state.asData?.value;
     if (current == null) {
       return null;
     }
@@ -306,7 +315,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }
 
   Future<Note?> removeAttachmentFromCurrent(String attachmentPath) async {
-    final current = state.valueOrNull;
+    final current = state.asData?.value;
     if (current == null) {
       return null;
     }
@@ -325,17 +334,17 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       return;
     }
 
-    ref.read(showConflictsProvider.notifier).state = false;
+    ref.read(showConflictsProvider.notifier).set(false);
 
     if (note.isOrphan) {
-      ref.read(showOrphansProvider.notifier).state = true;
-      ref.read(selectedMatterIdProvider.notifier).state = null;
-      ref.read(selectedPhaseIdProvider.notifier).state = null;
+      ref.read(showOrphansProvider.notifier).set(true);
+      ref.read(selectedMatterIdProvider.notifier).set(null);
+      ref.read(selectedPhaseIdProvider.notifier).set(null);
     } else {
-      ref.read(showOrphansProvider.notifier).state = false;
-      ref.read(selectedMatterIdProvider.notifier).state = note.matterId;
-      ref.read(selectedPhaseIdProvider.notifier).state = note.phaseId;
-      ref.read(matterViewModeProvider.notifier).state = MatterViewMode.phase;
+      ref.read(showOrphansProvider.notifier).set(false);
+      ref.read(selectedMatterIdProvider.notifier).set(note.matterId);
+      ref.read(selectedPhaseIdProvider.notifier).set(note.phaseId);
+      ref.read(matterViewModeProvider.notifier).set(MatterViewMode.phase);
       if (note.matterId != null && note.phaseId != null) {
         final matter = ref
             .read(mattersControllerProvider.notifier)

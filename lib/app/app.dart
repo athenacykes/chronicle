@@ -96,7 +96,7 @@ class _ChronicleAppState extends ConsumerState<ChronicleApp> {
   @override
   Widget build(BuildContext context) {
     final settingsState = ref.watch(settingsControllerProvider);
-    final configuredLocaleTag = settingsState.valueOrNull?.localeTag ?? 'en';
+    final configuredLocaleTag = settingsState.asData?.value.localeTag ?? 'en';
     final locale = resolveAppLocale(configuredLocaleTag);
 
     final useMacOSNativeUI =

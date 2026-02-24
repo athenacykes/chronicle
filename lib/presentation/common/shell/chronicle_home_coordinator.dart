@@ -33,6 +33,7 @@ import '../../links/graph_controller.dart';
 import '../../links/links_controller.dart';
 import '../../matters/matters_controller.dart';
 import '../markdown/chronicle_markdown.dart';
+import '../state/value_notifier_provider.dart';
 import '../../notes/notes_controller.dart';
 import '../../notes/note_attachment_widgets.dart';
 import '../../search/search_controller.dart';
@@ -74,13 +75,15 @@ class _MatterReassignPayload {
   final String? categoryId;
 }
 
-final _activeNoteDragPayloadProvider = StateProvider<_NoteDragPayload?>(
-  (ref) => null,
-);
+final _activeNoteDragPayloadProvider =
+    NotifierProvider<
+      ValueNotifierController<_NoteDragPayload?>,
+      _NoteDragPayload?
+    >(() => ValueNotifierController<_NoteDragPayload?>(null));
 
 Future<List<Matter>> _allMattersForMove(WidgetRef ref) async {
   final MatterSections sections =
-      ref.read(mattersControllerProvider).valueOrNull ??
+      ref.read(mattersControllerProvider).asData?.value ??
       await ref.read(mattersControllerProvider.future);
   return <Matter>[
     ...sections.pinned,
@@ -410,8 +413,8 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             onSearchChanged: (value) =>
                 ref.read(searchControllerProvider.notifier).setText(value),
             onShowConflicts: () {
-              ref.read(showConflictsProvider.notifier).state = true;
-              ref.read(showOrphansProvider.notifier).state = false;
+              ref.read(showConflictsProvider.notifier).set(true);
+              ref.read(showOrphansProvider.notifier).set(false);
             },
             onOpenSettings: () async {
               await _openSettingsDialog();
@@ -589,7 +592,8 @@ class _StorageRootSetupScreenState
                                   .chooseAndSetStorageRoot();
                               final state = ref
                                   .read(settingsControllerProvider)
-                                  .valueOrNull;
+                                  .asData
+                                  ?.value;
                               if (state?.storageRootPath != null) {
                                 _controller.text = state!.storageRootPath!;
                               }
@@ -603,7 +607,8 @@ class _StorageRootSetupScreenState
                                   .chooseAndSetStorageRoot();
                               final state = ref
                                   .read(settingsControllerProvider)
-                                  .valueOrNull;
+                                  .asData
+                                  ?.value;
                               if (state?.storageRootPath != null) {
                                 _controller.text = state!.storageRootPath!;
                               }
@@ -662,7 +667,7 @@ class _MatterSidebar extends ConsumerWidget {
     final showConflicts = ref.watch(showConflictsProvider);
     final conflictCount = ref.watch(conflictCountProvider);
     final noteDragPayload = ref.watch(_activeNoteDragPayloadProvider);
-    final settings = ref.watch(settingsControllerProvider).valueOrNull;
+    final settings = ref.watch(settingsControllerProvider).asData?.value;
     final collapsedCategoryIds =
         settings?.collapsedCategoryIds.toSet() ?? <String>{};
 
@@ -841,11 +846,10 @@ class _MatterSidebar extends ConsumerWidget {
                       leading: const Icon(Icons.note_alt_outlined),
                       title: Text(l10n.orphansLabel),
                       onTap: () {
-                        ref.read(showOrphansProvider.notifier).state = true;
-                        ref.read(showConflictsProvider.notifier).state = false;
-                        ref.read(selectedMatterIdProvider.notifier).state =
-                            null;
-                        ref.read(selectedPhaseIdProvider.notifier).state = null;
+                        ref.read(showOrphansProvider.notifier).set(true);
+                        ref.read(showConflictsProvider.notifier).set(false);
+                        ref.read(selectedMatterIdProvider.notifier).set(null);
+                        ref.read(selectedPhaseIdProvider.notifier).set(null);
                         ref.invalidate(noteListProvider);
                       },
                     ),
@@ -861,8 +865,8 @@ class _MatterSidebar extends ConsumerWidget {
                 ),
                 title: Text(l10n.conflictsLabel),
                 onTap: () {
-                  ref.read(showConflictsProvider.notifier).state = true;
-                  ref.read(showOrphansProvider.notifier).state = false;
+                  ref.read(showConflictsProvider.notifier).set(true);
+                  ref.read(showOrphansProvider.notifier).set(false);
                 },
               ),
             ],
@@ -1106,10 +1110,10 @@ class _MatterSidebar extends ConsumerWidget {
       _MacSidebarSelectableEntry(
         key: 'orphans',
         onSelected: () {
-          ref.read(showOrphansProvider.notifier).state = true;
-          ref.read(showConflictsProvider.notifier).state = false;
-          ref.read(selectedMatterIdProvider.notifier).state = null;
-          ref.read(selectedPhaseIdProvider.notifier).state = null;
+          ref.read(showOrphansProvider.notifier).set(true);
+          ref.read(showConflictsProvider.notifier).set(false);
+          ref.read(selectedMatterIdProvider.notifier).set(null);
+          ref.read(selectedPhaseIdProvider.notifier).set(null);
           ref.invalidate(noteListProvider);
         },
       ),
@@ -1176,8 +1180,8 @@ class _MatterSidebar extends ConsumerWidget {
       _MacSidebarSelectableEntry(
         key: 'conflicts',
         onSelected: () {
-          ref.read(showConflictsProvider.notifier).state = true;
-          ref.read(showOrphansProvider.notifier).state = false;
+          ref.read(showConflictsProvider.notifier).set(true);
+          ref.read(showOrphansProvider.notifier).set(false);
         },
       ),
     );
@@ -1580,12 +1584,15 @@ class _MatterSidebar extends ConsumerWidget {
   }
 
   void _selectMatter(WidgetRef ref, Matter matter) {
-    ref.read(showOrphansProvider.notifier).state = false;
-    ref.read(showConflictsProvider.notifier).state = false;
-    ref.read(selectedMatterIdProvider.notifier).state = matter.id;
-    ref.read(selectedPhaseIdProvider.notifier).state =
-        matter.currentPhaseId ??
-        (matter.phases.isEmpty ? null : matter.phases.first.id);
+    ref.read(showOrphansProvider.notifier).set(false);
+    ref.read(showConflictsProvider.notifier).set(false);
+    ref.read(selectedMatterIdProvider.notifier).set(matter.id);
+    ref
+        .read(selectedPhaseIdProvider.notifier)
+        .set(
+          matter.currentPhaseId ??
+              (matter.phases.isEmpty ? null : matter.phases.first.id),
+        );
     ref.invalidate(noteListProvider);
   }
 }
@@ -1607,9 +1614,9 @@ class _SidebarSyncPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
-    final settings = ref.watch(settingsControllerProvider).valueOrNull;
+    final settings = ref.watch(settingsControllerProvider).asData?.value;
     final syncState = ref.watch(syncControllerProvider);
-    final syncData = syncState.valueOrNull;
+    final syncData = syncState.asData?.value;
     final enableAdvancedSyncRecovery = _kEnableAdvancedSyncRecovery;
     final blocker = syncData?.blocker;
     final remoteRecoveryEnabled =
@@ -2973,7 +2980,7 @@ class _MainWorkspace extends ConsumerWidget {
       return const _OrphanWorkspace();
     }
 
-    final sections = ref.watch(mattersControllerProvider).valueOrNull;
+    final sections = ref.watch(mattersControllerProvider).asData?.value;
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
     if (sections == null || selectedMatterId == null) {
       return Center(child: Text(l10n.selectMatterOrphansOrConflictsPrompt));
@@ -3192,12 +3199,11 @@ class _ConflictWorkspace extends ConsumerWidget {
                                                               .originalNoteId!,
                                                         );
                                                     ref
-                                                            .read(
-                                                              showConflictsProvider
-                                                                  .notifier,
-                                                            )
-                                                            .state =
-                                                        false;
+                                                        .read(
+                                                          showConflictsProvider
+                                                              .notifier,
+                                                        )
+                                                        .set(false);
                                                   },
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
@@ -3227,12 +3233,11 @@ class _ConflictWorkspace extends ConsumerWidget {
                                                               .originalNoteId!,
                                                         );
                                                     ref
-                                                            .read(
-                                                              showConflictsProvider
-                                                                  .notifier,
-                                                            )
-                                                            .state =
-                                                        false;
+                                                        .read(
+                                                          showConflictsProvider
+                                                              .notifier,
+                                                        )
+                                                        .set(false);
                                                   },
                                             icon: const Icon(Icons.open_in_new),
                                             label: Text(
@@ -3404,8 +3409,9 @@ class _MatterWorkspace extends ConsumerWidget {
                   ? _MacosMatterViewModeControl(
                       selected: viewMode,
                       onChanged: (selectedMode) {
-                        ref.read(matterViewModeProvider.notifier).state =
-                            selectedMode;
+                        ref
+                            .read(matterViewModeProvider.notifier)
+                            .set(selectedMode);
                         if (selectedMode == MatterViewMode.graph) {
                           ref.invalidate(graphControllerProvider);
                         } else {
@@ -3431,8 +3437,9 @@ class _MatterWorkspace extends ConsumerWidget {
                       selected: <MatterViewMode>{viewMode},
                       onSelectionChanged: (selection) {
                         final selectedMode = selection.first;
-                        ref.read(matterViewModeProvider.notifier).state =
-                            selectedMode;
+                        ref
+                            .read(matterViewModeProvider.notifier)
+                            .set(selectedMode);
                         if (selectedMode == MatterViewMode.graph) {
                           ref.invalidate(graphControllerProvider);
                         } else {
@@ -3449,8 +3456,9 @@ class _MatterWorkspace extends ConsumerWidget {
                         await ref
                             .read(noteEditorControllerProvider.notifier)
                             .createNoteForSelectedMatter();
-                        ref.read(noteEditorViewModeProvider.notifier).state =
-                            NoteEditorViewMode.edit;
+                        ref
+                            .read(noteEditorViewModeProvider.notifier)
+                            .set(NoteEditorViewMode.edit);
                       },
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -3466,8 +3474,9 @@ class _MatterWorkspace extends ConsumerWidget {
                         await ref
                             .read(noteEditorControllerProvider.notifier)
                             .createNoteForSelectedMatter();
-                        ref.read(noteEditorViewModeProvider.notifier).state =
-                            NoteEditorViewMode.edit;
+                        ref
+                            .read(noteEditorViewModeProvider.notifier)
+                            .set(NoteEditorViewMode.edit);
                       },
                       icon: const Icon(Icons.note_add),
                       label: Text(l10n.newNoteAction),
@@ -3487,8 +3496,9 @@ class _MatterWorkspace extends ConsumerWidget {
                           selectedPhaseId: selectedPhaseId,
                           allPhasesLabel: 'All Phases',
                           onSelected: (phaseId) {
-                            ref.read(selectedPhaseIdProvider.notifier).state =
-                                phaseId;
+                            ref
+                                .read(selectedPhaseIdProvider.notifier)
+                                .set(phaseId);
                             if (phaseId != null && phaseId.isNotEmpty) {
                               unawaited(
                                 ref
@@ -3512,9 +3522,8 @@ class _MatterWorkspace extends ConsumerWidget {
                                   selectedPhaseId.isEmpty,
                               onSelected: (_) {
                                 ref
-                                        .read(selectedPhaseIdProvider.notifier)
-                                        .state =
-                                    null;
+                                    .read(selectedPhaseIdProvider.notifier)
+                                    .set(null);
                                 ref.invalidate(noteListProvider);
                               },
                             ),
@@ -3574,12 +3583,11 @@ class _MatterWorkspace extends ConsumerWidget {
                                           selected: selectedPhaseId == phase.id,
                                           onSelected: (_) {
                                             ref
-                                                    .read(
-                                                      selectedPhaseIdProvider
-                                                          .notifier,
-                                                    )
-                                                    .state =
-                                                phase.id;
+                                                .read(
+                                                  selectedPhaseIdProvider
+                                                      .notifier,
+                                                )
+                                                .set(phase.id);
                                             unawaited(
                                               ref
                                                   .read(
@@ -3825,11 +3833,11 @@ Future<void> _openNoteInPhaseEditor(WidgetRef ref, Note note) async {
   final mattersNotifier = ref.read(mattersControllerProvider.notifier);
   final noteEditorNotifier = ref.read(noteEditorControllerProvider.notifier);
 
-  showOrphansNotifier.state = false;
-  showConflictsNotifier.state = false;
-  selectedMatterNotifier.state = note.matterId;
-  selectedPhaseNotifier.state = note.phaseId;
-  matterViewModeNotifier.state = MatterViewMode.phase;
+  showOrphansNotifier.set(false);
+  showConflictsNotifier.set(false);
+  selectedMatterNotifier.set(note.matterId);
+  selectedPhaseNotifier.set(note.phaseId);
+  matterViewModeNotifier.set(MatterViewMode.phase);
   if (note.matterId != null && note.phaseId != null) {
     final matter = mattersNotifier.findMatter(note.matterId!);
     if (matter != null) {
@@ -4108,16 +4116,16 @@ class _MatterTimelineWorkspace extends ConsumerWidget {
               data: payload,
               delay: const Duration(milliseconds: 180),
               onDragStarted: () {
-                dragPayloadNotifier.state = payload;
+                dragPayloadNotifier.set(payload);
               },
               onDraggableCanceled: (velocity, offset) {
-                dragPayloadNotifier.state = null;
+                dragPayloadNotifier.set(null);
               },
               onDragCompleted: () {
-                dragPayloadNotifier.state = null;
+                dragPayloadNotifier.set(null);
               },
               onDragEnd: (_) {
-                dragPayloadNotifier.state = null;
+                dragPayloadNotifier.set(null);
               },
               feedback: Material(
                 type: MaterialType.transparency,
@@ -4532,16 +4540,16 @@ class _GraphCanvas extends ConsumerWidget {
                     data: payload,
                     delay: const Duration(milliseconds: 180),
                     onDragStarted: () {
-                      dragPayloadNotifier.state = payload;
+                      dragPayloadNotifier.set(payload);
                     },
                     onDraggableCanceled: (velocity, offset) {
-                      dragPayloadNotifier.state = null;
+                      dragPayloadNotifier.set(null);
                     },
                     onDragCompleted: () {
-                      dragPayloadNotifier.state = null;
+                      dragPayloadNotifier.set(null);
                     },
                     onDragEnd: (_) {
-                      dragPayloadNotifier.state = null;
+                      dragPayloadNotifier.set(null);
                     },
                     feedback: Material(
                       type: MaterialType.transparency,
@@ -4728,8 +4736,9 @@ class _OrphanWorkspace extends ConsumerWidget {
                         await ref
                             .read(noteEditorControllerProvider.notifier)
                             .createUntitledOrphanNote();
-                        ref.read(noteEditorViewModeProvider.notifier).state =
-                            NoteEditorViewMode.edit;
+                        ref
+                            .read(noteEditorViewModeProvider.notifier)
+                            .set(NoteEditorViewMode.edit);
                       },
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -4745,8 +4754,9 @@ class _OrphanWorkspace extends ConsumerWidget {
                         await ref
                             .read(noteEditorControllerProvider.notifier)
                             .createUntitledOrphanNote();
-                        ref.read(noteEditorViewModeProvider.notifier).state =
-                            NoteEditorViewMode.edit;
+                        ref
+                            .read(noteEditorViewModeProvider.notifier)
+                            .set(NoteEditorViewMode.edit);
                       },
                       icon: const Icon(Icons.add),
                       label: Text(l10n.newOrphanNoteAction),
@@ -4957,16 +4967,16 @@ class _NoteList extends ConsumerWidget {
         data: payload,
         delay: const Duration(milliseconds: 180),
         onDragStarted: () {
-          dragPayloadNotifier.state = payload;
+          dragPayloadNotifier.set(payload);
         },
         onDraggableCanceled: (velocity, offset) {
-          dragPayloadNotifier.state = null;
+          dragPayloadNotifier.set(null);
         },
         onDragCompleted: () {
-          dragPayloadNotifier.state = null;
+          dragPayloadNotifier.set(null);
         },
         onDragEnd: (_) {
-          dragPayloadNotifier.state = null;
+          dragPayloadNotifier.set(null);
         },
         feedback: Material(
           type: MaterialType.transparency,
@@ -5281,8 +5291,9 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     final editorViewMode = ref.watch(noteEditorViewModeProvider);
     final storageRootPath = ref
         .watch(settingsControllerProvider)
-        .valueOrNull
-        ?.storageRootPath;
+        .asData
+        ?.value
+        .storageRootPath;
 
     return noteAsync.when(
       loading: () => Center(child: _adaptiveLoadingIndicator(context)),
@@ -5420,7 +5431,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
               return;
             }
           }
-          ref.read(noteEditorViewModeProvider.notifier).state = mode;
+          ref.read(noteEditorViewModeProvider.notifier).set(mode);
         }
 
         final currentTags = _tagsController.text
@@ -5963,7 +5974,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                                 const MacosIcon(CupertinoIcons.link, size: 12),
                                 const SizedBox(width: 6),
                                 Text(
-                                  '${l10n.noteLinkedNotesUtilityTitle} (${linkedNotesAsync.valueOrNull?.length ?? 0})',
+                                  '${l10n.noteLinkedNotesUtilityTitle} (${linkedNotesAsync.asData?.value.length ?? 0})',
                                 ),
                               ],
                             ),
@@ -5975,7 +5986,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                             },
                             icon: const Icon(Icons.link, size: 16),
                             label: Text(
-                              '${l10n.noteLinkedNotesUtilityTitle} (${linkedNotesAsync.valueOrNull?.length ?? 0})',
+                              '${l10n.noteLinkedNotesUtilityTitle} (${linkedNotesAsync.asData?.value.length ?? 0})',
                             ),
                           ),
                   ],
@@ -6106,7 +6117,7 @@ class _LinkedNotesPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
-    final linkedCount = linkedNotesAsync.valueOrNull?.length ?? 0;
+    final linkedCount = linkedNotesAsync.asData?.value.length ?? 0;
     return Container(
       width: double.infinity,
       decoration: isMacOSNativeUI
@@ -6690,7 +6701,7 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
   @override
   void initState() {
     super.initState();
-    final settings = ref.read(settingsControllerProvider).valueOrNull;
+    final settings = ref.read(settingsControllerProvider).asData?.value;
     _rootPathController = TextEditingController(
       text: settings?.storageRootPath ?? '',
     );
@@ -7028,8 +7039,9 @@ class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
 
       final syncConfig = ref
           .read(settingsControllerProvider)
-          .valueOrNull
-          ?.syncConfig
+          .asData
+          ?.value
+          .syncConfig
           .copyWith(
             type: _type,
             url: _urlController.text.trim(),
@@ -7152,7 +7164,7 @@ class _ManagePhasesDialogState extends ConsumerState<_ManagePhasesDialog> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
-    final sections = ref.watch(mattersControllerProvider).valueOrNull;
+    final sections = ref.watch(mattersControllerProvider).asData?.value;
     Matter? matter;
     if (sections != null) {
       final all = <Matter>{

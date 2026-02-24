@@ -19,7 +19,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: <Override>[
+        overrides: [
           settingsRepositoryProvider.overrideWithValue(
             _FakeSettingsRepository(
               AppSettings(

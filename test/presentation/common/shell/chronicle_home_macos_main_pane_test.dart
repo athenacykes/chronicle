@@ -144,10 +144,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: useMacOSNativeUI,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -186,10 +190,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -223,9 +231,9 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          showOrphansProvider.overrideWith((ref) => true),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-2'),
+        overrides: [
+          showOrphansProvider.overrideWithBuild((ref, notifier) => true),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-2'),
         ],
       ),
     );
@@ -253,12 +261,16 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
-          noteEditorViewModeProvider.overrideWith(
-            (ref) => NoteEditorViewMode.read,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+          noteEditorViewModeProvider.overrideWithBuild(
+            (ref, notifier) => NoteEditorViewMode.read,
           ),
         ],
       ),
@@ -297,11 +309,11 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          showOrphansProvider.overrideWith((ref) => true),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-2'),
-          noteEditorViewModeProvider.overrideWith(
-            (ref) => NoteEditorViewMode.read,
+        overrides: [
+          showOrphansProvider.overrideWithBuild((ref, notifier) => true),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-2'),
+          noteEditorViewModeProvider.overrideWithBuild(
+            (ref, notifier) => NoteEditorViewMode.read,
           ),
         ],
       ),
@@ -356,10 +368,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -386,10 +402,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -447,10 +467,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -487,10 +511,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -523,10 +551,16 @@ void main() {
         _buildApp(
           useMacOSNativeUI: false,
           repos: repos,
-          overrides: <Override>[
-            selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-            selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-            selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
           ],
         ),
       );
@@ -575,10 +609,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -610,10 +648,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -645,11 +687,17 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
-          matterViewModeProvider.overrideWith((ref) => MatterViewMode.timeline),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+          matterViewModeProvider.overrideWithBuild(
+            (ref, notifier) => MatterViewMode.timeline,
+          ),
         ],
       ),
     );
@@ -692,11 +740,17 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
-          matterViewModeProvider.overrideWith((ref) => MatterViewMode.graph),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+          matterViewModeProvider.overrideWithBuild(
+            (ref, notifier) => MatterViewMode.graph,
+          ),
         ],
       ),
     );
@@ -727,10 +781,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -765,10 +823,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -811,8 +873,10 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
         ],
       ),
     );
@@ -858,10 +922,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -890,11 +958,17 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
-          matterViewModeProvider.overrideWith((ref) => MatterViewMode.timeline),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+          matterViewModeProvider.overrideWithBuild(
+            (ref, notifier) => MatterViewMode.timeline,
+          ),
         ],
       ),
     );
@@ -921,10 +995,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -955,10 +1033,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -983,10 +1065,14 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1013,9 +1099,11 @@ void main() {
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          showConflictsProvider.overrideWith((ref) => true),
-          selectedConflictPathProvider.overrideWith((ref) => 'conflict-note-1'),
+        overrides: [
+          showConflictsProvider.overrideWithBuild((ref, notifier) => true),
+          selectedConflictPathProvider.overrideWithBuild(
+            (ref, notifier) => 'conflict-note-1',
+          ),
           conflictsControllerProvider.overrideWith(
             () => _StaticConflictsController(<SyncConflict>[
               SyncConflict(
@@ -1061,9 +1149,11 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          showConflictsProvider.overrideWith((ref) => true),
-          selectedConflictPathProvider.overrideWith((ref) => 'conflict-note-1'),
+        overrides: [
+          showConflictsProvider.overrideWithBuild((ref, notifier) => true),
+          selectedConflictPathProvider.overrideWithBuild(
+            (ref, notifier) => 'conflict-note-1',
+          ),
           conflictsControllerProvider.overrideWith(
             () => _StaticConflictsController(<SyncConflict>[
               SyncConflict(
@@ -1105,7 +1195,7 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
+        overrides: [
           noteEditorControllerProvider.overrideWith(
             _SpyNoteEditorController.new,
           ),
@@ -1140,10 +1230,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1280,10 +1374,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1319,10 +1417,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1353,10 +1455,16 @@ Inline \$x^2\$ and:
         _buildApp(
           useMacOSNativeUI: true,
           repos: repos,
-          overrides: <Override>[
-            selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-            selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-            selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
           ],
         ),
       );
@@ -1402,10 +1510,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: true,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1441,10 +1553,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1480,10 +1596,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1527,10 +1647,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1566,11 +1690,15 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
+        overrides: [
           syncRepositoryProvider.overrideWithValue(syncRepository),
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1628,11 +1756,15 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
+        overrides: [
           syncRepositoryProvider.overrideWithValue(syncRepository),
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1660,10 +1792,14 @@ Inline \$x^2\$ and:
       _buildApp(
         useMacOSNativeUI: false,
         repos: repos,
-        overrides: <Override>[
-          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
-          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
-          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
         ],
       ),
     );
@@ -1725,8 +1861,14 @@ List<String> _macosPulldownTitles(MacosPulldownButton button) {
 Widget _buildApp({
   required bool useMacOSNativeUI,
   required _TestRepos repos,
-  List<Override> overrides = const <Override>[],
+  List overrides = const [],
 }) {
+  final hasSyncRepositoryOverride = overrides.any(
+    (override) => override.toString().contains('SyncRepository'),
+  );
+  final hasConflictsControllerOverride = overrides.any(
+    (override) => override.toString().contains('ConflictsController'),
+  );
   final settingsRepository = _FakeSettingsRepository(
     AppSettings(
       storageRootPath: '/tmp/chronicle-test',
@@ -1737,7 +1879,7 @@ Widget _buildApp({
   );
 
   return ProviderScope(
-    overrides: <Override>[
+    overrides: [
       settingsRepositoryProvider.overrideWithValue(settingsRepository),
       matterRepositoryProvider.overrideWithValue(repos.matterRepository),
       categoryRepositoryProvider.overrideWithValue(_MemoryCategoryRepository()),
@@ -1746,10 +1888,12 @@ Widget _buildApp({
       searchRepositoryProvider.overrideWithValue(
         _MemorySearchRepository(repos.noteRepository),
       ),
-      syncRepositoryProvider.overrideWithValue(_NoopSyncRepository()),
-      conflictsControllerProvider.overrideWith(
-        () => _StaticConflictsController(const <SyncConflict>[]),
-      ),
+      if (!hasSyncRepositoryOverride)
+        syncRepositoryProvider.overrideWithValue(_NoopSyncRepository()),
+      if (!hasConflictsControllerOverride)
+        conflictsControllerProvider.overrideWith(
+          () => _StaticConflictsController(const <SyncConflict>[]),
+        ),
       ...overrides,
     ],
     child: ChronicleApp(forceMacOSNativeUI: useMacOSNativeUI),

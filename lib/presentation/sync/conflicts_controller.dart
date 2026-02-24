@@ -2,9 +2,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
 import '../../domain/entities/sync_conflict.dart';
+import '../common/state/value_notifier_provider.dart';
 
-final showConflictsProvider = StateProvider<bool>((ref) => false);
-final selectedConflictPathProvider = StateProvider<String?>((ref) => null);
+final showConflictsProvider =
+    NotifierProvider<ValueNotifierController<bool>, bool>(
+      () => ValueNotifierController<bool>(false),
+    );
+final selectedConflictPathProvider =
+    NotifierProvider<ValueNotifierController<String?>, String?>(
+      () => ValueNotifierController<String?>(null),
+    );
 
 final conflictsControllerProvider =
     AsyncNotifierProvider<ConflictsController, List<SyncConflict>>(
@@ -13,12 +20,12 @@ final conflictsControllerProvider =
 
 final conflictCountProvider = Provider<int>((ref) {
   final asyncConflicts = ref.watch(conflictsControllerProvider);
-  return asyncConflicts.valueOrNull?.length ?? 0;
+  return asyncConflicts.asData?.value.length ?? 0;
 });
 
 final selectedConflictProvider = Provider<SyncConflict?>((ref) {
   final selectedPath = ref.watch(selectedConflictPathProvider);
-  final conflicts = ref.watch(conflictsControllerProvider).valueOrNull;
+  final conflicts = ref.watch(conflictsControllerProvider).asData?.value;
   if (selectedPath == null || conflicts == null) {
     return null;
   }
@@ -58,17 +65,17 @@ class ConflictsController extends AsyncNotifier<List<SyncConflict>> {
     }
 
     final exists =
-        state.valueOrNull?.any(
+        state.asData?.value.any(
           (conflict) => conflict.conflictPath == selected,
         ) ??
         false;
     if (!exists) {
-      ref.read(selectedConflictPathProvider.notifier).state = null;
+      ref.read(selectedConflictPathProvider.notifier).set(null);
     }
   }
 
   void selectConflict(String? conflictPath) {
-    ref.read(selectedConflictPathProvider.notifier).state = conflictPath;
+    ref.read(selectedConflictPathProvider.notifier).set(conflictPath);
     ref.invalidate(selectedConflictContentProvider);
   }
 

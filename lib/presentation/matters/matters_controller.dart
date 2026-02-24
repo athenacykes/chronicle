@@ -12,13 +12,24 @@ import '../../domain/usecases/categories/update_category.dart';
 import '../../domain/usecases/matters/create_matter.dart';
 import '../../domain/usecases/matters/list_matter_sections.dart';
 import '../../domain/usecases/matters/update_matter.dart';
+import '../common/state/value_notifier_provider.dart';
 
-final selectedMatterIdProvider = StateProvider<String?>((ref) => null);
-final selectedPhaseIdProvider = StateProvider<String?>((ref) => null);
-final matterViewModeProvider = StateProvider<MatterViewMode>(
-  (ref) => MatterViewMode.phase,
-);
-final showOrphansProvider = StateProvider<bool>((ref) => false);
+final selectedMatterIdProvider =
+    NotifierProvider<ValueNotifierController<String?>, String?>(
+      () => ValueNotifierController<String?>(null),
+    );
+final selectedPhaseIdProvider =
+    NotifierProvider<ValueNotifierController<String?>, String?>(
+      () => ValueNotifierController<String?>(null),
+    );
+final matterViewModeProvider =
+    NotifierProvider<ValueNotifierController<MatterViewMode>, MatterViewMode>(
+      () => ValueNotifierController<MatterViewMode>(MatterViewMode.phase),
+    );
+final showOrphansProvider =
+    NotifierProvider<ValueNotifierController<bool>, bool>(
+      () => ValueNotifierController<bool>(false),
+    );
 
 final mattersControllerProvider =
     AsyncNotifierProvider<MattersController, MatterSections>(
@@ -63,11 +74,14 @@ class MattersController extends AsyncNotifier<MatterSections> {
     final sections = await _loadSections();
     state = AsyncData(sections);
 
-    ref.read(showOrphansProvider.notifier).state = false;
-    ref.read(selectedMatterIdProvider.notifier).state = created.id;
-    ref.read(selectedPhaseIdProvider.notifier).state =
-        created.currentPhaseId ??
-        (created.phases.isEmpty ? null : created.phases.first.id);
+    ref.read(showOrphansProvider.notifier).set(false);
+    ref.read(selectedMatterIdProvider.notifier).set(created.id);
+    ref
+        .read(selectedPhaseIdProvider.notifier)
+        .set(
+          created.currentPhaseId ??
+              (created.phases.isEmpty ? null : created.phases.first.id),
+        );
   }
 
   Future<void> setMatterStatus(String matterId, MatterStatus status) async {
@@ -162,7 +176,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
   }
 
   Future<void> deleteCategory(String categoryId) async {
-    final sections = state.valueOrNull ?? await _loadSections();
+    final sections = state.asData?.value ?? await _loadSections();
     final mattersToClear = <Matter>[];
     for (final section in sections.categorySections) {
       if (section.category.id == categoryId) {
@@ -201,7 +215,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
           selectedPhaseId != null &&
           reordered.any((phase) => phase.id == selectedPhaseId);
       if (!phaseExists) {
-        ref.read(selectedPhaseIdProvider.notifier).state = currentPhaseId;
+        ref.read(selectedPhaseIdProvider.notifier).set(currentPhaseId);
       }
     }
   }
@@ -221,7 +235,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
     await UpdateMatter(ref.read(matterRepositoryProvider)).call(updated);
     state = AsyncData(await _loadSections());
     if (ref.read(selectedMatterIdProvider) == matter.id) {
-      ref.read(selectedPhaseIdProvider.notifier).state = phaseId;
+      ref.read(selectedPhaseIdProvider.notifier).set(phaseId);
     }
   }
 
@@ -254,20 +268,23 @@ class MattersController extends AsyncNotifier<MatterSections> {
     if (currentSelected == matterId) {
       final remaining = _allMatters(sections);
       if (remaining.isEmpty) {
-        ref.read(selectedMatterIdProvider.notifier).state = null;
-        ref.read(selectedPhaseIdProvider.notifier).state = null;
+        ref.read(selectedMatterIdProvider.notifier).set(null);
+        ref.read(selectedPhaseIdProvider.notifier).set(null);
       } else {
         final next = remaining.first;
-        ref.read(selectedMatterIdProvider.notifier).state = next.id;
-        ref.read(selectedPhaseIdProvider.notifier).state =
-            next.currentPhaseId ??
-            (next.phases.isEmpty ? null : next.phases.first.id);
+        ref.read(selectedMatterIdProvider.notifier).set(next.id);
+        ref
+            .read(selectedPhaseIdProvider.notifier)
+            .set(
+              next.currentPhaseId ??
+                  (next.phases.isEmpty ? null : next.phases.first.id),
+            );
       }
     }
   }
 
   Matter? findMatter(String id) {
-    final value = state.valueOrNull;
+    final value = state.asData?.value;
     if (value == null) {
       return null;
     }

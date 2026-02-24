@@ -101,7 +101,7 @@ class SyncController extends AsyncNotifier<SyncStatus> {
 
   void armForceApplyDeletionsOnce() {
     _forceDeletionArmed = true;
-    final current = state.valueOrNull ?? SyncStatus.idle;
+    final current = state.asData?.value ?? SyncStatus.idle;
     state = AsyncData(
       current.copyWith(
         lastMessage: 'Force deletion override is armed for the next sync run.',
@@ -123,7 +123,7 @@ class SyncController extends AsyncNotifier<SyncStatus> {
   Future<void> startAutoSync(int intervalMinutes) async {
     _timer?.cancel();
     _timer = Timer.periodic(Duration(minutes: intervalMinutes), (_) async {
-      final currentStatus = state.valueOrNull;
+      final currentStatus = state.asData?.value;
       if (currentStatus?.blocker != null) {
         return;
       }

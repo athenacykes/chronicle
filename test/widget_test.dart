@@ -87,9 +87,7 @@ Widget _buildTestApp({
   );
 
   return ProviderScope(
-    overrides: <Override>[
-      settingsRepositoryProvider.overrideWithValue(fakeRepo),
-    ],
+    overrides: [settingsRepositoryProvider.overrideWithValue(fakeRepo)],
     child: ChronicleApp(forceMacOSNativeUI: useMacOSNativeUI),
   );
 }
