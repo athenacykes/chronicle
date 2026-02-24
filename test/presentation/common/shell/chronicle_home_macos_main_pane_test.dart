@@ -26,7 +26,9 @@ import 'package:chronicle/presentation/notes/notes_controller.dart';
 import 'package:chronicle/presentation/sync/conflicts_controller.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -119,6 +121,56 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(appkitUiElementColors, null);
   });
+
+  Future<void> expectEditorCodeThemeBackground({
+    required WidgetTester tester,
+    required bool useMacOSNativeUI,
+    required Brightness platformBrightness,
+    required Color expectedBackground,
+    String? expectedTokenKey,
+    Color? expectedTokenColor,
+  }) async {
+    _setDesktopViewport(tester);
+    final dispatcher = tester.binding.platformDispatcher;
+    dispatcher.platformBrightnessTestValue = platformBrightness;
+    addTearDown(dispatcher.clearPlatformBrightnessTestValue);
+
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: useMacOSNativeUI,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final editorContent = find.byKey(const Key('macos_note_editor_content'));
+    expect(editorContent, findsOneWidget);
+    final codeThemeFinder = find.ancestor(
+      of: editorContent,
+      matching: find.byType(CodeTheme),
+    );
+    expect(codeThemeFinder, findsOneWidget);
+    final codeTheme = tester.widget<CodeTheme>(codeThemeFinder);
+    expect(codeTheme.data?.styles['root']?.backgroundColor, expectedBackground);
+    if (expectedTokenKey != null || expectedTokenColor != null) {
+      expect(expectedTokenKey, isNotNull);
+      expect(expectedTokenColor, isNotNull);
+      expect(
+        codeTheme.data?.styles[expectedTokenKey!]?.color,
+        expectedTokenColor,
+      );
+    }
+  }
 
   testWidgets('macOS matter mode renders native main-pane controls', (
     tester,
@@ -314,7 +366,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await expectLater(
-      find.byType(ChronicleApp),
+      find.byKey(const Key('sidebar_root')),
       matchesGoldenFile('goldens/macos_sidebar_descenders_rest.png'),
     );
   });
@@ -353,7 +405,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 80));
 
     await expectLater(
-      find.byType(ChronicleApp),
+      find.byKey(const Key('sidebar_root')),
       matchesGoldenFile('goldens/macos_sidebar_descenders_drag_hover.png'),
     );
 
@@ -987,6 +1039,57 @@ void main() {
     expect(find.text('Conflict Note'), findsWidgets);
   });
 
+  testWidgets('conflict note markdown preview renders table and math', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    const conflictMarkdown = '''
+| key | value |
+| --- | --- |
+| a | 1 |
+
+Inline \$x^2\$ and:
+\$\$x^2 + y^2 = z^2\$\$
+''';
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          showConflictsProvider.overrideWith((ref) => true),
+          selectedConflictPathProvider.overrideWith((ref) => 'conflict-note-1'),
+          conflictsControllerProvider.overrideWith(
+            () => _StaticConflictsController(<SyncConflict>[
+              SyncConflict(
+                type: SyncConflictType.note,
+                conflictPath: 'conflict-note-1',
+                originalPath: 'notes/note-1.md',
+                detectedAt: now,
+                localDevice: 'local',
+                remoteDevice: 'remote',
+                title: 'Conflict Note',
+                preview: 'preview',
+              ),
+            ]),
+          ),
+          selectedConflictContentProvider.overrideWith(
+            (ref) async => conflictMarkdown,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Table), findsOneWidget);
+    expect(find.byType(Math), findsNWidgets(2));
+  });
+
   testWidgets('macOS search results tap opens note in workspace flow', (
     tester,
   ) async {
@@ -1065,6 +1168,105 @@ void main() {
     expect(noteRepository.noteById('note-1')?.title, 'Editor Note Updated');
   });
 
+  testWidgets(
+    'macOS note editor uses light code theme in light platform mode',
+    (tester) async {
+      await expectEditorCodeThemeBackground(
+        tester: tester,
+        useMacOSNativeUI: true,
+        platformBrightness: Brightness.light,
+        expectedBackground: const Color(0xFFF8F8F8),
+      );
+    },
+  );
+
+  testWidgets('macOS note editor uses dark code theme in dark platform mode', (
+    tester,
+  ) async {
+    await expectEditorCodeThemeBackground(
+      tester: tester,
+      useMacOSNativeUI: true,
+      platformBrightness: Brightness.dark,
+      expectedBackground: const Color(0xFF23241F),
+    );
+  });
+
+  testWidgets(
+    'material note editor uses light code theme in light platform mode',
+    (tester) async {
+      await expectEditorCodeThemeBackground(
+        tester: tester,
+        useMacOSNativeUI: false,
+        platformBrightness: Brightness.light,
+        expectedBackground: const Color(0xFFF8F8F8),
+      );
+    },
+  );
+
+  testWidgets(
+    'material note editor uses dark code theme in dark platform mode',
+    (tester) async {
+      await expectEditorCodeThemeBackground(
+        tester: tester,
+        useMacOSNativeUI: false,
+        platformBrightness: Brightness.dark,
+        expectedBackground: const Color(0xFF23241F),
+      );
+    },
+  );
+
+  testWidgets('macOS light code theme applies markdown syntax colors', (
+    tester,
+  ) async {
+    await expectEditorCodeThemeBackground(
+      tester: tester,
+      useMacOSNativeUI: true,
+      platformBrightness: Brightness.light,
+      expectedBackground: const Color(0xFFF8F8F8),
+      expectedTokenKey: 'section',
+      expectedTokenColor: const Color(0xFF990000),
+    );
+  });
+
+  testWidgets('macOS dark code theme applies markdown syntax colors', (
+    tester,
+  ) async {
+    await expectEditorCodeThemeBackground(
+      tester: tester,
+      useMacOSNativeUI: true,
+      platformBrightness: Brightness.dark,
+      expectedBackground: const Color(0xFF23241F),
+      expectedTokenKey: 'keyword',
+      expectedTokenColor: const Color(0xFFF92672),
+    );
+  });
+
+  testWidgets('material light code theme applies markdown syntax colors', (
+    tester,
+  ) async {
+    await expectEditorCodeThemeBackground(
+      tester: tester,
+      useMacOSNativeUI: false,
+      platformBrightness: Brightness.light,
+      expectedBackground: const Color(0xFFF8F8F8),
+      expectedTokenKey: 'section',
+      expectedTokenColor: const Color(0xFF990000),
+    );
+  });
+
+  testWidgets('material dark code theme applies markdown syntax colors', (
+    tester,
+  ) async {
+    await expectEditorCodeThemeBackground(
+      tester: tester,
+      useMacOSNativeUI: false,
+      platformBrightness: Brightness.dark,
+      expectedBackground: const Color(0xFF23241F),
+      expectedTokenKey: 'keyword',
+      expectedTokenColor: const Color(0xFFF92672),
+    );
+  });
+
   testWidgets('Edit to Read mode auto-saves title and content', (tester) async {
     _setDesktopViewport(tester);
     final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
@@ -1101,6 +1303,40 @@ void main() {
     final saved = noteRepository.noteById('note-1');
     expect(saved?.title, 'Autosaved Title');
     expect(saved?.content, '# Autosaved Title\nnew markdown');
+  });
+
+  testWidgets('Read mode markdown renders table and math extensions', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: <Override>[
+          selectedMatterIdProvider.overrideWith((ref) => 'matter-1'),
+          selectedPhaseIdProvider.overrideWith((ref) => 'phase-start'),
+          selectedNoteIdProvider.overrideWith((ref) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('macos_note_editor_content')),
+      '| A | B |\n| --- | --- |\n| 1 | 2 |\n\nInline \$a^2\$ and:\n\$\$c^2\$\$',
+    );
+    await tester.tap(find.text('Read'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Table), findsOneWidget);
+    expect(find.byType(Math), findsNWidgets(2));
   });
 
   testWidgets(

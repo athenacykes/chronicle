@@ -5,8 +5,9 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
+import 'package:flutter_highlight/themes/github.dart';
+import 'package:flutter_highlight/themes/monokai-sublime.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:highlight/languages/markdown.dart' as highlight_markdown;
 import 'package:intl/intl.dart';
@@ -31,6 +32,7 @@ import '../../../l10n/localization.dart';
 import '../../links/graph_controller.dart';
 import '../../links/links_controller.dart';
 import '../../matters/matters_controller.dart';
+import '../markdown/chronicle_markdown.dart';
 import '../../notes/notes_controller.dart';
 import '../../notes/note_attachment_widgets.dart';
 import '../../search/search_controller.dart';
@@ -701,6 +703,7 @@ class _MatterSidebar extends ConsumerWidget {
   }) {
     final l10n = context.l10n;
     return Column(
+      key: _kSidebarRootKey,
       children: <Widget>[
         Expanded(
           child: ListView(
@@ -889,12 +892,7 @@ class _MatterSidebar extends ConsumerWidget {
       sidebarItems.add(
         SidebarItem(
           section: true,
-          label: Text(
-            label,
-            style: MacosTheme.of(context).typography.caption1.copyWith(
-              color: MacosColors.secondaryLabelColor,
-            ),
-          ),
+          label: Text(label, style: MacosTheme.of(context).typography.caption1),
         ),
       );
     }
@@ -1212,6 +1210,7 @@ class _MatterSidebar extends ConsumerWidget {
     }
 
     return Column(
+      key: _kSidebarRootKey,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Padding(
@@ -1797,9 +1796,7 @@ class _SidebarSyncPanel extends ConsumerWidget {
               key: _kSidebarSyncStatusKey,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: MacosTheme.of(context).typography.caption2.copyWith(
-                color: MacosColors.secondaryLabelColor,
-              ),
+              style: MacosTheme.of(context).typography.caption2,
             ),
           ],
         ),
@@ -2483,6 +2480,7 @@ const Key _kMacosMatterModeSegmentedKey = Key(
   'macos_matter_mode_segmented_control',
 );
 const Key _kMacosPhaseSegmentedKey = Key('macos_phase_segmented_control');
+const Key _kSidebarRootKey = Key('sidebar_root');
 const Key _kSidebarOrphansDropTargetKey = Key('sidebar_orphans_drop_target');
 const Key _kMacosMatterNewNoteButtonKey = Key('macos_matter_new_note_button');
 const Key _kMacosOrphanNewNoteButtonKey = Key('macos_orphan_new_note_button');
@@ -2577,6 +2575,15 @@ BoxDecoration _macosPanelDecoration(BuildContext context) {
   );
 }
 
+CodeThemeData _noteEditorCodeThemeData(BuildContext context) {
+  final brightness = _isMacOSNativeUIContext(context)
+      ? MacosTheme.brightnessOf(context)
+      : Theme.of(context).brightness;
+  final isDark = brightness == Brightness.dark;
+  final styles = isDark ? monokaiSublimeTheme : githubTheme;
+  return CodeThemeData(styles: styles);
+}
+
 TextStyle _macosSectionTitleStyle(BuildContext context) {
   return MacosTheme.of(
     context,
@@ -2665,9 +2672,7 @@ class _MacosSelectableRow extends StatelessWidget {
                   if (subtitle != null) ...<Widget>[
                     const SizedBox(height: 2),
                     DefaultTextStyle(
-                      style: typography.caption1.copyWith(
-                        color: MacosColors.secondaryLabelColor,
-                      ),
+                      style: typography.caption1,
                       child: subtitle!,
                     ),
                   ],
@@ -3326,7 +3331,7 @@ class _ConflictWorkspace extends ConsumerWidget {
                                               ),
                                         padding: const EdgeInsets.all(8),
                                         child: selected.isNote
-                                            ? Markdown(data: content)
+                                            ? ChronicleMarkdown(data: content)
                                             : SingleChildScrollView(
                                                 child: SelectableText(content),
                                               ),
@@ -5849,7 +5854,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                         padding: const EdgeInsets.all(10),
-                        child: Markdown(data: _contentController.text),
+                        child: ChronicleMarkdown(data: _contentController.text),
                       )
                     : Container(
                         decoration: isMacOSNativeUI
@@ -5861,12 +5866,17 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                         padding: const EdgeInsets.all(8),
-                        child: CodeField(
-                          key: _kMacosNoteEditorContentFieldKey,
-                          controller: _contentController,
-                          textStyle: TextStyle(
-                            fontFamily: isMacOSNativeUI ? 'Menlo' : 'monospace',
-                            fontSize: 13,
+                        child: CodeTheme(
+                          data: _noteEditorCodeThemeData(context),
+                          child: CodeField(
+                            key: _kMacosNoteEditorContentFieldKey,
+                            controller: _contentController,
+                            textStyle: TextStyle(
+                              fontFamily: isMacOSNativeUI
+                                  ? 'Menlo'
+                                  : 'monospace',
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ),
