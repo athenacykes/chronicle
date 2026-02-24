@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
-import 'package:macos_ui/macos_ui.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:webview_flutter/webview_flutter.dart';
+
+import 'markdown_code_highlighting.dart';
 
 const String _kMermaidAssetPath = 'assets/vendor/mermaid/mermaid.min.js';
 
@@ -35,6 +36,7 @@ class ChronicleMarkdown extends StatelessWidget {
         'math-inline': _MathInlineBuilder(),
         'math-block': _MathBlockBuilder(),
         'mermaid-block': _MermaidBlockBuilder(),
+        'pre': _HighlightedCodeBlockBuilder(),
       },
       padding: padding,
     );
@@ -272,6 +274,104 @@ class _MermaidBlockBuilder extends MarkdownElementBuilder {
   }
 }
 
+@immutable
+class MarkdownCodeBlock {
+  const MarkdownCodeBlock({required this.source, required this.languageHint});
+
+  final String source;
+  final String? languageHint;
+}
+
+@visibleForTesting
+MarkdownCodeBlock? extractCodeBlockFromPre(md.Element element) {
+  if (element.tag != 'pre' || element.children == null) {
+    return null;
+  }
+  if (element.children!.length != 1) {
+    return null;
+  }
+
+  final codeNode = element.children!.single;
+  if (codeNode is! md.Element || codeNode.tag != 'code') {
+    return null;
+  }
+
+  String? languageHint;
+  final classes = (codeNode.attributes['class'] ?? '')
+      .split(RegExp(r'\s+'))
+      .map((value) => value.trim())
+      .where((value) => value.isNotEmpty)
+      .toList(growable: false);
+  for (final className in classes) {
+    if (!className.startsWith('language-')) {
+      continue;
+    }
+    final value = className.substring('language-'.length).trim();
+    if (value.isNotEmpty) {
+      languageHint = value;
+      break;
+    }
+  }
+
+  return MarkdownCodeBlock(
+    source: codeNode.textContent,
+    languageHint: languageHint,
+  );
+}
+
+class _HighlightedCodeBlockBuilder extends MarkdownElementBuilder {
+  @override
+  bool isBlockElement() => true;
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final block = extractCodeBlockFromPre(element);
+    if (block == null) {
+      return null;
+    }
+
+    final brightness = markdownEffectiveBrightness(context);
+    final theme = markdownCodeThemeDataForBrightness(brightness);
+    final rootTokenStyle = theme.styles['root'];
+    final baseStyle =
+        (preferredStyle ?? parentStyle ?? DefaultTextStyle.of(context).style)
+            .copyWith(
+              fontFamily: markdownMonospaceFontFamily(),
+              fontSize: 13,
+              height: 1.35,
+            )
+            .merge(rootTokenStyle?.copyWith(backgroundColor: null));
+    final code = block.source.replaceFirst(RegExp(r'\n$'), '');
+    final span = buildHighlightedCodeTextSpan(
+      source: code,
+      styles: theme.styles,
+      baseStyle: baseStyle,
+      languageHint: block.languageHint,
+    );
+    final backgroundColor =
+        rootTokenStyle?.backgroundColor ??
+        Theme.of(context).colorScheme.surfaceContainerHighest.withAlpha(128);
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.all(10),
+        child: RichText(text: span, softWrap: false),
+      ),
+    );
+  }
+}
+
 class _MermaidWebViewBlock extends StatefulWidget {
   const _MermaidWebViewBlock({required this.source});
 
@@ -306,7 +406,7 @@ class _MermaidWebViewBlockState extends State<_MermaidWebViewBlock> {
     }
 
     try {
-      final theme = _effectiveBrightness(context) == Brightness.dark
+      final theme = markdownEffectiveBrightness(context) == Brightness.dark
           ? 'dark'
           : 'default';
       final script = await (_mermaidScriptFuture ??= rootBundle.loadString(
@@ -406,13 +506,6 @@ double _estimatedHeightForMermaid(String source) {
   final lines = source.split('\n').length;
   final estimated = 140 + (lines * 18);
   return estimated.clamp(180, 560).toDouble();
-}
-
-Brightness _effectiveBrightness(BuildContext context) {
-  if (MacosTheme.maybeOf(context) != null) {
-    return MacosTheme.brightnessOf(context);
-  }
-  return Theme.of(context).brightness;
 }
 
 String _buildMermaidHtml({

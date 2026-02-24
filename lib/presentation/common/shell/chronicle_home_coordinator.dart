@@ -5,11 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
-import 'package:flutter_highlight/themes/github.dart';
-import 'package:flutter_highlight/themes/monokai-sublime.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:highlight/languages/markdown.dart' as highlight_markdown;
 import 'package:intl/intl.dart';
 import 'package:macos_ui/macos_ui.dart';
 import 'package:open_filex/open_filex.dart';
@@ -33,6 +30,8 @@ import '../../links/graph_controller.dart';
 import '../../links/links_controller.dart';
 import '../../matters/matters_controller.dart';
 import '../markdown/chronicle_markdown.dart';
+import '../markdown/markdown_code_controller.dart';
+import '../markdown/markdown_code_highlighting.dart';
 import '../state/value_notifier_provider.dart';
 import '../../notes/notes_controller.dart';
 import '../../notes/note_attachment_widgets.dart';
@@ -2583,12 +2582,9 @@ BoxDecoration _macosPanelDecoration(BuildContext context) {
 }
 
 CodeThemeData _noteEditorCodeThemeData(BuildContext context) {
-  final brightness = _isMacOSNativeUIContext(context)
-      ? MacosTheme.brightnessOf(context)
-      : Theme.of(context).brightness;
-  final isDark = brightness == Brightness.dark;
-  final styles = isDark ? monokaiSublimeTheme : githubTheme;
-  return CodeThemeData(styles: styles);
+  return markdownCodeThemeDataForBrightness(
+    markdownEffectiveBrightness(context),
+  );
 }
 
 TextStyle _macosSectionTitleStyle(BuildContext context) {
@@ -5193,10 +5189,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   @override
   void initState() {
     super.initState();
-    _contentController = CodeController(
-      language: highlight_markdown.markdown,
-      text: '',
-    );
+    _contentController = MarkdownCodeController(text: '');
   }
 
   @override
@@ -5882,6 +5875,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                           child: CodeField(
                             key: _kMacosNoteEditorContentFieldKey,
                             controller: _contentController,
+                            expands: true,
                             textStyle: TextStyle(
                               fontFamily: isMacOSNativeUI
                                   ? 'Menlo'
