@@ -341,48 +341,51 @@ void main() {
     expect(modeToggle.groupValue, NoteEditorViewMode.edit);
   });
 
-  testWidgets('notebook New Note creates untitled notebook draft without dialog', (
-    tester,
-  ) async {
-    _setDesktopViewport(tester);
-    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
-    final repos = _TestRepos(
-      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
-      noteRepository: noteRepository,
-      linkRepository: _MemoryLinkRepository(),
-    );
+  testWidgets(
+    'notebook New Note creates untitled notebook draft without dialog',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
 
-    await tester.pumpWidget(
-      _buildApp(
-        useMacOSNativeUI: true,
-        repos: repos,
-        overrides: [
-          showOrphansProvider.overrideWithBuild((ref, notifier) => true),
-          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-2'),
-          noteEditorViewModeProvider.overrideWithBuild(
-            (ref, notifier) => NoteEditorViewMode.read,
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            showOrphansProvider.overrideWithBuild((ref, notifier) => true),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-2',
+            ),
+            noteEditorViewModeProvider.overrideWithBuild(
+              (ref, notifier) => NoteEditorViewMode.read,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('macos_notebook_new_note_button')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('macos_notebook_new_note_button')));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Create Note'), findsNothing);
-    final created = noteRepository.noteById('note-3');
-    expect(created, isNotNull);
-    expect(created?.title, 'Untitled Note');
-    expect(created?.matterId, isNull);
-    expect(created?.phaseId, isNull);
+      expect(find.text('Create Note'), findsNothing);
+      final created = noteRepository.noteById('note-3');
+      expect(created, isNotNull);
+      expect(created?.title, 'Untitled Note');
+      expect(created?.matterId, isNull);
+      expect(created?.phaseId, isNull);
 
-    final modeToggle = tester
-        .widget<CupertinoSlidingSegmentedControl<NoteEditorViewMode>>(
-          find.byKey(const Key('note_editor_mode_toggle')),
-        );
-    expect(modeToggle.groupValue, NoteEditorViewMode.edit);
-  });
+      final modeToggle = tester
+          .widget<CupertinoSlidingSegmentedControl<NoteEditorViewMode>>(
+            find.byKey(const Key('note_editor_mode_toggle')),
+          );
+      expect(modeToggle.groupValue, NoteEditorViewMode.edit);
+    },
+  );
 
   testWidgets('macOS sidebar renders descender-heavy labels without clipping', (
     tester,
@@ -467,7 +470,9 @@ void main() {
       find.byKey(const ValueKey<String>('note_drag_list_macos_note-1')),
     );
     await drag.moveTo(
-      tester.getCenter(find.byKey(const Key('sidebar_notebook_root_drop_target'))),
+      tester.getCenter(
+        find.byKey(const Key('sidebar_notebook_root_drop_target')),
+      ),
     );
     await tester.pump(const Duration(milliseconds: 80));
 
@@ -479,6 +484,157 @@ void main() {
     await drag.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets(
+    'macOS sidebar keeps Views then Notebooks, removes notebook icons, and keeps root notebook fixed',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final views = find.text('Views');
+      final notebooks = find.text('Notebooks');
+      final notebook = find.text('Notebook');
+      expect(views, findsOneWidget);
+      expect(notebooks, findsOneWidget);
+      expect(notebook, findsOneWidget);
+      expect(
+        tester.getTopLeft(views).dy,
+        lessThan(tester.getTopLeft(notebooks).dy),
+      );
+      expect(
+        tester.getTopLeft(notebooks).dy,
+        lessThan(tester.getTopLeft(notebook).dy),
+      );
+
+      final sidebar = find.byKey(const Key('sidebar_root'));
+      expect(
+        find.descendant(
+          of: sidebar,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is MacosIcon && widget.icon == CupertinoIcons.book,
+          ),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: sidebar,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is MacosIcon && widget.icon == CupertinoIcons.folder,
+          ),
+        ),
+        findsNothing,
+      );
+
+      final buttons = tester
+          .widgetList<MacosPulldownButton>(find.byType(MacosPulldownButton))
+          .toList();
+      final rootNotebookMenus = buttons.where((button) {
+        final titles = _macosPulldownTitles(button);
+        return titles.contains('New Folder') &&
+            !titles.contains('Rename Folder') &&
+            !titles.contains('Delete Folder');
+      }).toList();
+      expect(rootNotebookMenus, isNotEmpty);
+      expect(rootNotebookMenus.first.icon, CupertinoIcons.ellipsis_circle);
+
+      final matterActionMenus = buttons.where((button) {
+        final titles = _macosPulldownTitles(button);
+        return titles.contains('Set Active') &&
+            titles.contains('Set Paused') &&
+            titles.contains('Set Completed') &&
+            titles.contains('Set Archived');
+      }).toList();
+      expect(matterActionMenus, isNotEmpty);
+      expect(matterActionMenus.first.icon, CupertinoIcons.ellipsis_circle);
+    },
+  );
+
+  testWidgets(
+    'material sidebar keeps Views then Notebooks and uses circular notebook/matter menus',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final views = find.text('Views');
+      final notebooks = find.text('Notebooks');
+      final notebook = find.text('Notebook');
+      expect(views, findsOneWidget);
+      expect(notebooks, findsOneWidget);
+      expect(notebook, findsOneWidget);
+      expect(
+        tester.getTopLeft(views).dy,
+        lessThan(tester.getTopLeft(notebooks).dy),
+      );
+      expect(
+        tester.getTopLeft(notebooks).dy,
+        lessThan(tester.getTopLeft(notebook).dy),
+      );
+
+      final sidebar = find.byKey(const Key('sidebar_root'));
+      expect(
+        find.descendant(
+          of: sidebar,
+          matching: find.byIcon(Icons.book_outlined),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: sidebar,
+          matching: find.byIcon(Icons.folder_outlined),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: sidebar, matching: find.byIcon(Icons.more_horiz)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: sidebar,
+          matching: find.byIcon(CupertinoIcons.ellipsis_circle),
+        ),
+        findsWidgets,
+      );
+    },
+  );
 
   testWidgets('material list menu moves note to another matter', (
     tester,
@@ -680,47 +836,50 @@ void main() {
     expect(moved?.phaseId, 'phase-2-start');
   });
 
-  testWidgets('drag from timeline card to notebook root target creates notebook note', (
-    tester,
-  ) async {
-    _setDesktopViewport(tester);
-    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
-    final repos = _TestRepos(
-      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
-      noteRepository: noteRepository,
-      linkRepository: _MemoryLinkRepository(),
-    );
+  testWidgets(
+    'drag from timeline card to notebook root target creates notebook note',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
 
-    await tester.pumpWidget(
-      _buildApp(
-        useMacOSNativeUI: false,
-        repos: repos,
-        overrides: [
-          selectedMatterIdProvider.overrideWithBuild(
-            (ref, notifier) => 'matter-1',
-          ),
-          selectedPhaseIdProvider.overrideWithBuild(
-            (ref, notifier) => 'phase-start',
-          ),
-          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
-          matterViewModeProvider.overrideWithBuild(
-            (ref, notifier) => MatterViewMode.timeline,
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+            matterViewModeProvider.overrideWithBuild(
+              (ref, notifier) => MatterViewMode.timeline,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await _longPressDragTo(
-      tester,
-      find.byKey(const ValueKey<String>('note_drag_timeline_note-1')),
-      find.byKey(const Key('sidebar_notebook_root_drop_target')),
-    );
+      await _longPressDragTo(
+        tester,
+        find.byKey(const ValueKey<String>('note_drag_timeline_note-1')),
+        find.byKey(const Key('sidebar_notebook_root_drop_target')),
+      );
 
-    final moved = noteRepository.noteById('note-1');
-    expect(moved?.matterId, isNull);
-    expect(moved?.phaseId, isNull);
-  });
+      final moved = noteRepository.noteById('note-1');
+      expect(moved?.matterId, isNull);
+      expect(moved?.phaseId, isNull);
+    },
+  );
 
   testWidgets('drag from graph node to matter target works', (tester) async {
     _setDesktopViewport(tester);

@@ -83,6 +83,7 @@
   "notebookRootLabel": "根目录",
   "untitledMatterLabel": "（未命名 Matter）",
   "viewsSectionLabel": "视图",
+  "notebooksSectionLabel": "笔记本",
   "matterActionsTitle": "Matter 操作",
   "editAction": "编辑",
   "unpinAction": "取消置顶",

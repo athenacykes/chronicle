@@ -354,10 +354,15 @@ Future<_MoveToNotebookSelection?> _showMoveToNotebookDialog({
           final selected = selectedFolderId == folder.id;
           out.add(
             ListTile(
-              contentPadding: EdgeInsets.only(left: 12 + (depth * 20), right: 8),
+              contentPadding: EdgeInsets.only(
+                left: 12 + (depth * 20),
+                right: 8,
+              ),
               leading: const Icon(Icons.folder_outlined),
               title: Text(folder.name),
-              subtitle: selected ? Text(l10n.moveNoteCurrentNotebookLabel) : null,
+              subtitle: selected
+                  ? Text(l10n.moveNoteCurrentNotebookLabel)
+                  : null,
               trailing: selected ? const Icon(Icons.check) : null,
               onTap: () {
                 setState(() {
@@ -410,9 +415,9 @@ Future<_MoveToNotebookSelection?> _showMoveToNotebookDialog({
               ),
               FilledButton(
                 onPressed: () {
-                  Navigator.of(dialogContext).pop(
-                    _MoveToNotebookSelection(folderId: selectedFolderId),
-                  );
+                  Navigator.of(
+                    dialogContext,
+                  ).pop(_MoveToNotebookSelection(folderId: selectedFolderId));
                 },
                 child: Text(l10n.moveToNotebookAction),
               ),
@@ -818,7 +823,10 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
           selectedNotebookFolderIdProvider,
         );
         final notebookTree = ref.watch(notebookFolderTreeProvider);
-        final notebookFolders = ref.watch(notebookFoldersProvider).asData?.value;
+        final notebookFolders = ref
+            .watch(notebookFoldersProvider)
+            .asData
+            ?.value;
         NotebookFolder? selectedNotebookFolder;
         if (notebookFolders != null && selectedNotebookFolderId != null) {
           for (final folder in notebookFolders) {
@@ -1170,7 +1178,9 @@ class _MatterSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
     final showNotebook = ref.watch(showNotebookProvider);
-    final selectedNotebookFolderId = ref.watch(selectedNotebookFolderIdProvider);
+    final selectedNotebookFolderId = ref.watch(
+      selectedNotebookFolderIdProvider,
+    );
     final notebookTree = ref.watch(notebookFolderTreeProvider);
     final showConflicts = ref.watch(showConflictsProvider);
     final conflictCount = ref.watch(conflictCountProvider);
@@ -1335,6 +1345,7 @@ class _MatterSidebar extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               _SectionHeader(title: l10n.viewsSectionLabel),
+              _SectionHeader(title: l10n.notebooksSectionLabel),
               _buildMaterialNotebookRootTile(
                 context: context,
                 ref: ref,
@@ -1602,6 +1613,7 @@ class _MatterSidebar extends ConsumerWidget {
     addMatterItems(sections.uncategorized);
 
     addSection(l10n.viewsSectionLabel);
+    addSection(l10n.notebooksSectionLabel);
     _addMacNotebookRootItem(
       context: context,
       ref: ref,
@@ -1929,15 +1941,17 @@ class _MatterSidebar extends ConsumerWidget {
         return Container(
           decoration: highlight
               ? BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer.withAlpha(110),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withAlpha(110),
                   borderRadius: BorderRadius.circular(8),
                 )
               : null,
           child: ListTile(
             selected: showNotebook && selectedNotebookFolderId == null,
-            leading: const Icon(Icons.book_outlined),
             title: Text(l10n.notebookLabel),
             trailing: PopupMenuButton<String>(
+              icon: const Icon(CupertinoIcons.ellipsis_circle),
               onSelected: (value) async {
                 if (value == 'new_folder') {
                   await _createNotebookFolder(
@@ -1989,19 +2003,18 @@ class _MatterSidebar extends ConsumerWidget {
         return Container(
           decoration: highlight
               ? BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer.withAlpha(100),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withAlpha(100),
                   borderRadius: BorderRadius.circular(8),
                 )
               : null,
           child: ListTile(
-            contentPadding: EdgeInsets.only(
-              left: 16 + (depth * 16),
-              right: 8,
-            ),
+            contentPadding: EdgeInsets.only(left: 12 + (depth * 16), right: 8),
             selected: showNotebook && selectedNotebookFolderId == folder.id,
-            leading: const Icon(Icons.folder_outlined),
             title: Text(folder.name),
             trailing: PopupMenuButton<String>(
+              icon: const Icon(CupertinoIcons.ellipsis_circle),
               onSelected: (value) async {
                 switch (value) {
                   case 'new_folder':
@@ -2089,31 +2102,6 @@ class _MatterSidebar extends ConsumerWidget {
     );
     sidebarItems.add(
       SidebarItem(
-        leading: DragTarget<_NoteDragPayload>(
-          onWillAcceptWithDetails: (details) => true,
-          onAcceptWithDetails: (details) {
-            unawaited(
-              _moveDroppedNoteToNotebook(
-                context: context,
-                ref: ref,
-                payload: details.data,
-                folderId: null,
-              ),
-            );
-          },
-          builder: (targetContext, candidateData, rejectedData) {
-            final highlight = candidateData.isNotEmpty;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(
-                color: highlight ? MacosTheme.of(context).primaryColor.withAlpha(56) : null,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const MacosIcon(CupertinoIcons.book),
-            );
-          },
-        ),
         label: DragTarget<_NoteDragPayload>(
           key: _kSidebarNotebookRootDropTargetKey,
           onWillAcceptWithDetails: (details) => true,
@@ -2133,15 +2121,17 @@ class _MatterSidebar extends ConsumerWidget {
               duration: const Duration(milliseconds: 100),
               padding: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
-                color: highlight ? MacosTheme.of(context).primaryColor.withAlpha(64) : null,
+                color: highlight
+                    ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                    : null,
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 l10n.notebookLabel,
                 style: (showNotebook && selectedNotebookFolderId == null)
-                    ? MacosTheme.of(context).typography.body.copyWith(
-                        fontWeight: FontWeight.w700,
-                      )
+                    ? MacosTheme.of(
+                        context,
+                      ).typography.body.copyWith(fontWeight: FontWeight.w700)
                     : null,
               ),
             );
@@ -2154,7 +2144,11 @@ class _MatterSidebar extends ConsumerWidget {
               title: Text(l10n.newFolderAction),
               onTap: () {
                 unawaited(
-                  _createNotebookFolder(context: context, ref: ref, parentId: null),
+                  _createNotebookFolder(
+                    context: context,
+                    ref: ref,
+                    parentId: null,
+                  ),
                 );
               },
             ),
@@ -2187,35 +2181,10 @@ class _MatterSidebar extends ConsumerWidget {
       );
       sidebarItems.add(
         SidebarItem(
-          leading: DragTarget<_NoteDragPayload>(
-            onWillAcceptWithDetails: (details) => true,
-            onAcceptWithDetails: (details) {
-              unawaited(
-                _moveDroppedNoteToNotebook(
-                  context: context,
-                  ref: ref,
-                  payload: details.data,
-                  folderId: folder.id,
-                ),
-              );
-            },
-            builder: (targetContext, candidateData, rejectedData) {
-              final highlight = candidateData.isNotEmpty;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 100),
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                decoration: BoxDecoration(
-                  color: highlight
-                      ? MacosTheme.of(context).primaryColor.withAlpha(56)
-                      : null,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const MacosIcon(CupertinoIcons.folder),
-              );
-            },
-          ),
           label: DragTarget<_NoteDragPayload>(
-            key: ValueKey<String>('sidebar_notebook_folder_drop_target_${folder.id}'),
+            key: ValueKey<String>(
+              'sidebar_notebook_folder_drop_target_${folder.id}',
+            ),
             onWillAcceptWithDetails: (details) => true,
             onAcceptWithDetails: (details) {
               unawaited(
@@ -2248,9 +2217,9 @@ class _MatterSidebar extends ConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: (showNotebook && selectedNotebookFolderId == folder.id)
-                      ? MacosTheme.of(context).typography.body.copyWith(
-                          fontWeight: FontWeight.w700,
-                        )
+                      ? MacosTheme.of(
+                          context,
+                        ).typography.body.copyWith(fontWeight: FontWeight.w700)
                       : null,
                 ),
               );
@@ -2937,7 +2906,7 @@ class _MacosMatterActionMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return MacosPulldownButton(
-      icon: CupertinoIcons.ellipsis,
+      icon: CupertinoIcons.ellipsis_circle,
       items: <MacosPulldownMenuEntry>[
         MacosPulldownMenuItem(
           title: Text(l10n.editAction),
@@ -3310,6 +3279,7 @@ class _MatterList extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
           trailing: PopupMenuButton<_MatterAction>(
+            icon: const Icon(CupertinoIcons.ellipsis_circle),
             onSelected: (value) async {
               await onAction(matter, value);
             },
@@ -6581,7 +6551,11 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     }
 
     Future<void> moveToNotebook() async {
-      await _moveNoteToNotebookViaDialog(context: context, ref: ref, note: note);
+      await _moveNoteToNotebookViaDialog(
+        context: context,
+        ref: ref,
+        note: note,
+      );
     }
 
     Future<void> moveToMatter() async {

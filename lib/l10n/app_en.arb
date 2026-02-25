@@ -84,6 +84,7 @@
   "notebookRootLabel": "Root",
   "untitledMatterLabel": "(untitled matter)",
   "viewsSectionLabel": "Views",
+  "notebooksSectionLabel": "Notebooks",
   "matterActionsTitle": "Matter Actions",
   "editAction": "Edit",
   "unpinAction": "Unpin",
