@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../../l10n/localization.dart';
 import '../chronicle_shell_contract.dart';
+
+const Key _kReturnSearchResultsButtonKey = Key(
+  'material_return_search_results_button',
+);
 
 class MaterialChronicleShell extends StatelessWidget {
   const MaterialChronicleShell({super.key, required this.viewModel});
@@ -11,6 +16,8 @@ class MaterialChronicleShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasParkedSearchResults = viewModel.hasParkedSearchResults;
 
     return Scaffold(
       appBar: AppBar(
@@ -23,15 +30,49 @@ class MaterialChronicleShell extends StatelessWidget {
               child: TextField(
                 controller: viewModel.searchController,
                 onChanged: viewModel.onSearchChanged,
+                onTap: viewModel.onSearchFieldTap,
+                maxLines: 1,
+                minLines: 1,
+                textInputAction: TextInputAction.search,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.singleLineFormatter,
+                ],
                 decoration: InputDecoration(
                   hintText: l10n.searchNotesHint,
                   prefixIcon: const Icon(Icons.search),
-                  border: const OutlineInputBorder(),
+                  border: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: hasParkedSearchResults
+                          ? colorScheme.primary
+                          : colorScheme.outline,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(
+                      color: hasParkedSearchResults
+                          ? colorScheme.primary
+                          : colorScheme.outline,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: colorScheme.primary),
+                  ),
+                  filled: hasParkedSearchResults,
+                  fillColor: hasParkedSearchResults
+                      ? colorScheme.primaryContainer.withAlpha(95)
+                      : null,
                   isDense: true,
                 ),
               ),
             ),
           ),
+          if (hasParkedSearchResults)
+            IconButton(
+              key: _kReturnSearchResultsButtonKey,
+              tooltip: l10n.returnToSearchResultsAction,
+              onPressed: viewModel.onReturnToSearchResults,
+              icon: const Icon(Icons.undo),
+            ),
           IconButton(
             tooltip: l10n.conflictsLabel,
             onPressed: viewModel.onShowConflicts,

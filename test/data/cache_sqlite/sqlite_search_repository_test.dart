@@ -34,87 +34,146 @@ void main() {
     }
   });
 
-  test('rebuilds index and supports text/tag filtering', () async {
-    final settingsRepository = _InMemorySettingsRepository(
-      AppSettings(
-        storageRootPath: rootDir.path,
-        clientId: 'search-client',
-        syncConfig: SyncConfig.initial(),
-        lastSyncAt: null,
-      ),
-    );
+  test(
+    'rebuilds index and supports complete text matching with 2-char threshold',
+    () async {
+      final settingsRepository = _InMemorySettingsRepository(
+        AppSettings(
+          storageRootPath: rootDir.path,
+          clientId: 'search-client',
+          syncConfig: SyncConfig.initial(),
+          lastSyncAt: null,
+        ),
+      );
 
-    final fs = const FileSystemUtils();
-    final storageRootLocator = StorageRootLocator(settingsRepository);
-    final storageInitializer = ChronicleStorageInitializer(fs);
+      final fs = const FileSystemUtils();
+      final storageRootLocator = StorageRootLocator(settingsRepository);
+      final storageInitializer = ChronicleStorageInitializer(fs);
 
-    final matterRepository = LocalMatterRepository(
-      storageRootLocator: storageRootLocator,
-      storageInitializer: storageInitializer,
-      codec: const MatterFileCodec(),
-      fileSystemUtils: fs,
-      clock: _FixedClock(DateTime.utc(2026, 2, 1)),
-      idGenerator: _IncrementalIdGenerator(),
-    );
+      final matterRepository = LocalMatterRepository(
+        storageRootLocator: storageRootLocator,
+        storageInitializer: storageInitializer,
+        codec: const MatterFileCodec(),
+        fileSystemUtils: fs,
+        clock: _FixedClock(DateTime.utc(2026, 2, 1)),
+        idGenerator: _IncrementalIdGenerator(),
+      );
 
-    final noteRepository = LocalNoteRepository(
-      storageRootLocator: storageRootLocator,
-      storageInitializer: storageInitializer,
-      codec: const NoteFileCodec(),
-      fileSystemUtils: fs,
-      clock: _FixedClock(DateTime.utc(2026, 2, 1, 1)),
-      idGenerator: _IncrementalIdGenerator(start: 100),
-      matterRepository: matterRepository,
-    );
+      final noteRepository = LocalNoteRepository(
+        storageRootLocator: storageRootLocator,
+        storageInitializer: storageInitializer,
+        codec: const NoteFileCodec(),
+        fileSystemUtils: fs,
+        clock: _FixedClock(DateTime.utc(2026, 2, 1, 1)),
+        idGenerator: _IncrementalIdGenerator(start: 100),
+        matterRepository: matterRepository,
+      );
 
-    final matter = await matterRepository.createMatter(
-      title: 'Research Matter',
-      description: 'Search testing',
-    );
+      final matter = await matterRepository.createMatter(
+        title: 'Research Matter',
+        description: 'Search testing',
+      );
 
-    await noteRepository.createNote(
-      title: 'Alpha discovery',
-      content: 'Testing full text alpha token in markdown body.',
-      matterId: matter.id,
-      phaseId: matter.phases.first.id,
-      tags: const <String>['alpha', 'research'],
-    );
+      await noteRepository.createNote(
+        title: 'Alpha discovery',
+        content: 'Testing full text alpha token in markdown body.',
+        matterId: matter.id,
+        phaseId: matter.phases.first.id,
+        tags: const <String>['alpha', 'research'],
+      );
 
-    await noteRepository.createNote(
-      title: 'Beta note',
-      content: 'Different content with beta keyword.',
-      matterId: matter.id,
-      phaseId: matter.phases.first.id,
-      tags: const <String>['beta'],
-    );
+      await noteRepository.createNote(
+        title: 'Beta note',
+        content: 'Different content with beta keyword.',
+        matterId: matter.id,
+        phaseId: matter.phases.first.id,
+        tags: const <String>['beta'],
+      );
 
-    final searchRepository = SqliteSearchRepository(
-      appDirectories: FixedAppDirectories(
-        appSupport: supportDir,
-        home: tempDir,
-      ),
-      fileSystemUtils: fs,
-      matterRepository: matterRepository,
-      noteRepository: noteRepository,
-    );
+      await noteRepository.createNote(
+        title: 'Untitled Note One',
+        content: 'First Untitled draft for search testing.',
+        matterId: matter.id,
+        phaseId: matter.phases.first.id,
+        tags: const <String>['draft'],
+      );
 
-    await searchRepository.rebuildIndex();
+      await noteRepository.createNote(
+        title: 'Roadmap',
+        content: 'This note references the Untitled initiative.',
+        matterId: matter.id,
+        phaseId: matter.phases.first.id,
+        tags: const <String>['planning'],
+      );
 
-    final textHits = await searchRepository.search(
-      const SearchQuery(text: 'alpha'),
-    );
-    expect(textHits.length, 1);
-    expect(textHits.first.note.title, 'Alpha discovery');
+      await noteRepository.createNote(
+        title: 'Another Untitled Note',
+        content: 'Wrap up Untitled write-up.',
+        matterId: matter.id,
+        phaseId: matter.phases.first.id,
+        tags: const <String>['draft'],
+      );
 
-    final tagHits = await searchRepository.search(
-      const SearchQuery(text: '', tags: <String>['beta']),
-    );
-    expect(tagHits.length, 1);
-    expect(tagHits.first.note.title, 'Beta note');
+      final searchRepository = SqliteSearchRepository(
+        appDirectories: FixedAppDirectories(
+          appSupport: supportDir,
+          home: tempDir,
+        ),
+        fileSystemUtils: fs,
+        matterRepository: matterRepository,
+        noteRepository: noteRepository,
+      );
 
-    final tags = await searchRepository.listTags();
-    expect(tags, containsAll(<String>['alpha', 'beta', 'research']));
-  });
+      await searchRepository.rebuildIndex();
+
+      final textHits = await searchRepository.search(
+        const SearchQuery(text: 'alpha'),
+      );
+      expect(textHits.length, 1);
+      expect(textHits.first.note.title, 'Alpha discovery');
+
+      final tagHits = await searchRepository.search(
+        const SearchQuery(text: '', tags: <String>['beta']),
+      );
+      expect(tagHits.length, 1);
+      expect(tagHits.first.note.title, 'Beta note');
+
+      final tags = await searchRepository.listTags();
+      expect(tags, containsAll(<String>['alpha', 'beta', 'research']));
+
+      final untitledHits = await searchRepository.search(
+        const SearchQuery(text: 'Untitled'),
+      );
+      expect(untitledHits.length, 3);
+      expect(
+        untitledHits.map((hit) => hit.note.title),
+        containsAll(<String>[
+          'Untitled Note One',
+          'Roadmap',
+          'Another Untitled Note',
+        ]),
+      );
+
+      final partialHits = await searchRepository.search(
+        const SearchQuery(text: 'unti'),
+      );
+      expect(partialHits.length, 3);
+      expect(
+        partialHits.map((hit) => hit.note.title),
+        containsAll(<String>[
+          'Untitled Note One',
+          'Roadmap',
+          'Another Untitled Note',
+        ]),
+      );
+
+      final oneCharWithTagHits = await searchRepository.search(
+        const SearchQuery(text: 'u', tags: <String>['beta']),
+      );
+      expect(oneCharWithTagHits.length, 1);
+      expect(oneCharWithTagHits.first.note.title, 'Beta note');
+    },
+  );
 }
 
 class _InMemorySettingsRepository implements SettingsRepository {

@@ -328,7 +328,10 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     return updated;
   }
 
-  Future<void> openNoteInWorkspace(String noteId) async {
+  Future<void> openNoteInWorkspace(
+    String noteId, {
+    bool openInReadMode = false,
+  }) async {
     final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
     if (note == null) {
       return;
@@ -359,6 +362,11 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
     ref.invalidate(noteListProvider);
     await selectNote(noteId);
+    if (openInReadMode) {
+      ref
+          .read(noteEditorViewModeProvider.notifier)
+          .set(NoteEditorViewMode.read);
+    }
   }
 
   Future<void> _refreshCollections() async {

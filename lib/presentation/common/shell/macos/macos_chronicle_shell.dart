@@ -2,10 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:macos_ui/macos_ui.dart';
 
 import '../../../../l10n/localization.dart';
 import '../chronicle_shell_contract.dart';
+
+const Key _kReturnSearchResultsButtonKey = Key(
+  'macos_return_search_results_button',
+);
 
 class MacosChronicleShell extends StatelessWidget {
   const MacosChronicleShell({super.key, required this.viewModel});
@@ -81,9 +86,20 @@ class _MacosTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final typography = MacosTheme.of(context).typography;
+    final primaryColor = MacosTheme.of(context).primaryColor;
     final titleStyle = typography.title3.copyWith(
       fontSize: 15,
       fontWeight: MacosFontWeight.w590,
+    );
+    final hasParkedSearchResults = viewModel.hasParkedSearchResults;
+    final parkedSearchDecoration = BoxDecoration(
+      color: primaryColor.withAlpha(26),
+      borderRadius: const BorderRadius.all(Radius.circular(7)),
+      border: Border.all(color: primaryColor.withAlpha(150)),
+    );
+    final parkedSearchFocusedDecoration = BoxDecoration(
+      borderRadius: const BorderRadius.all(Radius.circular(7)),
+      border: Border.all(color: primaryColor),
     );
 
     return Container(
@@ -118,8 +134,29 @@ class _MacosTopBar extends StatelessWidget {
                   controller: viewModel.searchController,
                   placeholder: l10n.searchNotesHint,
                   onChanged: viewModel.onSearchChanged,
+                  onTap: viewModel.onSearchFieldTap,
+                  maxLines: 1,
+                  minLines: 1,
+                  inputFormatters: <TextInputFormatter>[
+                    FilteringTextInputFormatter.singleLineFormatter,
+                  ],
+                  decoration: hasParkedSearchResults
+                      ? parkedSearchDecoration
+                      : kDefaultRoundedBorderDecoration,
+                  focusedDecoration: hasParkedSearchResults
+                      ? parkedSearchFocusedDecoration
+                      : kDefaultFocusedBorderDecoration,
                 ),
               ),
+              if (hasParkedSearchResults) ...<Widget>[
+                const SizedBox(width: 4),
+                _ToolbarActionIcon(
+                  buttonKey: _kReturnSearchResultsButtonKey,
+                  tooltip: l10n.returnToSearchResultsAction,
+                  icon: const MacosIcon(CupertinoIcons.arrow_uturn_left),
+                  onPressed: viewModel.onReturnToSearchResults,
+                ),
+              ],
               const SizedBox(width: 8),
               _ToolbarActionIcon(
                 tooltip: l10n.conflictsLabel,
@@ -143,11 +180,13 @@ class _MacosTopBar extends StatelessWidget {
 
 class _ToolbarActionIcon extends StatelessWidget {
   const _ToolbarActionIcon({
+    this.buttonKey,
     required this.tooltip,
     required this.icon,
     required this.onPressed,
   });
 
+  final Key? buttonKey;
   final String tooltip;
   final Widget icon;
   final VoidCallback? onPressed;
@@ -157,6 +196,7 @@ class _ToolbarActionIcon extends StatelessWidget {
     return MacosTooltip(
       message: tooltip,
       child: MacosIconButton(
+        key: buttonKey,
         semanticLabel: tooltip,
         icon: icon,
         backgroundColor: MacosColors.transparent,

@@ -366,6 +366,7 @@
   "conflictTypeLink": "链接",
   "conflictTypeUnknown": "未知",
   "noSearchResultsMessage": "没有搜索结果。",
+  "returnToSearchResultsAction": "返回搜索结果",
   "languageLabel": "语言",
   "settingsSectionStorage": "存储",
   "settingsSectionLanguage": "语言",

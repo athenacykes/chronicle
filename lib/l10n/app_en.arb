@@ -367,6 +367,7 @@
   "conflictTypeLink": "Link",
   "conflictTypeUnknown": "Unknown",
   "noSearchResultsMessage": "No search results.",
+  "returnToSearchResultsAction": "Return to search results",
   "languageLabel": "Language",
   "settingsSectionStorage": "Storage",
   "settingsSectionLanguage": "Language",

@@ -29,6 +29,7 @@ class SqliteSearchRepository implements SearchRepository {
   final NoteRepository _noteRepository;
 
   Database? _database;
+  static const int _minSearchTextLength = 2;
 
   @override
   Future<void> rebuildIndex() async {
@@ -89,12 +90,27 @@ class SqliteSearchRepository implements SearchRepository {
     );
     final args = <Object?>[];
 
-    if (query.text.trim().isNotEmpty) {
-      sql.write(
-        ' AND n.note_id IN '
-        '(SELECT note_id FROM fts_notes WHERE fts_notes MATCH ?)',
-      );
-      args.add(query.text.trim());
+    final normalizedText = _normalizeTextQuery(query.text);
+    if (_hasSearchText(normalizedText)) {
+      final likeNeedle =
+          '%${_escapeLikePattern(normalizedText.toLowerCase())}%';
+      final ftsPrefixQuery = _ftsPrefixQuery(normalizedText);
+
+      sql.write(' AND (');
+      if (ftsPrefixQuery != null) {
+        sql.write(
+          'n.note_id IN '
+          '(SELECT note_id FROM fts_notes WHERE fts_notes MATCH ?)'
+          ' OR ',
+        );
+        args.add(ftsPrefixQuery);
+      }
+      sql.write("lower(n.title) LIKE ? ESCAPE '\\'");
+      sql.write(" OR lower(n.content_plain) LIKE ? ESCAPE '\\'");
+      sql.write(')');
+      args
+        ..add(likeNeedle)
+        ..add(likeNeedle);
     }
 
     if (query.matterId != null && query.matterId!.isNotEmpty) {
@@ -131,7 +147,7 @@ class SqliteSearchRepository implements SearchRepository {
         continue;
       }
       final plain = (row['content_plain'] as String?) ?? '';
-      final snippet = _snippet(plain, query.text);
+      final snippet = _snippet(plain, normalizedText);
       hits.add(NoteSearchHit(note: note, snippet: snippet));
     }
 
@@ -219,12 +235,12 @@ class SqliteSearchRepository implements SearchRepository {
       return '';
     }
 
-    if (searchText.trim().isEmpty) {
+    if (!_hasSearchText(searchText)) {
       return plain.length <= 180 ? plain : '${plain.substring(0, 180)}...';
     }
 
     final lower = plain.toLowerCase();
-    final needle = searchText.toLowerCase();
+    final needle = _normalizeTextQuery(searchText).toLowerCase();
     final index = lower.indexOf(needle);
     if (index == -1) {
       return plain.length <= 180 ? plain : '${plain.substring(0, 180)}...';
@@ -235,5 +251,33 @@ class SqliteSearchRepository implements SearchRepository {
     final prefix = start > 0 ? '...' : '';
     final suffix = end < plain.length ? '...' : '';
     return '$prefix${plain.substring(start, end)}$suffix';
+  }
+
+  String _normalizeTextQuery(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  bool _hasSearchText(String value) {
+    final nonWhitespace = value.replaceAll(RegExp(r'\s+'), '');
+    return nonWhitespace.length >= _minSearchTextLength;
+  }
+
+  String? _ftsPrefixQuery(String value) {
+    final tokens = value
+        .split(RegExp(r'\s+'))
+        .map((token) => token.replaceAll(RegExp(r'[^A-Za-z0-9_]'), ''))
+        .where((token) => token.isNotEmpty)
+        .toList(growable: false);
+    if (tokens.isEmpty) {
+      return null;
+    }
+    return tokens.map((token) => '$token*').join(' ');
+  }
+
+  String _escapeLikePattern(String value) {
+    return value
+        .replaceAll('\\', '\\\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
   }
 }

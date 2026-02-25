@@ -11,6 +11,11 @@ final searchQueryProvider =
       () => ValueNotifierController<SearchQuery>(const SearchQuery(text: '')),
     );
 
+final searchResultsVisibleProvider =
+    NotifierProvider<ValueNotifierController<bool>, bool>(
+      () => ValueNotifierController<bool>(false),
+    );
+
 final availableTagsProvider = FutureProvider<List<String>>((ref) {
   return ref.watch(searchRepositoryProvider).listTags();
 });
@@ -21,6 +26,8 @@ final searchControllerProvider =
     );
 
 class SearchController extends AsyncNotifier<List<NoteSearchHit>> {
+  static const int _minSearchTextLength = 2;
+
   @override
   Future<List<NoteSearchHit>> build() async {
     final query = ref.watch(searchQueryProvider);
@@ -95,7 +102,11 @@ class SearchController extends AsyncNotifier<List<NoteSearchHit>> {
   }
 
   bool _isEmpty(SearchQuery query) {
-    return query.text.trim().isEmpty &&
+    final nonWhitespaceTextLength = query.text
+        .replaceAll(RegExp(r'\s+'), '')
+        .length;
+    final hasSearchText = nonWhitespaceTextLength >= _minSearchTextLength;
+    return !hasSearchText &&
         query.tags.isEmpty &&
         (query.matterId == null || query.matterId!.isEmpty) &&
         query.from == null &&

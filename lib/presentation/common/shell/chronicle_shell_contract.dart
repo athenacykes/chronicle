@@ -8,6 +8,9 @@ class ChronicleShellViewModel {
     required this.title,
     required this.searchController,
     required this.onSearchChanged,
+    required this.onSearchFieldTap,
+    required this.onReturnToSearchResults,
+    required this.hasParkedSearchResults,
     required this.onShowConflicts,
     required this.onOpenSettings,
     required this.conflictCount,
@@ -20,6 +23,9 @@ class ChronicleShellViewModel {
   final String title;
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
+  final VoidCallback onSearchFieldTap;
+  final VoidCallback onReturnToSearchResults;
+  final bool hasParkedSearchResults;
   final VoidCallback onShowConflicts;
   final Future<void> Function() onOpenSettings;
   final int conflictCount;

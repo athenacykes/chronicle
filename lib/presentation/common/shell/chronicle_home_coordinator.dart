@@ -117,6 +117,62 @@ String _displayNoteTitleForMove(BuildContext context, Note note) {
   return trimmed;
 }
 
+String _normalizeSearchInput(String value) {
+  return value.replaceAll(RegExp(r'[\r\n]+'), ' ');
+}
+
+bool _hasSearchText(String value) {
+  final normalized = _normalizeSearchInput(value);
+  final nonWhitespace = normalized.replaceAll(RegExp(r'\s+'), '');
+  return nonWhitespace.length >= 2;
+}
+
+String _searchResultContextLine({
+  required BuildContext context,
+  required Note note,
+  required MatterSections? sections,
+}) {
+  final l10n = context.l10n;
+  if (note.matterId == null) {
+    return '${l10n.orphansLabel} • ${l10n.orphanLabel}';
+  }
+
+  Matter? matter;
+  if (sections != null) {
+    final allMatters = <Matter>[
+      ...sections.pinned,
+      ...sections.uncategorized,
+      ...sections.categorySections.expand((section) => section.matters),
+    ];
+    for (final candidate in allMatters) {
+      if (candidate.id == note.matterId) {
+        matter = candidate;
+        break;
+      }
+    }
+  }
+
+  final matterTitle = matter == null
+      ? l10n.untitledMatterLabel
+      : _displayMatterTitle(context, matter);
+  final phaseId = note.phaseId;
+  if (phaseId == null) {
+    return '$matterTitle • ${l10n.orphanLabel}';
+  }
+
+  String phaseLabel = phaseId;
+  if (matter != null) {
+    for (final phase in matter.phases) {
+      if (phase.id == phaseId) {
+        final trimmed = phase.name.trim();
+        phaseLabel = trimmed.isEmpty ? phaseId : trimmed;
+        break;
+      }
+    }
+  }
+  return '$matterTitle • $phaseLabel';
+}
+
 String? _resolvedPhaseForMatter(Matter matter) {
   return matter.currentPhaseId ??
       (matter.phases.isEmpty ? null : matter.phases.first.id);
@@ -325,17 +381,93 @@ class ChronicleHomeScreen extends ConsumerStatefulWidget {
 class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
   late final TextEditingController _searchController;
   bool _settingsDialogOpen = false;
+  String? _searchIndexBuiltForRoot;
+  Future<void>? _searchIndexBootstrap;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
+    _searchController.addListener(_handleSearchControllerChanged);
   }
 
   @override
   void dispose() {
+    _searchController.removeListener(_handleSearchControllerChanged);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleSearchControllerChanged() {
+    _syncSearchStateFromText(_searchController.text);
+  }
+
+  void _syncSearchStateFromText(String value) {
+    final normalized = _normalizeSearchInput(value);
+    if (normalized != value) {
+      final selection = _searchController.selection;
+      final baseOffset = selection.baseOffset
+          .clamp(0, normalized.length)
+          .toInt();
+      final extentOffset = selection.extentOffset
+          .clamp(0, normalized.length)
+          .toInt();
+      _searchController.value = _searchController.value.copyWith(
+        text: normalized,
+        selection: TextSelection(
+          baseOffset: baseOffset,
+          extentOffset: extentOffset,
+        ),
+        composing: TextRange.empty,
+      );
+      return;
+    }
+
+    final queryNotifier = ref.read(searchControllerProvider.notifier);
+    final currentText = ref.read(searchQueryProvider).text;
+    if (currentText != normalized) {
+      unawaited(queryNotifier.setText(normalized));
+    }
+
+    final visibleNotifier = ref.read(searchResultsVisibleProvider.notifier);
+    final shouldShowResults = _hasSearchText(normalized);
+    final currentVisibility = ref.read(searchResultsVisibleProvider);
+    if (currentVisibility != shouldShowResults) {
+      visibleNotifier.set(shouldShowResults);
+    }
+  }
+
+  void _ensureSearchIndexIsReady(String rootPath) {
+    if (_searchIndexBuiltForRoot == rootPath || _searchIndexBootstrap != null) {
+      return;
+    }
+    _searchIndexBootstrap = _rebuildSearchIndexForRoot(rootPath);
+  }
+
+  Future<void> _rebuildSearchIndexForRoot(String rootPath) async {
+    try {
+      await ref.read(searchRepositoryProvider).rebuildIndex();
+      if (!mounted) {
+        return;
+      }
+      _searchIndexBuiltForRoot = rootPath;
+      ref.invalidate(searchControllerProvider);
+    } finally {
+      _searchIndexBootstrap = null;
+      if (!mounted) {
+        return;
+      }
+      final activeRoot = ref
+          .read(settingsControllerProvider)
+          .asData
+          ?.value
+          .storageRootPath;
+      if (activeRoot != null &&
+          activeRoot.isNotEmpty &&
+          activeRoot != _searchIndexBuiltForRoot) {
+        _ensureSearchIndexIsReady(activeRoot);
+      }
+    }
   }
 
   Future<void> _openSettingsDialog() async {
@@ -367,6 +499,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
       data: (settings) {
         final root = settings.storageRootPath;
         if (root == null || root.isEmpty) {
+          _searchIndexBuiltForRoot = null;
           return _StorageRootSetupScreen(
             useMacOSNativeUI: widget.useMacOSNativeUI,
             onConfirm: (path) async {
@@ -379,15 +512,27 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
           );
         }
 
+        _ensureSearchIndexIsReady(root);
+
         final mattersState = ref.watch(mattersControllerProvider);
+        final matterSections = mattersState.asData?.value;
         final searchState = ref.watch(searchControllerProvider);
+        final searchQuery = ref.watch(searchQueryProvider);
+        final searchResultsVisible = ref.watch(searchResultsVisibleProvider);
+        final hasParkedSearchResults =
+            _hasSearchText(searchQuery.text) && !searchResultsVisible;
         final conflictCount = ref.watch(conflictCountProvider);
 
         final content = searchState.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => _MainWorkspace(
+            searchHits: const <SearchListItem>[],
+            searchQuery: searchQuery.text,
+            showSearchResults: searchResultsVisible,
+          ),
           error: (error, stackTrace) => _MainWorkspace(
             searchHits: const <SearchListItem>[],
-            searchQuery: _searchController.text,
+            searchQuery: searchQuery.text,
+            showSearchResults: searchResultsVisible,
           ),
           data: (hits) {
             final mapped = hits
@@ -395,13 +540,19 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
                   (hit) => SearchListItem(
                     noteId: hit.note.id,
                     title: hit.note.title,
+                    contextLine: _searchResultContextLine(
+                      context: context,
+                      note: hit.note,
+                      sections: matterSections,
+                    ),
                     snippet: hit.snippet,
                   ),
                 )
                 .toList();
             return _MainWorkspace(
               searchHits: mapped,
-              searchQuery: _searchController.text,
+              searchQuery: searchQuery.text,
+              showSearchResults: searchResultsVisible,
             );
           },
         );
@@ -411,8 +562,26 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
           viewModel: ChronicleShellViewModel(
             title: l10n.appTitle,
             searchController: _searchController,
-            onSearchChanged: (value) =>
-                ref.read(searchControllerProvider.notifier).setText(value),
+            onSearchChanged: (value) {
+              _syncSearchStateFromText(value);
+            },
+            onSearchFieldTap: () {
+              final queryText = ref.read(searchQueryProvider).text;
+              if (_hasSearchText(queryText)) {
+                ref.read(searchResultsVisibleProvider.notifier).set(true);
+              } else {
+                ref.read(searchResultsVisibleProvider.notifier).set(false);
+              }
+            },
+            onReturnToSearchResults: () {
+              final queryText = ref.read(searchQueryProvider).text;
+              if (_hasSearchText(queryText)) {
+                ref.read(searchResultsVisibleProvider.notifier).set(true);
+              } else {
+                ref.read(searchResultsVisibleProvider.notifier).set(false);
+              }
+            },
+            hasParkedSearchResults: hasParkedSearchResults,
             onShowConflicts: () {
               ref.read(showConflictsProvider.notifier).set(true);
               ref.read(showOrphansProvider.notifier).set(false);
@@ -2476,11 +2645,13 @@ class SearchListItem {
   const SearchListItem({
     required this.noteId,
     required this.title,
+    required this.contextLine,
     required this.snippet,
   });
 
   final String noteId;
   final String title;
+  final String contextLine;
   final String snippet;
 }
 
@@ -2958,10 +3129,15 @@ const List<MatterViewMode> _matterViewModes = <MatterViewMode>[
 ];
 
 class _MainWorkspace extends ConsumerWidget {
-  const _MainWorkspace({required this.searchHits, required this.searchQuery});
+  const _MainWorkspace({
+    required this.searchHits,
+    required this.searchQuery,
+    required this.showSearchResults,
+  });
 
   final List<SearchListItem> searchHits;
   final String searchQuery;
+  final bool showSearchResults;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2971,7 +3147,7 @@ class _MainWorkspace extends ConsumerWidget {
       return const _ConflictWorkspace();
     }
 
-    if (searchQuery.trim().isNotEmpty) {
+    if (_hasSearchText(searchQuery) && showSearchResults) {
       return _SearchResultsView(results: searchHits);
     }
 
@@ -6688,8 +6864,8 @@ class _SearchResultsView extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(
-              result.snippet,
-              maxLines: 2,
+              '${result.contextLine}\n${result.snippet}',
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
             trailing: const MacosIcon(
@@ -6697,9 +6873,10 @@ class _SearchResultsView extends ConsumerWidget {
               size: 14,
             ),
             onTap: () async {
+              ref.read(searchResultsVisibleProvider.notifier).set(false);
               await ref
                   .read(noteEditorControllerProvider.notifier)
-                  .openNoteInWorkspace(result.noteId);
+                  .openNoteInWorkspace(result.noteId, openInReadMode: true);
             },
           );
         },
@@ -6714,11 +6891,17 @@ class _SearchResultsView extends ConsumerWidget {
         final result = results[index];
         return ListTile(
           title: Text(result.title),
-          subtitle: Text(result.snippet),
+          subtitle: Text(
+            '${result.contextLine}\n${result.snippet}',
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          isThreeLine: true,
           onTap: () async {
+            ref.read(searchResultsVisibleProvider.notifier).set(false);
             await ref
                 .read(noteEditorControllerProvider.notifier)
-                .openNoteInWorkspace(result.noteId);
+                .openNoteInWorkspace(result.noteId, openInReadMode: true);
           },
         );
       },

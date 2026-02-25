@@ -23,6 +23,7 @@ import 'package:chronicle/domain/repositories/settings_repository.dart';
 import 'package:chronicle/domain/repositories/sync_repository.dart';
 import 'package:chronicle/presentation/matters/matters_controller.dart';
 import 'package:chronicle/presentation/notes/notes_controller.dart';
+import 'package:chronicle/presentation/search/search_controller.dart';
 import 'package:chronicle/presentation/sync/conflicts_controller.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
@@ -1215,6 +1216,312 @@ Inline \$x^2\$ and:
     expect(_SpyNoteEditorController.openedNoteIds, contains('note-2'));
   });
 
+  testWidgets(
+    'macOS search hit shows context, opens read mode, and restores parked results',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(_buildApp(useMacOSNativeUI: true, repos: repos));
+      await tester.pumpAndSettle();
+
+      final macosSearchField = tester.widget<MacosSearchField<void>>(
+        find.byType(MacosSearchField<void>),
+      );
+      expect(macosSearchField.maxLines, 1);
+      expect(macosSearchField.minLines, 1);
+
+      await tester.enterText(find.byType(MacosSearchField<void>), 'search');
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Orphans • Orphan'), findsOneWidget);
+      expect(find.textContaining('searchable content'), findsOneWidget);
+      final container = _containerForApp(tester);
+      expect(container.read(searchResultsVisibleProvider), isTrue);
+
+      await tester.tap(find.text('Search Hit').first);
+      await tester.pumpAndSettle();
+
+      final returnButtonFinder = find.byKey(
+        const Key('macos_return_search_results_button'),
+      );
+      expect(returnButtonFinder, findsOneWidget);
+      expect(container.read(searchResultsVisibleProvider), isFalse);
+      final modeToggle = tester
+          .widget<CupertinoSlidingSegmentedControl<NoteEditorViewMode>>(
+            find.byKey(const Key('note_editor_mode_toggle')),
+          );
+      expect(modeToggle.groupValue, NoteEditorViewMode.read);
+
+      final searchField = tester.widget<MacosSearchField<void>>(
+        find.byType(MacosSearchField<void>),
+      );
+      expect(searchField.controller?.text, 'search');
+
+      await tester.tap(returnButtonFinder);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Orphans • Orphan'), findsOneWidget);
+      expect(find.text('Search Hit'), findsOneWidget);
+      expect(container.read(searchResultsVisibleProvider), isTrue);
+
+      await tester.enterText(find.byType(MacosSearchField<void>), '');
+      await tester.pumpAndSettle();
+      expect(returnButtonFinder, findsNothing);
+    },
+  );
+
+  testWidgets(
+    'material search hit opens read mode and parked results can be restored',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(_buildApp(useMacOSNativeUI: false, repos: repos));
+      await tester.pumpAndSettle();
+
+      final appBar = find.byType(AppBar);
+      final searchFieldFinder = find.descendant(
+        of: appBar,
+        matching: find.byType(TextField),
+      );
+      final materialSearchField = tester.widget<TextField>(searchFieldFinder);
+      expect(materialSearchField.maxLines, 1);
+      expect(materialSearchField.minLines, 1);
+      await tester.enterText(searchFieldFinder, 'search');
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ListTile, 'Search Hit'), findsOneWidget);
+      await tester.tap(find.widgetWithText(ListTile, 'Search Hit'));
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      final returnButtonFinder = find.byKey(
+        const Key('material_return_search_results_button'),
+      );
+      expect(returnButtonFinder, findsOneWidget);
+      expect(container.read(searchResultsVisibleProvider), isFalse);
+      final modeToggle = tester.widget<SegmentedButton<NoteEditorViewMode>>(
+        find.byKey(const Key('note_editor_mode_toggle')),
+      );
+      expect(
+        modeToggle.selected,
+        equals(<NoteEditorViewMode>{NoteEditorViewMode.read}),
+      );
+
+      final searchField = tester.widget<TextField>(searchFieldFinder);
+      expect(searchField.controller?.text, 'search');
+
+      await tester.tap(returnButtonFinder);
+      await tester.pumpAndSettle();
+
+      expect(container.read(searchResultsVisibleProvider), isTrue);
+      expect(find.widgetWithText(ListTile, 'Search Hit'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'macOS search requires 2 chars and clearing returns to normal phase workspace',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      expect(
+        find.byKey(const Key('macos_matter_mode_segmented_control')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byType(MacosSearchField<void>), 's');
+      await tester.pumpAndSettle();
+
+      expect(container.read(searchResultsVisibleProvider), isFalse);
+      expect(find.text('Search Hit'), findsNothing);
+      expect(
+        find.byKey(const Key('macos_return_search_results_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('macos_matter_mode_segmented_control')),
+        findsOneWidget,
+      );
+
+      await tester.enterText(find.byType(MacosSearchField<void>), 'se');
+      await tester.pumpAndSettle();
+
+      expect(container.read(searchResultsVisibleProvider), isTrue);
+      expect(find.text('Search Hit'), findsOneWidget);
+      expect(
+        find.byKey(const Key('macos_matter_mode_segmented_control')),
+        findsNothing,
+      );
+
+      final searchField = tester.widget<MacosSearchField<void>>(
+        find.byType(MacosSearchField<void>),
+      );
+      searchField.controller?.clear();
+      await tester.pumpAndSettle();
+
+      expect(container.read(searchResultsVisibleProvider), isFalse);
+      expect(find.text('Search Hit'), findsNothing);
+      expect(
+        find.byKey(const Key('macos_return_search_results_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('macos_matter_mode_segmented_control')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('macOS no-results search clears back to normal workspace', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = _containerForApp(tester);
+    await tester.enterText(find.byType(MacosSearchField<void>), 'zz');
+    await tester.pumpAndSettle();
+    expect(container.read(searchResultsVisibleProvider), isTrue);
+    expect(
+      find.byKey(const Key('macos_matter_mode_segmented_control')),
+      findsNothing,
+    );
+
+    final searchField = tester.widget<MacosSearchField<void>>(
+      find.byType(MacosSearchField<void>),
+    );
+    searchField.controller?.clear();
+    await tester.pumpAndSettle();
+
+    expect(container.read(searchResultsVisibleProvider), isFalse);
+    expect(
+      find.byKey(const Key('macos_matter_mode_segmented_control')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'material search uses 2-char threshold and clear returns to normal workspace',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      final appBar = find.byType(AppBar);
+      final searchFieldFinder = find.descendant(
+        of: appBar,
+        matching: find.byType(TextField),
+      );
+
+      expect(find.byType(SegmentedButton<MatterViewMode>), findsOneWidget);
+
+      await tester.enterText(searchFieldFinder, 's');
+      await tester.pumpAndSettle();
+      expect(container.read(searchResultsVisibleProvider), isFalse);
+      expect(find.widgetWithText(ListTile, 'Search Hit'), findsNothing);
+      expect(
+        find.byKey(const Key('material_return_search_results_button')),
+        findsNothing,
+      );
+      expect(find.byType(SegmentedButton<MatterViewMode>), findsOneWidget);
+
+      await tester.enterText(searchFieldFinder, 'se');
+      await tester.pumpAndSettle();
+      expect(container.read(searchResultsVisibleProvider), isTrue);
+      expect(find.widgetWithText(ListTile, 'Search Hit'), findsOneWidget);
+
+      final searchField = tester.widget<TextField>(searchFieldFinder);
+      searchField.controller?.clear();
+      await tester.pumpAndSettle();
+
+      expect(container.read(searchResultsVisibleProvider), isFalse);
+      expect(find.widgetWithText(ListTile, 'Search Hit'), findsNothing);
+      expect(
+        find.byKey(const Key('material_return_search_results_button')),
+        findsNothing,
+      );
+      expect(find.byType(SegmentedButton<MatterViewMode>), findsOneWidget);
+    },
+  );
+
   testWidgets('macOS note editor save uses existing controller path', (
     tester,
   ) async {
@@ -2351,16 +2658,22 @@ class _MemorySearchRepository implements SearchRepository {
 
   @override
   Future<List<NoteSearchHit>> search(SearchQuery query) async {
-    if (query.text.trim().isEmpty) {
+    final needle = query.text.trim().toLowerCase();
+    if (needle.isEmpty) {
       return const <NoteSearchHit>[];
     }
-    final note = _noteRepository.noteById('note-2');
-    if (note == null) {
-      return const <NoteSearchHit>[];
+
+    final notes = await _noteRepository.listAllNotes();
+    final hits = <NoteSearchHit>[];
+    for (final note in notes) {
+      final haystack = '${note.title}\n${note.content}'.toLowerCase();
+      if (!haystack.contains(needle)) {
+        continue;
+      }
+      final snippet = note.content.replaceAll('\n', ' ').trim();
+      hits.add(NoteSearchHit(note: note, snippet: snippet));
     }
-    return <NoteSearchHit>[
-      NoteSearchHit(note: note, snippet: 'searchable content'),
-    ];
+    return hits;
   }
 }
 
@@ -2445,7 +2758,10 @@ class _SpyNoteEditorController extends NoteEditorController {
   Future<Note?> build() async => null;
 
   @override
-  Future<void> openNoteInWorkspace(String noteId) async {
+  Future<void> openNoteInWorkspace(
+    String noteId, {
+    bool openInReadMode = false,
+  }) async {
     openedNoteIds.add(noteId);
   }
 }
