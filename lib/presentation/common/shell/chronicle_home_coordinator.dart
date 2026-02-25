@@ -31,6 +31,8 @@ import '../../links/links_controller.dart';
 import '../../matters/matters_controller.dart';
 import '../markdown/chronicle_markdown.dart';
 import '../markdown/markdown_code_controller.dart';
+import '../markdown/markdown_edit_formatter.dart';
+import '../markdown/markdown_format_toolbar.dart';
 import '../markdown/markdown_code_highlighting.dart';
 import '../state/value_notifier_provider.dart';
 import '../../notes/notes_controller.dart';
@@ -2495,6 +2497,8 @@ const Key _kMacosNoteEditorTitleFieldKey = Key('macos_note_editor_title');
 const Key _kMacosNoteEditorTagsFieldKey = Key('macos_note_editor_tags');
 const Key _kMacosNoteEditorContentFieldKey = Key('macos_note_editor_content');
 const Key _kMacosNoteEditorSaveButtonKey = Key('macos_note_editor_save');
+const Key _kNoteEditorMarkdownToolbarKey = Key('note_editor_markdown_toolbar');
+const Key _kNoteDialogMarkdownToolbarKey = Key('note_dialog_markdown_toolbar');
 const Key _kNoteEditorModeToggleKey = Key('note_editor_mode_toggle');
 const Key _kNoteEditorUtilityTagsKey = Key('note_editor_utility_tags');
 const Key _kNoteEditorUtilityAttachmentsKey = Key(
@@ -5184,6 +5188,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   final TextEditingController _titleController = TextEditingController();
   late final CodeController _contentController;
   final TextEditingController _tagsController = TextEditingController();
+  final MarkdownEditFormatter _markdownFormatter = MarkdownEditFormatter();
   String? _loadedNoteId;
 
   @override
@@ -5212,6 +5217,42 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
       }
       _showEditorMessage(context, l10n.failedToAttachFiles(error.toString()));
     }
+  }
+
+  Future<String?> _pickAndAttachImageForMarkdown(
+    BuildContext context,
+    Note note,
+  ) async {
+    final l10n = context.l10n;
+    final beforeAttachments = note.attachments.toSet();
+
+    Note? updated;
+    try {
+      updated = await ref
+          .read(noteEditorControllerProvider.notifier)
+          .attachFilesToCurrent();
+    } catch (error) {
+      if (context.mounted) {
+        _showEditorMessage(context, l10n.failedToAttachFiles(error.toString()));
+      }
+      return null;
+    }
+
+    if (updated == null) {
+      return null;
+    }
+
+    for (final attachment in updated.attachments) {
+      if (!beforeAttachments.contains(attachment) &&
+          isImageAttachmentPath(attachment)) {
+        return attachment;
+      }
+    }
+
+    if (context.mounted) {
+      _showEditorMessage(context, l10n.noNewImageAttachmentSelectedMessage);
+    }
+    return null;
   }
 
   Future<void> _removeAttachment(
@@ -5870,19 +5911,36 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                         padding: const EdgeInsets.all(8),
-                        child: CodeTheme(
-                          data: _noteEditorCodeThemeData(context),
-                          child: CodeField(
-                            key: _kMacosNoteEditorContentFieldKey,
-                            controller: _contentController,
-                            expands: true,
-                            textStyle: TextStyle(
-                              fontFamily: isMacOSNativeUI
-                                  ? 'Menlo'
-                                  : 'monospace',
-                              fontSize: 13,
+                        child: Column(
+                          children: <Widget>[
+                            MarkdownFormatToolbar(
+                              key: _kNoteEditorMarkdownToolbarKey,
+                              controller: _contentController,
+                              isMacOSNativeUI: isMacOSNativeUI,
+                              keyPrefix: 'note_editor',
+                              formatter: _markdownFormatter,
+                              showImageAction: true,
+                              onPickAndAttachImagePath: () =>
+                                  _pickAndAttachImageForMarkdown(context, note),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: CodeTheme(
+                                data: _noteEditorCodeThemeData(context),
+                                child: CodeField(
+                                  key: _kMacosNoteEditorContentFieldKey,
+                                  controller: _contentController,
+                                  expands: true,
+                                  textStyle: TextStyle(
+                                    fontFamily: isMacOSNativeUI
+                                        ? 'Menlo'
+                                        : 'monospace',
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
               ),
@@ -8243,6 +8301,7 @@ class _NoteDialogState extends State<_NoteDialog> {
   late final TextEditingController _titleController;
   late final TextEditingController _contentController;
   late final TextEditingController _tagsController;
+  final MarkdownEditFormatter _markdownFormatter = MarkdownEditFormatter();
   late bool _isPinned;
   bool _seededDefaultContent = false;
 
@@ -8314,6 +8373,15 @@ class _NoteDialogState extends State<_NoteDialog> {
                       labelText: l10n.tagsCommaSeparatedLabel,
                     ),
                   ),
+            const SizedBox(height: 8),
+            MarkdownFormatToolbar(
+              key: _kNoteDialogMarkdownToolbarKey,
+              controller: _contentController,
+              isMacOSNativeUI: isMacOSNativeUI,
+              keyPrefix: 'note_dialog',
+              formatter: _markdownFormatter,
+              showImageAction: false,
+            ),
             const SizedBox(height: 8),
             isMacOSNativeUI
                 ? MacosTextField(

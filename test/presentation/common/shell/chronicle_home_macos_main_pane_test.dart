@@ -1496,6 +1496,119 @@ Inline \$x^2\$ and:
     },
   );
 
+  testWidgets(
+    'main editor markdown toolbar inserts code block and hides in read mode',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('note_editor_markdown_toolbar')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_action_code_block')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(
+          const Key('note_editor_markdown_toolbar_field_code_language'),
+        ),
+        'dart',
+      );
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_dialog_insert')),
+      );
+      await tester.pumpAndSettle();
+
+      final codeField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(codeField.controller.text, contains('```dart'));
+
+      await tester.tap(find.text('Read').first);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('note_editor_markdown_toolbar')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('note dialog toolbar hides image action', (tester) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final noteTile = find.widgetWithText(ListTile, 'Editor Note').first;
+    final noteMenu = find.descendant(
+      of: noteTile,
+      matching: find.byType(PopupMenuButton<String>),
+    );
+    await tester.tap(noteMenu);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('note_dialog_markdown_toolbar')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('note_dialog_markdown_toolbar_action_image')),
+      findsNothing,
+    );
+
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('sync controls are relocated to sidebar in macOS shell', (
     tester,
   ) async {
