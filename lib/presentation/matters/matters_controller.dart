@@ -26,10 +26,11 @@ final matterViewModeProvider =
     NotifierProvider<ValueNotifierController<MatterViewMode>, MatterViewMode>(
       () => ValueNotifierController<MatterViewMode>(MatterViewMode.phase),
     );
-final showOrphansProvider =
+final showNotebookProvider =
     NotifierProvider<ValueNotifierController<bool>, bool>(
       () => ValueNotifierController<bool>(false),
     );
+final showOrphansProvider = showNotebookProvider;
 
 final mattersControllerProvider =
     AsyncNotifierProvider<MattersController, MatterSections>(
@@ -74,7 +75,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
     final sections = await _loadSections();
     state = AsyncData(sections);
 
-    ref.read(showOrphansProvider.notifier).set(false);
+    ref.read(showNotebookProvider.notifier).set(false);
     ref.read(selectedMatterIdProvider.notifier).set(created.id);
     ref
         .read(selectedPhaseIdProvider.notifier)

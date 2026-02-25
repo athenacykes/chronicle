@@ -125,8 +125,8 @@ class WebDavSyncEngine {
       final conflicts = <String>[];
 
       for (final path in allPaths) {
-        final local = localFiles[path];
-        final remote = remoteFiles[path];
+        final local = localFiles[path]?.file;
+        final remote = remoteFiles[path]?.metadata;
         final previous = previousState[path];
 
         if (options.mode == SyncRunMode.recoverLocalWins) {
@@ -257,11 +257,11 @@ class WebDavSyncEngine {
 
       for (final path in uploads) {
         try {
-          final localFile = localFiles[path];
-          if (localFile == null) {
+          final localEntry = localFiles[path];
+          if (localEntry == null) {
             continue;
           }
-          final bytes = await localFile.readAsBytes();
+          final bytes = await localEntry.file.readAsBytes();
           await client.uploadFile(path, bytes);
           uploadedCount++;
           _debugLog('Uploaded: $path (${bytes.length} bytes)');
@@ -273,7 +273,11 @@ class WebDavSyncEngine {
 
       for (final path in downloads) {
         try {
-          final bytes = await client.downloadFile(path);
+          final remoteEntry = remoteFiles[path];
+          if (remoteEntry == null) {
+            continue;
+          }
+          final bytes = await client.downloadFile(remoteEntry.sourcePath);
           final target = layout.fromRelativePath(path);
           await _fileSystemUtils.atomicWriteBytes(target, bytes);
           downloadedCount++;
@@ -286,8 +290,14 @@ class WebDavSyncEngine {
 
       for (final path in deleteLocals) {
         try {
+          final localEntry = localFiles[path];
           final file = layout.fromRelativePath(path);
           await _fileSystemUtils.deleteIfExists(file);
+          if (localEntry != null && localEntry.sourcePath != path) {
+            await _fileSystemUtils.deleteIfExists(
+              layout.fromRelativePath(localEntry.sourcePath),
+            );
+          }
           deletedCount++;
           _debugLog('Deleted local: $path');
         } catch (error) {
@@ -298,7 +308,16 @@ class WebDavSyncEngine {
 
       for (final path in deleteRemotes) {
         try {
-          await client.deleteFile(path);
+          final remoteEntry = remoteFiles[path];
+          if (remoteEntry == null) {
+            continue;
+          }
+          final skipLegacyDelete =
+              options.mode == SyncRunMode.normal && remoteEntry.isLegacyOrphan;
+          if (skipLegacyDelete) {
+            continue;
+          }
+          await client.deleteFile(remoteEntry.sourcePath);
           deletedCount++;
           _debugLog('Deleted remote: $path');
         } catch (error) {
@@ -309,14 +328,15 @@ class WebDavSyncEngine {
 
       for (final path in conflicts) {
         try {
-          final localFile = localFiles[path];
-          if (localFile == null) {
+          final localEntry = localFiles[path];
+          final remoteEntry = remoteFiles[path];
+          if (localEntry == null || remoteEntry == null) {
             continue;
           }
-          final localBytes = await localFile.readAsBytes();
+          final localBytes = await localEntry.file.readAsBytes();
 
-          final remoteBytes = await client.downloadFile(path);
-          await _fileSystemUtils.atomicWriteBytes(localFile, remoteBytes);
+          final remoteBytes = await client.downloadFile(remoteEntry.sourcePath);
+          await _fileSystemUtils.atomicWriteBytes(localEntry.file, remoteBytes);
 
           final conflictPath = _buildConflictPath(path, clientId);
           final conflictFile = layout.fromRelativePath(conflictPath);
@@ -345,8 +365,8 @@ class WebDavSyncEngine {
 
       final nextState = <String, SyncFileState>{};
       for (final path in finalUnion) {
-        final local = finalLocal[path];
-        final remote = finalRemote[path];
+        final local = finalLocal[path]?.file;
+        final remote = finalRemote[path]?.metadata;
         nextState[path] = SyncFileState(
           path: path,
           localHash: local == null ? '' : await sha256ForFile(local),
@@ -386,6 +406,9 @@ class WebDavSyncEngine {
   Future<void> _ensureRemoteSkeleton(WebDavClient client) async {
     await client.ensureDirectory('.sync');
     await client.ensureDirectory('locks');
+    await client.ensureDirectory('notebook');
+    await client.ensureDirectory('notebook/root');
+    await client.ensureDirectory('notebook/folders');
     await client.ensureDirectory('orphans');
     await client.ensureDirectory('matters');
     await client.ensureDirectory('links');
@@ -480,30 +503,61 @@ class WebDavSyncEngine {
     }());
   }
 
-  Future<Map<String, File>> _listLocalFiles(ChronicleLayout layout) async {
+  Future<Map<String, _LocalSyncEntry>> _listLocalFiles(
+    ChronicleLayout layout,
+  ) async {
     final files = await _fileSystemUtils.listFilesRecursively(
       layout.rootDirectory,
     );
-    final out = <String, File>{};
+    final out = <String, _LocalSyncEntry>{};
     for (final file in files) {
       final relative = layout.relativePath(file);
       if (layout.isIgnoredSyncPath(relative)) {
         continue;
       }
-      out[relative] = file;
+      final canonicalPath = _canonicalSyncPath(relative);
+      final entry = _LocalSyncEntry(file: file, sourcePath: relative);
+      final existing = out[canonicalPath];
+      if (existing == null ||
+          (_isLegacyOrphanPath(existing.sourcePath) &&
+              !_isLegacyOrphanPath(relative))) {
+        out[canonicalPath] = entry;
+      }
     }
     return out;
   }
 
-  Future<Map<String, WebDavFileMetadata>> _listRemoteFiles(
+  Future<Map<String, _RemoteSyncEntry>> _listRemoteFiles(
     WebDavClient client,
   ) async {
     final files = await client.listFilesRecursively('/');
-    final out = <String, WebDavFileMetadata>{};
+    final out = <String, _RemoteSyncEntry>{};
     for (final file in files) {
-      out[file.path] = file;
+      final canonicalPath = _canonicalSyncPath(file.path);
+      final entry = _RemoteSyncEntry(
+        metadata: file,
+        sourcePath: file.path,
+        isLegacyOrphan: _isLegacyOrphanPath(file.path),
+      );
+      final existing = out[canonicalPath];
+      if (existing == null ||
+          (existing.isLegacyOrphan && !entry.isLegacyOrphan)) {
+        out[canonicalPath] = entry;
+      }
     }
     return out;
+  }
+
+  String _canonicalSyncPath(String path) {
+    if (_isLegacyOrphanPath(path)) {
+      final suffix = path.substring('orphans/'.length);
+      return 'notebook/root/$suffix';
+    }
+    return path;
+  }
+
+  bool _isLegacyOrphanPath(String path) {
+    return path.startsWith('orphans/');
   }
 
   String _remoteHash(WebDavFileMetadata metadata) {
@@ -689,4 +743,23 @@ class _SyncLock {
 
   final String path;
   final int updatedTime;
+}
+
+class _LocalSyncEntry {
+  const _LocalSyncEntry({required this.file, required this.sourcePath});
+
+  final File file;
+  final String sourcePath;
+}
+
+class _RemoteSyncEntry {
+  const _RemoteSyncEntry({
+    required this.metadata,
+    required this.sourcePath,
+    required this.isLegacyOrphan,
+  });
+
+  final WebDavFileMetadata metadata;
+  final String sourcePath;
+  final bool isLegacyOrphan;
 }

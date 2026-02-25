@@ -10,8 +10,17 @@ class ChronicleLayout {
   Directory get syncDirectory => Directory(p.join(rootDirectory.path, '.sync'));
   Directory get locksDirectory =>
       Directory(p.join(rootDirectory.path, 'locks'));
+  // Legacy path kept for migration/compatibility only.
   Directory get orphansDirectory =>
       Directory(p.join(rootDirectory.path, 'orphans'));
+  Directory get notebookDirectory =>
+      Directory(p.join(rootDirectory.path, 'notebook'));
+  Directory get notebookRootDirectory =>
+      Directory(p.join(notebookDirectory.path, 'root'));
+  Directory get notebookFoldersDirectory =>
+      Directory(p.join(notebookDirectory.path, 'folders'));
+  File get notebookFoldersIndexFile =>
+      File(p.join(notebookDirectory.path, 'folders.json'));
   Directory get mattersDirectory =>
       Directory(p.join(rootDirectory.path, 'matters'));
   Directory get categoriesDirectory =>
@@ -42,6 +51,21 @@ class ChronicleLayout {
 
   File orphanNoteFile(String noteId) {
     return File(p.join(orphansDirectory.path, '$noteId.md'));
+  }
+
+  File notebookRootNoteFile(String noteId) {
+    return File(p.join(notebookRootDirectory.path, '$noteId.md'));
+  }
+
+  Directory notebookFolderDirectory(String folderId) {
+    return Directory(p.join(notebookFoldersDirectory.path, folderId));
+  }
+
+  File notebookFolderNoteFile({
+    required String folderId,
+    required String noteId,
+  }) {
+    return File(p.join(notebookFolderDirectory(folderId).path, '$noteId.md'));
   }
 
   File phaseNoteFile({

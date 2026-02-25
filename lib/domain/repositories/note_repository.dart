@@ -8,6 +8,7 @@ abstract class NoteRepository {
     required String content,
     String? matterId,
     String? phaseId,
+    String? notebookFolderId,
     List<String> tags,
     bool isPinned,
     List<String> attachments,
@@ -18,6 +19,7 @@ abstract class NoteRepository {
     required String noteId,
     required String? matterId,
     required String? phaseId,
+    required String? notebookFolderId,
   });
   Future<Note> addAttachments({
     required String noteId,
@@ -28,6 +30,7 @@ abstract class NoteRepository {
     required String attachmentPath,
   });
   Future<List<Note>> listOrphanNotes();
+  Future<List<Note>> listNotebookNotes({String? folderId});
   Future<List<Note>> listNotesByMatterAndPhase({
     required String matterId,
     required String phaseId,

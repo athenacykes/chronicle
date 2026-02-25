@@ -21,6 +21,7 @@ import '../../../domain/entities/matter_graph_edge.dart';
 import '../../../domain/entities/matter_graph_node.dart';
 import '../../../domain/entities/matter_sections.dart';
 import '../../../domain/entities/note.dart';
+import '../../../domain/entities/notebook_folder.dart';
 import '../../../domain/entities/phase.dart';
 import '../../../domain/entities/sync_blocker.dart';
 import '../../../domain/entities/sync_conflict.dart';
@@ -148,10 +149,28 @@ String _searchResultContextLine({
   required BuildContext context,
   required Note note,
   required MatterSections? sections,
+  required List<NotebookFolderTreeNode> notebookTree,
 }) {
   final l10n = context.l10n;
-  if (note.matterId == null) {
-    return '${l10n.orphansLabel} • ${l10n.orphanLabel}';
+  if (note.isInNotebook) {
+    final labels = <String, String>{};
+    void collect(List<NotebookFolderTreeNode> nodes) {
+      for (final node in nodes) {
+        labels[node.folder.id] = node.folder.name.trim();
+        collect(node.children);
+      }
+    }
+
+    collect(notebookTree);
+    final folderId = note.notebookFolderId;
+    if (folderId == null) {
+      return '${l10n.notebookLabel} • ${l10n.notebookRootLabel}';
+    }
+    final folderName = labels[folderId];
+    if (folderName == null || folderName.isEmpty) {
+      return '${l10n.notebookLabel} • $folderId';
+    }
+    return '${l10n.notebookLabel} • $folderName';
   }
 
   Matter? matter;
@@ -174,7 +193,7 @@ String _searchResultContextLine({
       : _displayMatterTitle(context, matter);
   final phaseId = note.phaseId;
   if (phaseId == null) {
-    return '$matterTitle • ${l10n.orphanLabel}';
+    return '$matterTitle • ${l10n.notebookLabel}';
   }
 
   String phaseLabel = phaseId;
@@ -292,6 +311,119 @@ Future<Phase?> _showMoveToPhaseDialog({
   );
 }
 
+class _MoveToNotebookSelection {
+  const _MoveToNotebookSelection({required this.folderId});
+
+  final String? folderId;
+}
+
+Future<_MoveToNotebookSelection?> _showMoveToNotebookDialog({
+  required BuildContext context,
+  required WidgetRef ref,
+  required Note note,
+}) async {
+  List<NotebookFolder> folders;
+  try {
+    folders = await ref.read(notebookRepositoryProvider).listFolders();
+  } catch (_) {
+    return const _MoveToNotebookSelection(folderId: null);
+  }
+  if (!context.mounted) {
+    return null;
+  }
+  if (folders.isEmpty) {
+    return const _MoveToNotebookSelection(folderId: null);
+  }
+  final tree = buildNotebookFolderTree(folders);
+  final currentFolderId = note.isInNotebook ? note.notebookFolderId : null;
+
+  return showDialog<_MoveToNotebookSelection>(
+    context: context,
+    builder: (dialogContext) {
+      final l10n = dialogContext.l10n;
+      String? selectedFolderId = currentFolderId;
+
+      List<Widget> buildFolderTiles(
+        List<NotebookFolderTreeNode> nodes,
+        int depth,
+        StateSetter setState,
+      ) {
+        final out = <Widget>[];
+        for (final node in nodes) {
+          final folder = node.folder;
+          final selected = selectedFolderId == folder.id;
+          out.add(
+            ListTile(
+              contentPadding: EdgeInsets.only(left: 12 + (depth * 20), right: 8),
+              leading: const Icon(Icons.folder_outlined),
+              title: Text(folder.name),
+              subtitle: selected ? Text(l10n.moveNoteCurrentNotebookLabel) : null,
+              trailing: selected ? const Icon(Icons.check) : null,
+              onTap: () {
+                setState(() {
+                  selectedFolderId = folder.id;
+                });
+              },
+            ),
+          );
+          out.addAll(buildFolderTiles(node.children, depth + 1, setState));
+        }
+        return out;
+      }
+
+      return StatefulBuilder(
+        builder: (dialogContext, setState) {
+          return AlertDialog(
+            title: Text(l10n.moveToNotebookDialogTitle),
+            content: SizedBox(
+              width: 480,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      leading: const Icon(Icons.book_outlined),
+                      title: Text(l10n.notebookRootLabel),
+                      subtitle: selectedFolderId == null
+                          ? Text(l10n.moveNoteCurrentNotebookLabel)
+                          : null,
+                      trailing: selectedFolderId == null
+                          ? const Icon(Icons.check)
+                          : null,
+                      onTap: () {
+                        setState(() {
+                          selectedFolderId = null;
+                        });
+                      },
+                    ),
+                    ...buildFolderTiles(tree, 1, setState),
+                  ],
+                ),
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(l10n.cancelAction),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(
+                    _MoveToNotebookSelection(folderId: selectedFolderId),
+                  );
+                },
+                child: Text(l10n.moveToNotebookAction),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
+
 void _showMoveMessage(BuildContext context, String message) {
   if (!context.mounted) {
     return;
@@ -324,6 +456,7 @@ Future<bool> _moveNoteToMatter({
           noteId: noteId,
           matterId: targetMatter.id,
           phaseId: targetPhaseId,
+          notebookFolderId: null,
         );
     return true;
   } catch (error) {
@@ -354,6 +487,7 @@ Future<bool> _moveNoteToPhase({
           noteId: noteId,
           matterId: phase.matterId,
           phaseId: phase.id,
+          notebookFolderId: null,
         );
     return true;
   } catch (error) {
@@ -365,16 +499,22 @@ Future<bool> _moveNoteToPhase({
   }
 }
 
-Future<bool> _moveNoteToOrphans({
+Future<bool> _moveNoteToNotebook({
   required BuildContext context,
   required WidgetRef ref,
   required String noteId,
+  required String? folderId,
 }) async {
   final l10n = context.l10n;
   try {
     await ref
         .read(noteEditorControllerProvider.notifier)
-        .moveNoteById(noteId: noteId, matterId: null, phaseId: null);
+        .moveNoteById(
+          noteId: noteId,
+          matterId: null,
+          phaseId: null,
+          notebookFolderId: folderId,
+        );
     return true;
   } catch (error) {
     if (!context.mounted) {
@@ -383,6 +523,27 @@ Future<bool> _moveNoteToOrphans({
     _showMoveMessage(context, l10n.moveNoteFailed(error.toString()));
     return false;
   }
+}
+
+Future<bool> _moveNoteToNotebookViaDialog({
+  required BuildContext context,
+  required WidgetRef ref,
+  required Note note,
+}) async {
+  final selection = await _showMoveToNotebookDialog(
+    context: context,
+    ref: ref,
+    note: note,
+  );
+  if (!context.mounted || selection == null) {
+    return false;
+  }
+  return _moveNoteToNotebook(
+    context: context,
+    ref: ref,
+    noteId: note.id,
+    folderId: selection.folderId,
+  );
 }
 
 class ChronicleHomeScreen extends ConsumerStatefulWidget {
@@ -474,18 +635,17 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
       ref.invalidate(searchControllerProvider);
     } finally {
       _searchIndexBootstrap = null;
-      if (!mounted) {
-        return;
-      }
-      final activeRoot = ref
-          .read(settingsControllerProvider)
-          .asData
-          ?.value
-          .storageRootPath;
-      if (activeRoot != null &&
-          activeRoot.isNotEmpty &&
-          activeRoot != _searchIndexBuiltForRoot) {
-        _ensureSearchIndexIsReady(activeRoot);
+      if (mounted) {
+        final activeRoot = ref
+            .read(settingsControllerProvider)
+            .asData
+            ?.value
+            .storageRootPath;
+        if (activeRoot != null &&
+            activeRoot.isNotEmpty &&
+            activeRoot != _searchIndexBuiltForRoot) {
+          _ensureSearchIndexIsReady(activeRoot);
+        }
       }
     }
   }
@@ -515,14 +675,14 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
 
   void _maybeScheduleAutoOpenForPendingMatter({
     required Matter? selectedMatter,
-    required bool showOrphans,
+    required bool showNotebook,
     required bool showConflicts,
   }) {
     final pendingMatterId = _pendingAutoOpenMatterId;
     if (pendingMatterId == null ||
         selectedMatter == null ||
         selectedMatter.id != pendingMatterId ||
-        showOrphans ||
+        showNotebook ||
         showConflicts) {
       return;
     }
@@ -545,7 +705,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
     if (!mounted || requestToken != _autoOpenNoteRequestToken) {
       return;
     }
-    if (ref.read(showOrphansProvider) || ref.read(showConflictsProvider)) {
+    if (ref.read(showNotebookProvider) || ref.read(showConflictsProvider)) {
       return;
     }
     if (ref.read(selectedMatterIdProvider) != matter.id) {
@@ -577,7 +737,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
     if (!mounted || requestToken != _autoOpenNoteRequestToken) {
       return;
     }
-    if (ref.read(showOrphansProvider) || ref.read(showConflictsProvider)) {
+    if (ref.read(showNotebookProvider) || ref.read(showConflictsProvider)) {
       return;
     }
     if (ref.read(selectedMatterIdProvider) != matter.id) {
@@ -652,8 +812,22 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             _hasSearchText(searchQuery.text) && searchResultsVisible;
         final conflictCount = ref.watch(conflictCountProvider);
         final selectedMatterId = ref.watch(selectedMatterIdProvider);
-        final showOrphans = ref.watch(showOrphansProvider);
+        final showNotebook = ref.watch(showNotebookProvider);
         final showConflicts = ref.watch(showConflictsProvider);
+        final selectedNotebookFolderId = ref.watch(
+          selectedNotebookFolderIdProvider,
+        );
+        final notebookTree = ref.watch(notebookFolderTreeProvider);
+        final notebookFolders = ref.watch(notebookFoldersProvider).asData?.value;
+        NotebookFolder? selectedNotebookFolder;
+        if (notebookFolders != null && selectedNotebookFolderId != null) {
+          for (final folder in notebookFolders) {
+            if (folder.id == selectedNotebookFolderId) {
+              selectedNotebookFolder = folder;
+              break;
+            }
+          }
+        }
         final selectedMatter = _findMatterById(
           matterSections,
           selectedMatterId,
@@ -661,20 +835,26 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
         _queueAutoOpenOnMatterSelectionChange(selectedMatterId);
         _maybeScheduleAutoOpenForPendingMatter(
           selectedMatter: selectedMatter,
-          showOrphans: showOrphans,
+          showNotebook: showNotebook,
           showConflicts: showConflicts,
         );
-        final workspaceTitle =
-            !showOrphans && !showConflicts && selectedMatter != null
+        final workspaceTitle = showConflicts
+            ? l10n.conflictsLabel
+            : showNotebook
+            ? (selectedNotebookFolder?.name.trim().isNotEmpty == true
+                  ? selectedNotebookFolder!.name.trim()
+                  : l10n.notebookLabel)
+            : selectedMatter != null
             ? _displayMatterTitle(context, selectedMatter)
             : l10n.appTitle;
-        final topBarContextActions =
-            !showOrphans &&
-                !showConflicts &&
-                !hasSearchResultsOpen &&
-                selectedMatter != null
-            ? _MatterTopControls(matter: selectedMatter)
-            : null;
+        Widget? topBarContextActions;
+        if (!showConflicts && !hasSearchResultsOpen) {
+          if (showNotebook) {
+            topBarContextActions = const _NotebookTopControls();
+          } else if (selectedMatter != null) {
+            topBarContextActions = _MatterTopControls(matter: selectedMatter);
+          }
+        }
 
         final content = searchState.when(
           loading: () => _MainWorkspace(
@@ -697,6 +877,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
                       context: context,
                       note: hit.note,
                       sections: matterSections,
+                      notebookTree: notebookTree,
                     ),
                     snippet: hit.snippet,
                   ),
@@ -738,7 +919,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             hasParkedSearchResults: hasParkedSearchResults,
             onShowConflicts: () {
               ref.read(showConflictsProvider.notifier).set(true);
-              ref.read(showOrphansProvider.notifier).set(false);
+              ref.read(showNotebookProvider.notifier).set(false);
             },
             onOpenSettings: () async {
               await _openSettingsDialog();
@@ -988,7 +1169,9 @@ class _MatterSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
-    final showOrphans = ref.watch(showOrphansProvider);
+    final showNotebook = ref.watch(showNotebookProvider);
+    final selectedNotebookFolderId = ref.watch(selectedNotebookFolderIdProvider);
+    final notebookTree = ref.watch(notebookFolderTreeProvider);
     final showConflicts = ref.watch(showConflictsProvider);
     final conflictCount = ref.watch(conflictCountProvider);
     final noteDragPayload = ref.watch(_activeNoteDragPayloadProvider);
@@ -1001,7 +1184,9 @@ class _MatterSidebar extends ConsumerWidget {
         context: context,
         ref: ref,
         selectedMatterId: selectedMatterId,
-        showOrphans: showOrphans,
+        showNotebook: showNotebook,
+        selectedNotebookFolderId: selectedNotebookFolderId,
+        notebookTree: notebookTree,
         showConflicts: showConflicts,
         conflictCount: conflictCount,
         noteDragPayload: noteDragPayload,
@@ -1013,7 +1198,9 @@ class _MatterSidebar extends ConsumerWidget {
       context: context,
       ref: ref,
       selectedMatterId: selectedMatterId,
-      showOrphans: showOrphans,
+      showNotebook: showNotebook,
+      selectedNotebookFolderId: selectedNotebookFolderId,
+      notebookTree: notebookTree,
       showConflicts: showConflicts,
       conflictCount: conflictCount,
       noteDragPayload: noteDragPayload,
@@ -1025,7 +1212,9 @@ class _MatterSidebar extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
     required String? selectedMatterId,
-    required bool showOrphans,
+    required bool showNotebook,
+    required String? selectedNotebookFolderId,
+    required List<NotebookFolderTreeNode> notebookTree,
     required bool showConflicts,
     required int conflictCount,
     required _NoteDragPayload? noteDragPayload,
@@ -1145,42 +1334,22 @@ class _MatterSidebar extends ConsumerWidget {
                     ),
               ),
               const SizedBox(height: 8),
-              DragTarget<_NoteDragPayload>(
-                key: _kSidebarOrphansDropTargetKey,
-                onWillAcceptWithDetails: (details) => true,
-                onAcceptWithDetails: (details) async {
-                  await _moveDroppedNoteToOrphans(
-                    context: context,
-                    ref: ref,
-                    payload: details.data,
-                  );
-                },
-                builder: (targetContext, candidateData, rejectedData) {
-                  final highlight = candidateData.isNotEmpty;
-                  return Container(
-                    decoration: highlight
-                        ? BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primaryContainer.withAlpha(110),
-                            borderRadius: BorderRadius.circular(8),
-                          )
-                        : null,
-                    child: ListTile(
-                      selected: showOrphans,
-                      leading: const Icon(Icons.note_alt_outlined),
-                      title: Text(l10n.orphansLabel),
-                      onTap: () {
-                        ref.read(showOrphansProvider.notifier).set(true);
-                        ref.read(showConflictsProvider.notifier).set(false);
-                        ref.read(selectedMatterIdProvider.notifier).set(null);
-                        ref.read(selectedPhaseIdProvider.notifier).set(null);
-                        ref.invalidate(noteListProvider);
-                      },
-                    ),
-                  );
-                },
+              _SectionHeader(title: l10n.viewsSectionLabel),
+              _buildMaterialNotebookRootTile(
+                context: context,
+                ref: ref,
+                showNotebook: showNotebook,
+                selectedNotebookFolderId: selectedNotebookFolderId,
               ),
+              for (final node in notebookTree)
+                _buildMaterialNotebookFolderTile(
+                  context: context,
+                  ref: ref,
+                  node: node,
+                  depth: 1,
+                  showNotebook: showNotebook,
+                  selectedNotebookFolderId: selectedNotebookFolderId,
+                ),
               ListTile(
                 selected: showConflicts,
                 leading: Badge(
@@ -1191,7 +1360,7 @@ class _MatterSidebar extends ConsumerWidget {
                 title: Text(l10n.conflictsLabel),
                 onTap: () {
                   ref.read(showConflictsProvider.notifier).set(true);
-                  ref.read(showOrphansProvider.notifier).set(false);
+                  ref.read(showNotebookProvider.notifier).set(false);
                 },
               ),
             ],
@@ -1207,7 +1376,9 @@ class _MatterSidebar extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
     required String? selectedMatterId,
-    required bool showOrphans,
+    required bool showNotebook,
+    required String? selectedNotebookFolderId,
+    required List<NotebookFolderTreeNode> notebookTree,
     required bool showConflicts,
     required int conflictCount,
     required _NoteDragPayload? noteDragPayload,
@@ -1431,74 +1602,23 @@ class _MatterSidebar extends ConsumerWidget {
     addMatterItems(sections.uncategorized);
 
     addSection(l10n.viewsSectionLabel);
-    selectableEntries.add(
-      _MacSidebarSelectableEntry(
-        key: 'orphans',
-        onSelected: () {
-          ref.read(showOrphansProvider.notifier).set(true);
-          ref.read(showConflictsProvider.notifier).set(false);
-          ref.read(selectedMatterIdProvider.notifier).set(null);
-          ref.read(selectedPhaseIdProvider.notifier).set(null);
-          ref.invalidate(noteListProvider);
-        },
-      ),
+    _addMacNotebookRootItem(
+      context: context,
+      ref: ref,
+      sidebarItems: sidebarItems,
+      selectableEntries: selectableEntries,
+      showNotebook: showNotebook,
+      selectedNotebookFolderId: selectedNotebookFolderId,
     );
-    sidebarItems.add(
-      SidebarItem(
-        leading: DragTarget<_NoteDragPayload>(
-          onWillAcceptWithDetails: (details) => true,
-          onAcceptWithDetails: (details) {
-            unawaited(
-              _moveDroppedNoteToOrphans(
-                context: context,
-                ref: ref,
-                payload: details.data,
-              ),
-            );
-          },
-          builder: (targetContext, candidateData, rejectedData) {
-            final highlight = candidateData.isNotEmpty;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              decoration: BoxDecoration(
-                color: highlight
-                    ? MacosTheme.of(context).primaryColor.withAlpha(56)
-                    : null,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const MacosIcon(CupertinoIcons.doc_text),
-            );
-          },
-        ),
-        label: DragTarget<_NoteDragPayload>(
-          key: _kSidebarOrphansDropTargetKey,
-          onWillAcceptWithDetails: (details) => true,
-          onAcceptWithDetails: (details) {
-            unawaited(
-              _moveDroppedNoteToOrphans(
-                context: context,
-                ref: ref,
-                payload: details.data,
-              ),
-            );
-          },
-          builder: (targetContext, candidateData, rejectedData) {
-            final highlight = candidateData.isNotEmpty;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: highlight
-                    ? MacosTheme.of(context).primaryColor.withAlpha(64)
-                    : null,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(l10n.orphansLabel),
-            );
-          },
-        ),
-      ),
+    _addMacNotebookFolderItems(
+      context: context,
+      ref: ref,
+      sidebarItems: sidebarItems,
+      selectableEntries: selectableEntries,
+      nodes: notebookTree,
+      depth: 1,
+      showNotebook: showNotebook,
+      selectedNotebookFolderId: selectedNotebookFolderId,
     );
 
     selectableEntries.add(
@@ -1506,7 +1626,7 @@ class _MatterSidebar extends ConsumerWidget {
         key: 'conflicts',
         onSelected: () {
           ref.read(showConflictsProvider.notifier).set(true);
-          ref.read(showOrphansProvider.notifier).set(false);
+          ref.read(showNotebookProvider.notifier).set(false);
         },
       ),
     );
@@ -1524,8 +1644,10 @@ class _MatterSidebar extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final selectedKey = showOrphans
-        ? 'orphans'
+    final selectedKey = showNotebook
+        ? (selectedNotebookFolderId == null
+              ? 'notebook:root'
+              : 'notebook:$selectedNotebookFolderId')
         : showConflicts
         ? 'conflicts'
         : selectedMatterId == null
@@ -1629,16 +1751,565 @@ class _MatterSidebar extends ConsumerWidget {
     );
   }
 
-  Future<void> _moveDroppedNoteToOrphans({
+  void _selectNotebookFolder(WidgetRef ref, String? folderId) {
+    ref.read(showNotebookProvider.notifier).set(true);
+    ref.read(showConflictsProvider.notifier).set(false);
+    ref.read(selectedMatterIdProvider.notifier).set(null);
+    ref.read(selectedPhaseIdProvider.notifier).set(null);
+    ref.read(selectedNotebookFolderIdProvider.notifier).set(folderId);
+    ref.invalidate(notebookNoteListProvider);
+  }
+
+  Future<void> _moveDroppedNoteToNotebook({
     required BuildContext context,
     required WidgetRef ref,
     required _NoteDragPayload payload,
+    required String? folderId,
   }) async {
-    await _moveNoteToOrphans(
+    await _moveNoteToNotebook(
       context: context,
       ref: ref,
       noteId: payload.noteId,
+      folderId: folderId,
     );
+  }
+
+  Future<String?> _showNotebookFolderNameDialog({
+    required BuildContext context,
+    required String title,
+    String initialValue = '',
+  }) async {
+    final l10n = context.l10n;
+    var draftName = initialValue;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextFormField(
+          initialValue: initialValue,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: l10n.notebookFolderNameLabel,
+            border: const OutlineInputBorder(),
+          ),
+          onChanged: (value) {
+            draftName = value;
+          },
+          onFieldSubmitted: (value) {
+            Navigator.of(dialogContext).pop(value.trim());
+          },
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancelAction),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(draftName.trim()),
+            child: Text(l10n.saveAction),
+          ),
+        ],
+      ),
+    );
+    if (result == null || result.trim().isEmpty) {
+      return null;
+    }
+    return result.trim();
+  }
+
+  Future<void> _createNotebookFolder({
+    required BuildContext context,
+    required WidgetRef ref,
+    required String? parentId,
+  }) async {
+    final l10n = context.l10n;
+    final name = await _showNotebookFolderNameDialog(
+      context: context,
+      title: l10n.notebookFolderCreateDialogTitle,
+    );
+    if (!context.mounted || name == null) {
+      return;
+    }
+    try {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .createNotebookFolder(name: name, parentId: parentId);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMoveMessage(context, l10n.moveNoteFailed(error.toString()));
+    }
+  }
+
+  Future<void> _renameNotebookFolder({
+    required BuildContext context,
+    required WidgetRef ref,
+    required NotebookFolder folder,
+  }) async {
+    final l10n = context.l10n;
+    final name = await _showNotebookFolderNameDialog(
+      context: context,
+      title: l10n.notebookFolderRenameDialogTitle,
+      initialValue: folder.name,
+    );
+    if (!context.mounted || name == null) {
+      return;
+    }
+    try {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .renameNotebookFolder(folderId: folder.id, name: name);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMoveMessage(context, l10n.moveNoteFailed(error.toString()));
+    }
+  }
+
+  Future<void> _deleteNotebookFolder({
+    required BuildContext context,
+    required WidgetRef ref,
+    required NotebookFolder folder,
+  }) async {
+    final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.notebookFolderDeleteDialogTitle),
+        content: Text(l10n.notebookFolderDeleteConfirmation(folder.name)),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.cancelAction),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.deleteAction),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted || confirmed != true) {
+      return;
+    }
+    try {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .deleteNotebookFolder(folder.id);
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMoveMessage(context, l10n.moveNoteFailed(error.toString()));
+    }
+  }
+
+  Widget _buildMaterialNotebookRootTile({
+    required BuildContext context,
+    required WidgetRef ref,
+    required bool showNotebook,
+    required String? selectedNotebookFolderId,
+  }) {
+    final l10n = context.l10n;
+    return DragTarget<_NoteDragPayload>(
+      key: _kSidebarNotebookRootDropTargetKey,
+      onWillAcceptWithDetails: (details) => true,
+      onAcceptWithDetails: (details) async {
+        await _moveDroppedNoteToNotebook(
+          context: context,
+          ref: ref,
+          payload: details.data,
+          folderId: null,
+        );
+      },
+      builder: (targetContext, candidateData, rejectedData) {
+        final highlight = candidateData.isNotEmpty;
+        return Container(
+          decoration: highlight
+              ? BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer.withAlpha(110),
+                  borderRadius: BorderRadius.circular(8),
+                )
+              : null,
+          child: ListTile(
+            selected: showNotebook && selectedNotebookFolderId == null,
+            leading: const Icon(Icons.book_outlined),
+            title: Text(l10n.notebookLabel),
+            trailing: PopupMenuButton<String>(
+              onSelected: (value) async {
+                if (value == 'new_folder') {
+                  await _createNotebookFolder(
+                    context: context,
+                    ref: ref,
+                    parentId: null,
+                  );
+                }
+              },
+              itemBuilder: (_) => <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  value: 'new_folder',
+                  child: Text(l10n.newFolderAction),
+                ),
+              ],
+            ),
+            onTap: () {
+              _selectNotebookFolder(ref, null);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMaterialNotebookFolderTile({
+    required BuildContext context,
+    required WidgetRef ref,
+    required NotebookFolderTreeNode node,
+    required int depth,
+    required bool showNotebook,
+    required String? selectedNotebookFolderId,
+  }) {
+    final l10n = context.l10n;
+    final folder = node.folder;
+    final tile = DragTarget<_NoteDragPayload>(
+      key: ValueKey<String>('sidebar_notebook_folder_drop_target_${folder.id}'),
+      onWillAcceptWithDetails: (details) => true,
+      onAcceptWithDetails: (details) async {
+        await _moveDroppedNoteToNotebook(
+          context: context,
+          ref: ref,
+          payload: details.data,
+          folderId: folder.id,
+        );
+      },
+      builder: (targetContext, candidateData, rejectedData) {
+        final highlight = candidateData.isNotEmpty;
+        return Container(
+          decoration: highlight
+              ? BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer.withAlpha(100),
+                  borderRadius: BorderRadius.circular(8),
+                )
+              : null,
+          child: ListTile(
+            contentPadding: EdgeInsets.only(
+              left: 16 + (depth * 16),
+              right: 8,
+            ),
+            selected: showNotebook && selectedNotebookFolderId == folder.id,
+            leading: const Icon(Icons.folder_outlined),
+            title: Text(folder.name),
+            trailing: PopupMenuButton<String>(
+              onSelected: (value) async {
+                switch (value) {
+                  case 'new_folder':
+                    await _createNotebookFolder(
+                      context: context,
+                      ref: ref,
+                      parentId: folder.id,
+                    );
+                    return;
+                  case 'rename':
+                    await _renameNotebookFolder(
+                      context: context,
+                      ref: ref,
+                      folder: folder,
+                    );
+                    return;
+                  case 'delete':
+                    await _deleteNotebookFolder(
+                      context: context,
+                      ref: ref,
+                      folder: folder,
+                    );
+                    return;
+                }
+              },
+              itemBuilder: (_) => <PopupMenuEntry<String>>[
+                PopupMenuItem<String>(
+                  value: 'new_folder',
+                  child: Text(l10n.newFolderAction),
+                ),
+                PopupMenuItem<String>(
+                  value: 'rename',
+                  child: Text(l10n.renameFolderAction),
+                ),
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Text(l10n.deleteFolderAction),
+                ),
+              ],
+            ),
+            onTap: () {
+              _selectNotebookFolder(ref, folder.id);
+            },
+          ),
+        );
+      },
+    );
+
+    if (node.children.isEmpty) {
+      return tile;
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        tile,
+        for (final child in node.children)
+          _buildMaterialNotebookFolderTile(
+            context: context,
+            ref: ref,
+            node: child,
+            depth: depth + 1,
+            showNotebook: showNotebook,
+            selectedNotebookFolderId: selectedNotebookFolderId,
+          ),
+      ],
+    );
+  }
+
+  void _addMacNotebookRootItem({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<SidebarItem> sidebarItems,
+    required List<_MacSidebarSelectableEntry> selectableEntries,
+    required bool showNotebook,
+    required String? selectedNotebookFolderId,
+  }) {
+    final l10n = context.l10n;
+    selectableEntries.add(
+      _MacSidebarSelectableEntry(
+        key: 'notebook:root',
+        onSelected: () {
+          _selectNotebookFolder(ref, null);
+        },
+      ),
+    );
+    sidebarItems.add(
+      SidebarItem(
+        leading: DragTarget<_NoteDragPayload>(
+          onWillAcceptWithDetails: (details) => true,
+          onAcceptWithDetails: (details) {
+            unawaited(
+              _moveDroppedNoteToNotebook(
+                context: context,
+                ref: ref,
+                payload: details.data,
+                folderId: null,
+              ),
+            );
+          },
+          builder: (targetContext, candidateData, rejectedData) {
+            final highlight = candidateData.isNotEmpty;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                color: highlight ? MacosTheme.of(context).primaryColor.withAlpha(56) : null,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const MacosIcon(CupertinoIcons.book),
+            );
+          },
+        ),
+        label: DragTarget<_NoteDragPayload>(
+          key: _kSidebarNotebookRootDropTargetKey,
+          onWillAcceptWithDetails: (details) => true,
+          onAcceptWithDetails: (details) {
+            unawaited(
+              _moveDroppedNoteToNotebook(
+                context: context,
+                ref: ref,
+                payload: details.data,
+                folderId: null,
+              ),
+            );
+          },
+          builder: (targetContext, candidateData, rejectedData) {
+            final highlight = candidateData.isNotEmpty;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 100),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              decoration: BoxDecoration(
+                color: highlight ? MacosTheme.of(context).primaryColor.withAlpha(64) : null,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                l10n.notebookLabel,
+                style: (showNotebook && selectedNotebookFolderId == null)
+                    ? MacosTheme.of(context).typography.body.copyWith(
+                        fontWeight: FontWeight.w700,
+                      )
+                    : null,
+              ),
+            );
+          },
+        ),
+        trailing: MacosPulldownButton(
+          icon: CupertinoIcons.ellipsis_circle,
+          items: <MacosPulldownMenuEntry>[
+            MacosPulldownMenuItem(
+              title: Text(l10n.newFolderAction),
+              onTap: () {
+                unawaited(
+                  _createNotebookFolder(context: context, ref: ref, parentId: null),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _addMacNotebookFolderItems({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<SidebarItem> sidebarItems,
+    required List<_MacSidebarSelectableEntry> selectableEntries,
+    required List<NotebookFolderTreeNode> nodes,
+    required int depth,
+    required bool showNotebook,
+    required String? selectedNotebookFolderId,
+  }) {
+    final l10n = context.l10n;
+    for (final node in nodes) {
+      final folder = node.folder;
+      selectableEntries.add(
+        _MacSidebarSelectableEntry(
+          key: 'notebook:${folder.id}',
+          onSelected: () {
+            _selectNotebookFolder(ref, folder.id);
+          },
+        ),
+      );
+      sidebarItems.add(
+        SidebarItem(
+          leading: DragTarget<_NoteDragPayload>(
+            onWillAcceptWithDetails: (details) => true,
+            onAcceptWithDetails: (details) {
+              unawaited(
+                _moveDroppedNoteToNotebook(
+                  context: context,
+                  ref: ref,
+                  payload: details.data,
+                  folderId: folder.id,
+                ),
+              );
+            },
+            builder: (targetContext, candidateData, rejectedData) {
+              final highlight = candidateData.isNotEmpty;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                decoration: BoxDecoration(
+                  color: highlight
+                      ? MacosTheme.of(context).primaryColor.withAlpha(56)
+                      : null,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const MacosIcon(CupertinoIcons.folder),
+              );
+            },
+          ),
+          label: DragTarget<_NoteDragPayload>(
+            key: ValueKey<String>('sidebar_notebook_folder_drop_target_${folder.id}'),
+            onWillAcceptWithDetails: (details) => true,
+            onAcceptWithDetails: (details) {
+              unawaited(
+                _moveDroppedNoteToNotebook(
+                  context: context,
+                  ref: ref,
+                  payload: details.data,
+                  folderId: folder.id,
+                ),
+              );
+            },
+            builder: (targetContext, candidateData, rejectedData) {
+              final highlight = candidateData.isNotEmpty;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                padding: EdgeInsets.only(
+                  left: depth * 12,
+                  right: 4,
+                  top: 2,
+                  bottom: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: highlight
+                      ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                      : null,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  folder.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: (showNotebook && selectedNotebookFolderId == folder.id)
+                      ? MacosTheme.of(context).typography.body.copyWith(
+                          fontWeight: FontWeight.w700,
+                        )
+                      : null,
+                ),
+              );
+            },
+          ),
+          trailing: MacosPulldownButton(
+            icon: CupertinoIcons.ellipsis_circle,
+            items: <MacosPulldownMenuEntry>[
+              MacosPulldownMenuItem(
+                title: Text(l10n.newFolderAction),
+                onTap: () {
+                  unawaited(
+                    _createNotebookFolder(
+                      context: context,
+                      ref: ref,
+                      parentId: folder.id,
+                    ),
+                  );
+                },
+              ),
+              MacosPulldownMenuItem(
+                title: Text(l10n.renameFolderAction),
+                onTap: () {
+                  unawaited(
+                    _renameNotebookFolder(
+                      context: context,
+                      ref: ref,
+                      folder: folder,
+                    ),
+                  );
+                },
+              ),
+              MacosPulldownMenuItem(
+                title: Text(l10n.deleteFolderAction),
+                onTap: () {
+                  unawaited(
+                    _deleteNotebookFolder(
+                      context: context,
+                      ref: ref,
+                      folder: folder,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      _addMacNotebookFolderItems(
+        context: context,
+        ref: ref,
+        sidebarItems: sidebarItems,
+        selectableEntries: selectableEntries,
+        nodes: node.children,
+        depth: depth + 1,
+        showNotebook: showNotebook,
+        selectedNotebookFolderId: selectedNotebookFolderId,
+      );
+    }
   }
 
   Future<void> _moveDroppedMatterToCategory({
@@ -1909,9 +2580,10 @@ class _MatterSidebar extends ConsumerWidget {
   }
 
   void _selectMatter(WidgetRef ref, Matter matter) {
-    ref.read(showOrphansProvider.notifier).set(false);
+    ref.read(showNotebookProvider.notifier).set(false);
     ref.read(showConflictsProvider.notifier).set(false);
     ref.read(selectedMatterIdProvider.notifier).set(matter.id);
+    ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
     ref
         .read(selectedPhaseIdProvider.notifier)
         .set(
@@ -2811,12 +3483,16 @@ class SearchListItem {
 }
 
 const Key _kSidebarRootKey = Key('sidebar_root');
-const Key _kSidebarOrphansDropTargetKey = Key('sidebar_orphans_drop_target');
+const Key _kSidebarNotebookRootDropTargetKey = Key(
+  'sidebar_notebook_root_drop_target',
+);
 const Key _kMacosMatterNewNoteButtonKey = Key('macos_matter_new_note_button');
 const Key _kMatterTopPhaseMenuButtonKey = Key('matter_top_phase_menu_button');
 const Key _kMatterTopTimelineButtonKey = Key('matter_top_timeline_button');
 const Key _kMatterTopGraphButtonKey = Key('matter_top_graph_button');
-const Key _kMacosOrphanNewNoteButtonKey = Key('macos_orphan_new_note_button');
+const Key _kMacosNotebookNewNoteButtonKey = Key(
+  'macos_notebook_new_note_button',
+);
 const Key _kMacosConflictsRefreshButtonKey = Key('macos_conflicts_refresh');
 const Key _kNoteHeaderTitleDisplayKey = Key('note_header_title_display');
 const Key _kNoteHeaderTitleEditFieldKey = Key('note_header_title_edit');
@@ -3334,6 +4010,74 @@ class _MatterTopControls extends ConsumerWidget {
   }
 }
 
+class _NotebookTopControls extends ConsumerWidget {
+  const _NotebookTopControls();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+
+    Future<void> createNewNote() async {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .createUntitledNotebookNote();
+      ref
+          .read(noteEditorViewModeProvider.notifier)
+          .set(NoteEditorViewMode.edit);
+    }
+
+    if (isMacOSNativeUI) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          MacosTooltip(
+            message: l10n.newNoteAction,
+            child: PushButton(
+              key: _kMacosNotebookNewNoteButtonKey,
+              semanticLabel: l10n.newNoteAction,
+              controlSize: ControlSize.regular,
+              secondary: true,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              onPressed: () {
+                unawaited(createNewNote());
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const MacosIcon(CupertinoIcons.add, size: 14),
+                  const SizedBox(width: 6),
+                  Text(l10n.newNoteAction),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        TextButton.icon(
+          key: _kMacosNotebookNewNoteButtonKey,
+          onPressed: () {
+            unawaited(createNewNote());
+          },
+          style: TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            minimumSize: const Size(0, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          ),
+          label: Text(l10n.newNoteAction),
+          icon: const Icon(Icons.note_add_outlined, size: 18),
+        ),
+      ],
+    );
+  }
+}
+
 class _MainWorkspace extends ConsumerWidget {
   const _MainWorkspace({
     required this.searchHits,
@@ -3357,15 +4101,15 @@ class _MainWorkspace extends ConsumerWidget {
       return _SearchResultsView(results: searchHits);
     }
 
-    final showOrphans = ref.watch(showOrphansProvider);
-    if (showOrphans) {
-      return const _OrphanWorkspace();
+    final showNotebook = ref.watch(showNotebookProvider);
+    if (showNotebook) {
+      return const _NotebookWorkspace();
     }
 
     final sections = ref.watch(mattersControllerProvider).asData?.value;
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
     if (sections == null || selectedMatterId == null) {
-      return Center(child: Text(l10n.selectMatterOrphansOrConflictsPrompt));
+      return Center(child: Text(l10n.selectMatterNotebookOrConflictsPrompt));
     }
 
     final selected = _findMatterById(sections, selectedMatterId);
@@ -3744,7 +4488,13 @@ class _MatterWorkspace extends ConsumerWidget {
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: _NoteTitleHeader(matterId: matter.id, note: currentNote),
+          child: _NoteTitleHeader(
+            note: currentNote,
+            canEdit:
+                currentNote != null &&
+                currentNote.matterId == matter.id &&
+                currentNote.phaseId != null,
+          ),
         ),
         const SizedBox(height: 8),
         Expanded(
@@ -3760,10 +4510,10 @@ class _MatterWorkspace extends ConsumerWidget {
 }
 
 class _NoteTitleHeader extends ConsumerStatefulWidget {
-  const _NoteTitleHeader({required this.matterId, required this.note});
+  const _NoteTitleHeader({required this.note, required this.canEdit});
 
-  final String matterId;
   final Note? note;
+  final bool canEdit;
 
   @override
   ConsumerState<_NoteTitleHeader> createState() => _NoteTitleHeaderState();
@@ -3801,8 +4551,7 @@ class _NoteTitleHeaderState extends ConsumerState<_NoteTitleHeader> {
     super.dispose();
   }
 
-  bool get _canEdit =>
-      widget.note != null && widget.note!.matterId == widget.matterId;
+  bool get _canEdit => widget.note != null && widget.canEdit;
 
   Future<void> _startEditing() async {
     if (!_canEdit) {
@@ -3828,7 +4577,7 @@ class _NoteTitleHeaderState extends ConsumerState<_NoteTitleHeader> {
       return;
     }
     final note = widget.note;
-    if (note != null && note.matterId == widget.matterId) {
+    if (note != null && widget.canEdit) {
       final nextTitle = _titleController.text.trim();
       if (nextTitle != note.title) {
         await ref
@@ -4064,11 +4813,11 @@ class _MatterNotesWorkspace extends ConsumerWidget {
                   phase: phase,
                 );
               },
-              onMoveToOrphans: (note) async {
-                await _moveNoteToOrphans(
+              onMoveToNotebook: (note) async {
+                await _moveNoteToNotebookViaDialog(
                   context: context,
                   ref: ref,
-                  noteId: note.id,
+                  note: note,
                 );
               },
             ),
@@ -4082,18 +4831,22 @@ class _MatterNotesWorkspace extends ConsumerWidget {
 }
 
 Future<void> _openNoteInPhaseEditor(WidgetRef ref, Note note) async {
-  final showOrphansNotifier = ref.read(showOrphansProvider.notifier);
+  final showNotebookNotifier = ref.read(showNotebookProvider.notifier);
   final showConflictsNotifier = ref.read(showConflictsProvider.notifier);
   final selectedMatterNotifier = ref.read(selectedMatterIdProvider.notifier);
   final selectedPhaseNotifier = ref.read(selectedPhaseIdProvider.notifier);
+  final selectedNotebookFolderNotifier = ref.read(
+    selectedNotebookFolderIdProvider.notifier,
+  );
   final matterViewModeNotifier = ref.read(matterViewModeProvider.notifier);
   final mattersNotifier = ref.read(mattersControllerProvider.notifier);
   final noteEditorNotifier = ref.read(noteEditorControllerProvider.notifier);
 
-  showOrphansNotifier.set(false);
+  showNotebookNotifier.set(false);
   showConflictsNotifier.set(false);
   selectedMatterNotifier.set(note.matterId);
   selectedPhaseNotifier.set(note.phaseId);
+  selectedNotebookFolderNotifier.set(null);
   matterViewModeNotifier.set(MatterViewMode.phase);
   if (note.matterId != null && note.phaseId != null) {
     final matter = mattersNotifier.findMatter(note.matterId!);
@@ -4250,12 +5003,12 @@ class _MatterTimelineWorkspace extends ConsumerWidget {
                                   },
                                 ),
                                 MacosPulldownMenuItem(
-                                  title: Text(l10n.moveToOrphansAction),
+                                  title: Text(l10n.moveToNotebookAction),
                                   onTap: () async {
-                                    await _moveNoteToOrphans(
+                                    await _moveNoteToNotebookViaDialog(
                                       context: context,
                                       ref: ref,
-                                      noteId: note.id,
+                                      note: note,
                                     );
                                   },
                                 ),
@@ -4273,8 +5026,8 @@ class _MatterTimelineWorkspace extends ConsumerWidget {
                                   child: Text(l10n.moveNoteToPhaseAction),
                                 ),
                                 PopupMenuItem<String>(
-                                  value: 'move_orphans',
-                                  child: Text(l10n.moveToOrphansAction),
+                                  value: 'move_notebook',
+                                  child: Text(l10n.moveToNotebookAction),
                                 ),
                               ],
                               onSelected: (value) async {
@@ -4332,11 +5085,11 @@ class _MatterTimelineWorkspace extends ConsumerWidget {
                                       phase: phase,
                                     );
                                     return;
-                                  case 'move_orphans':
-                                    await _moveNoteToOrphans(
+                                  case 'move_notebook':
+                                    await _moveNoteToNotebookViaDialog(
                                       context: context,
                                       ref: ref,
-                                      noteId: note.id,
+                                      note: note,
                                     );
                                     return;
                                 }
@@ -4962,65 +5715,26 @@ class _GraphLayout {
   final Map<String, Offset> positions;
 }
 
-class _OrphanWorkspace extends ConsumerWidget {
-  const _OrphanWorkspace();
+class _NotebookWorkspace extends ConsumerWidget {
+  const _NotebookWorkspace();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
-    final notes = ref.watch(orphanNotesProvider);
+    final notes = ref.watch(notebookNoteListProvider);
+    final currentNote = ref.watch(noteEditorControllerProvider).value;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: <Widget>[
-              Text(
-                l10n.orphanNotesTitle,
-                style: isMacOSNativeUI
-                    ? _macosSectionTitleStyle(context)
-                    : Theme.of(context).textTheme.titleLarge,
-              ),
-              const Spacer(),
-              isMacOSNativeUI
-                  ? PushButton(
-                      key: _kMacosOrphanNewNoteButtonKey,
-                      controlSize: ControlSize.large,
-                      onPressed: () async {
-                        await ref
-                            .read(noteEditorControllerProvider.notifier)
-                            .createUntitledOrphanNote();
-                        ref
-                            .read(noteEditorViewModeProvider.notifier)
-                            .set(NoteEditorViewMode.edit);
-                      },
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          const MacosIcon(CupertinoIcons.add, size: 13),
-                          const SizedBox(width: 6),
-                          Text(l10n.newOrphanNoteAction),
-                        ],
-                      ),
-                    )
-                  : FilledButton.icon(
-                      onPressed: () async {
-                        await ref
-                            .read(noteEditorControllerProvider.notifier)
-                            .createUntitledOrphanNote();
-                        ref
-                            .read(noteEditorViewModeProvider.notifier)
-                            .set(NoteEditorViewMode.edit);
-                      },
-                      icon: const Icon(Icons.add),
-                      label: Text(l10n.newOrphanNoteAction),
-                    ),
-            ],
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: _NoteTitleHeader(
+            note: currentNote,
+            canEdit: currentNote?.isInNotebook ?? false,
           ),
         ),
+        const SizedBox(height: 8),
         Expanded(
           child: Row(
             children: <Widget>[
@@ -5159,11 +5873,11 @@ class _OrphanWorkspace extends ConsumerWidget {
                         phase: phase,
                       );
                     },
-                    onMoveToOrphans: (note) async {
-                      await _moveNoteToOrphans(
+                    onMoveToNotebook: (note) async {
+                      await _moveNoteToNotebookViaDialog(
                         context: context,
                         ref: ref,
-                        noteId: note.id,
+                        note: note,
                       );
                     },
                   ),
@@ -5188,7 +5902,7 @@ class _NoteList extends ConsumerWidget {
     required this.onLink,
     required this.onMoveToMatter,
     required this.onMoveToPhase,
-    required this.onMoveToOrphans,
+    required this.onMoveToNotebook,
   });
 
   final List<Note> notes;
@@ -5198,7 +5912,7 @@ class _NoteList extends ConsumerWidget {
   final Future<void> Function(Note note) onLink;
   final Future<void> Function(Note note) onMoveToMatter;
   final Future<void> Function(Note note) onMoveToPhase;
-  final Future<void> Function(Note note) onMoveToOrphans;
+  final Future<void> Function(Note note) onMoveToNotebook;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -5322,9 +6036,9 @@ class _NoteList extends ConsumerWidget {
                   },
                 ),
                 MacosPulldownMenuItem(
-                  title: Text(l10n.moveToOrphansAction),
+                  title: Text(l10n.moveToNotebookAction),
                   onTap: () {
-                    unawaited(onMoveToOrphans(note));
+                    unawaited(onMoveToNotebook(note));
                   },
                 ),
                 const MacosPulldownMenuDivider(),
@@ -5377,8 +6091,8 @@ class _NoteList extends ConsumerWidget {
                 case 'move_phase':
                   await onMoveToPhase(note);
                   return;
-                case 'move_orphans':
-                  await onMoveToOrphans(note);
+                case 'move_notebook':
+                  await onMoveToNotebook(note);
                   return;
                 case 'delete':
                   await onDelete(note);
@@ -5409,8 +6123,8 @@ class _NoteList extends ConsumerWidget {
                 child: Text(l10n.moveNoteToPhaseAction),
               ),
               PopupMenuItem<String>(
-                value: 'move_orphans',
-                child: Text(l10n.moveToOrphansAction),
+                value: 'move_notebook',
+                child: Text(l10n.moveToNotebookAction),
               ),
               const PopupMenuDivider(),
               PopupMenuItem<String>(
@@ -5866,8 +6580,8 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
       );
     }
 
-    Future<void> moveToOrphans() async {
-      await _moveNoteToOrphans(context: context, ref: ref, noteId: note.id);
+    Future<void> moveToNotebook() async {
+      await _moveNoteToNotebookViaDialog(context: context, ref: ref, note: note);
     }
 
     Future<void> moveToMatter() async {
@@ -6061,9 +6775,9 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                 },
               ),
               MacosPulldownMenuItem(
-                title: Text(l10n.moveToOrphansAction),
+                title: Text(l10n.moveToNotebookAction),
                 onTap: () {
-                  unawaited(moveToOrphans());
+                  unawaited(moveToNotebook());
                 },
               ),
             ],
@@ -6079,8 +6793,8 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                 case 'move_phase':
                   await moveToPhase();
                   return;
-                case 'move_orphans':
-                  await moveToOrphans();
+                case 'move_notebook':
+                  await moveToNotebook();
                   return;
               }
             },
@@ -6095,8 +6809,8 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                 child: Text(l10n.moveNoteToPhaseAction),
               ),
               PopupMenuItem<String>(
-                value: 'move_orphans',
-                child: Text(l10n.moveToOrphansAction),
+                value: 'move_notebook',
+                child: Text(l10n.moveToNotebookAction),
               ),
             ],
           );
@@ -6833,7 +7547,7 @@ class _LinkNoteDialogState extends State<_LinkNoteDialog> {
         ? l10n.untitledLabel
         : note.title.trim();
     if (note.matterId == null || note.phaseId == null) {
-      return '$title [${l10n.orphanLabel}]';
+      return '$title [${l10n.notebookLabel}]';
     }
     return '$title [${note.matterId}]';
   }
@@ -7560,6 +8274,7 @@ class _ManagePhasesDialogState extends ConsumerState<_ManagePhasesDialog> {
             noteId: note.id,
             matterId: selectedMatter.id,
             phaseId: _currentPhaseId,
+            notebookFolderId: null,
           );
         }
       }

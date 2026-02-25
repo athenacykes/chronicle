@@ -5,6 +5,7 @@ class Note {
     required this.id,
     required this.matterId,
     required this.phaseId,
+    required this.notebookFolderId,
     required this.title,
     required this.content,
     required this.tags,
@@ -17,6 +18,7 @@ class Note {
   final String id;
   final String? matterId;
   final String? phaseId;
+  final String? notebookFolderId;
   final String title;
   final String content;
   final List<String> tags;
@@ -25,7 +27,13 @@ class Note {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  bool get isOrphan => matterId == null || phaseId == null;
+  bool get isInMatter =>
+      matterId != null && phaseId != null && notebookFolderId == null;
+
+  bool get isInNotebook => !isInMatter;
+
+  // Compatibility alias while orphan APIs are being phased out.
+  bool get isOrphan => isInNotebook;
 
   Note copyWith({
     String? id,
@@ -33,6 +41,8 @@ class Note {
     bool clearMatterId = false,
     String? phaseId,
     bool clearPhaseId = false,
+    String? notebookFolderId,
+    bool clearNotebookFolderId = false,
     String? title,
     String? content,
     List<String>? tags,
@@ -45,6 +55,9 @@ class Note {
       id: id ?? this.id,
       matterId: clearMatterId ? null : matterId ?? this.matterId,
       phaseId: clearPhaseId ? null : phaseId ?? this.phaseId,
+      notebookFolderId: clearNotebookFolderId
+          ? null
+          : notebookFolderId ?? this.notebookFolderId,
       title: title ?? this.title,
       content: content ?? this.content,
       tags: tags ?? this.tags,
@@ -60,6 +73,7 @@ class Note {
       'id': id,
       'matterId': matterId,
       'phaseId': phaseId,
+      'notebookFolderId': notebookFolderId,
       'title': title,
       'createdAt': formatIsoUtc(createdAt),
       'updatedAt': formatIsoUtc(updatedAt),
@@ -77,6 +91,7 @@ class Note {
       id: frontMatter['id'] as String,
       matterId: frontMatter['matterId'] as String?,
       phaseId: frontMatter['phaseId'] as String?,
+      notebookFolderId: frontMatter['notebookFolderId'] as String?,
       title: (frontMatter['title'] as String?) ?? '',
       content: body,
       createdAt: parseIsoUtc(frontMatter['createdAt'] as String),

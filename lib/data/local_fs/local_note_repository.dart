@@ -9,6 +9,7 @@ import '../../core/id_generator.dart';
 import '../../domain/entities/note.dart';
 import '../../domain/repositories/matter_repository.dart';
 import '../../domain/repositories/note_repository.dart';
+import '../../domain/repositories/notebook_repository.dart';
 import 'chronicle_layout.dart';
 import 'chronicle_storage_initializer.dart';
 import 'note_file_codec.dart';
@@ -23,6 +24,7 @@ class LocalNoteRepository implements NoteRepository {
     required Clock clock,
     required IdGenerator idGenerator,
     required MatterRepository matterRepository,
+    required NotebookRepository notebookRepository,
     int maxAttachmentBytes = defaultMaxAttachmentBytes,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
@@ -31,6 +33,7 @@ class LocalNoteRepository implements NoteRepository {
        _clock = clock,
        _idGenerator = idGenerator,
        _matterRepository = matterRepository,
+       _notebookRepository = notebookRepository,
        _maxAttachmentBytes = maxAttachmentBytes;
 
   static const int defaultMaxAttachmentBytes = 50 * 1024 * 1024;
@@ -42,6 +45,7 @@ class LocalNoteRepository implements NoteRepository {
   final Clock _clock;
   final IdGenerator _idGenerator;
   final MatterRepository _matterRepository;
+  final NotebookRepository _notebookRepository;
   final int _maxAttachmentBytes;
 
   @override
@@ -74,15 +78,22 @@ class LocalNoteRepository implements NoteRepository {
     required String content,
     String? matterId,
     String? phaseId,
+    String? notebookFolderId,
     List<String> tags = const <String>[],
     bool isPinned = false,
     List<String> attachments = const <String>[],
   }) async {
+    final ownership = await _normalizeOwnership(
+      matterId: matterId,
+      phaseId: phaseId,
+      notebookFolderId: notebookFolderId,
+    );
     final now = _clock.nowUtc();
     final note = Note(
       id: _idGenerator.newId(),
-      matterId: matterId,
-      phaseId: phaseId,
+      matterId: ownership.matterId,
+      phaseId: ownership.phaseId,
+      notebookFolderId: ownership.notebookFolderId,
       title: title,
       content: content,
       tags: tags,
@@ -130,17 +141,25 @@ class LocalNoteRepository implements NoteRepository {
     required String noteId,
     required String? matterId,
     required String? phaseId,
+    required String? notebookFolderId,
   }) async {
     final note = await getNoteById(noteId);
     if (note == null) {
       return;
     }
 
-    final moved = note.copyWith(
+    final ownership = await _normalizeOwnership(
       matterId: matterId,
       phaseId: phaseId,
-      clearMatterId: matterId == null,
-      clearPhaseId: phaseId == null,
+      notebookFolderId: notebookFolderId,
+    );
+    final moved = note.copyWith(
+      matterId: ownership.matterId,
+      phaseId: ownership.phaseId,
+      clearMatterId: ownership.matterId == null,
+      clearPhaseId: ownership.phaseId == null,
+      notebookFolderId: ownership.notebookFolderId,
+      clearNotebookFolderId: ownership.notebookFolderId == null,
       updatedAt: _clock.nowUtc(),
     );
 
@@ -237,8 +256,15 @@ class LocalNoteRepository implements NoteRepository {
 
   @override
   Future<List<Note>> listOrphanNotes() async {
+    return listNotebookNotes(folderId: null);
+  }
+
+  @override
+  Future<List<Note>> listNotebookNotes({String? folderId}) async {
     final all = await listAllNotes();
-    return all.where((note) => note.isOrphan).toList();
+    return all
+        .where((note) => note.isInNotebook && note.notebookFolderId == folderId)
+        .toList();
   }
 
   @override
@@ -276,23 +302,31 @@ class LocalNoteRepository implements NoteRepository {
 
   Future<File> _targetFileFor(Note note) async {
     final layout = await _layout();
-    if (note.matterId == null || note.phaseId == null) {
-      return layout.orphanNoteFile(note.id);
+    if (note.isInMatter) {
+      final hasPhase = await _matterHasPhase(
+        matterId: note.matterId!,
+        phaseId: note.phaseId!,
+      );
+      if (!hasPhase) {
+        return layout.notebookRootNoteFile(note.id);
+      }
+
+      return layout.phaseNoteFile(
+        matterId: note.matterId!,
+        phaseId: note.phaseId!,
+        noteId: note.id,
+      );
     }
 
-    final hasPhase = await _matterHasPhase(
-      matterId: note.matterId!,
-      phaseId: note.phaseId!,
-    );
-    if (!hasPhase) {
-      return layout.orphanNoteFile(note.id);
+    final folderId = note.notebookFolderId;
+    if (folderId == null) {
+      return layout.notebookRootNoteFile(note.id);
     }
-
-    return layout.phaseNoteFile(
-      matterId: note.matterId!,
-      phaseId: note.phaseId!,
-      noteId: note.id,
-    );
+    final folder = await _notebookRepository.getFolderById(folderId);
+    if (folder == null) {
+      return layout.notebookRootNoteFile(note.id);
+    }
+    return layout.notebookFolderNoteFile(folderId: folderId, noteId: note.id);
   }
 
   Future<bool> _matterHasPhase({
@@ -314,15 +348,26 @@ class LocalNoteRepository implements NoteRepository {
 
   Future<List<File>> _noteFiles(ChronicleLayout layout) async {
     final files = <File>[];
-    final orphanFiles = await _fileSystemUtils.listFilesRecursively(
-      layout.orphansDirectory,
+    final notebookRootFiles = await _fileSystemUtils.listFilesRecursively(
+      layout.notebookRootDirectory,
     );
-    files.addAll(orphanFiles.where(_isNoteFile));
+    files.addAll(notebookRootFiles.where(_isNoteFile));
+
+    final notebookFolderFiles = await _fileSystemUtils.listFilesRecursively(
+      layout.notebookFoldersDirectory,
+    );
+    files.addAll(notebookFolderFiles.where(_isNoteFile));
 
     final matterFiles = await _fileSystemUtils.listFilesRecursively(
       layout.mattersDirectory,
     );
     files.addAll(matterFiles.where(_isNoteFile));
+
+    // Legacy compatibility during migration window.
+    final orphanFiles = await _fileSystemUtils.listFilesRecursively(
+      layout.orphansDirectory,
+    );
+    files.addAll(orphanFiles.where(_isNoteFile));
     return files;
   }
 
@@ -354,6 +399,39 @@ class LocalNoteRepository implements NoteRepository {
     final root = await _storageRootLocator.requireRootDirectory();
     await _storageInitializer.ensureInitialized(root);
     return ChronicleLayout(root);
+  }
+
+  Future<_Ownership> _normalizeOwnership({
+    required String? matterId,
+    required String? phaseId,
+    required String? notebookFolderId,
+  }) async {
+    final hasMatter = matterId != null || phaseId != null;
+    if (hasMatter) {
+      if (matterId == null || phaseId == null) {
+        throw AppException(
+          'Matter notes require both matterId and phaseId.',
+        );
+      }
+      if (notebookFolderId != null) {
+        throw AppException(
+          'A note cannot belong to both Matter and Notebook.',
+        );
+      }
+      return _Ownership(matterId: matterId, phaseId: phaseId, notebookFolderId: null);
+    }
+
+    if (notebookFolderId != null) {
+      final folder = await _notebookRepository.getFolderById(notebookFolderId);
+      if (folder == null) {
+        throw AppException('Notebook folder not found: $notebookFolderId');
+      }
+    }
+    return _Ownership(
+      matterId: null,
+      phaseId: null,
+      notebookFolderId: notebookFolderId,
+    );
   }
 
   Set<String> _removedAttachmentPaths(
@@ -523,4 +601,16 @@ class _AttachmentSource {
 
   final File file;
   final String displayName;
+}
+
+class _Ownership {
+  const _Ownership({
+    required this.matterId,
+    required this.phaseId,
+    required this.notebookFolderId,
+  });
+
+  final String? matterId;
+  final String? phaseId;
+  final String? notebookFolderId;
 }

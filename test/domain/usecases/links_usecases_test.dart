@@ -179,6 +179,7 @@ Note _note({
     id: id,
     matterId: matterId,
     phaseId: phaseId,
+    notebookFolderId: null,
     title: id,
     content: '# $id',
     tags: const <String>[],
@@ -269,6 +270,7 @@ class _InMemoryNoteRepository implements NoteRepository {
     required String content,
     String? matterId,
     String? phaseId,
+    String? notebookFolderId,
     List<String> tags = const <String>[],
     bool isPinned = false,
     List<String> attachments = const <String>[],
@@ -316,10 +318,16 @@ class _InMemoryNoteRepository implements NoteRepository {
   }
 
   @override
+  Future<List<Note>> listNotebookNotes({String? folderId}) {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> moveNote({
     required String noteId,
     required String? matterId,
     required String? phaseId,
+    required String? notebookFolderId,
   }) {
     throw UnimplementedError();
   }

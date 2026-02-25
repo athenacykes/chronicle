@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import '../../core/file_system_utils.dart';
 import '../../core/json_utils.dart';
 import 'chronicle_layout.dart';
@@ -31,11 +33,24 @@ class ChronicleStorageInitializer {
     await _fileSystemUtils.ensureDirectory(rootDirectory);
     await _fileSystemUtils.ensureDirectory(layout.syncDirectory);
     await _fileSystemUtils.ensureDirectory(layout.locksDirectory);
+    // Legacy directory kept for backward-compatible sync/migrations.
     await _fileSystemUtils.ensureDirectory(layout.orphansDirectory);
+    await _fileSystemUtils.ensureDirectory(layout.notebookDirectory);
+    await _fileSystemUtils.ensureDirectory(layout.notebookRootDirectory);
+    await _fileSystemUtils.ensureDirectory(layout.notebookFoldersDirectory);
     await _fileSystemUtils.ensureDirectory(layout.mattersDirectory);
     await _fileSystemUtils.ensureDirectory(layout.categoriesDirectory);
     await _fileSystemUtils.ensureDirectory(layout.linksDirectory);
     await _fileSystemUtils.ensureDirectory(layout.resourcesDirectory);
+
+    if (!await layout.notebookFoldersIndexFile.exists()) {
+      await _fileSystemUtils.atomicWriteString(
+        layout.notebookFoldersIndexFile,
+        prettyJson(const <String, dynamic>{'folders': <dynamic>[]}),
+      );
+    }
+
+    await _migrateLegacyOrphansToNotebookRoot(layout);
 
     if (!await layout.syncVersionFile.exists()) {
       await _fileSystemUtils.atomicWriteString(layout.syncVersionFile, '1\n');
@@ -98,5 +113,84 @@ class ChronicleStorageInitializer {
       return null;
     }
     return null;
+  }
+
+  Future<void> _migrateLegacyOrphansToNotebookRoot(ChronicleLayout layout) async {
+    if (!await layout.orphansDirectory.exists()) {
+      return;
+    }
+
+    final legacyFiles = await _fileSystemUtils.listFilesRecursively(
+      layout.orphansDirectory,
+    );
+    for (final legacyFile in legacyFiles) {
+      if (!legacyFile.path.endsWith('.md') ||
+          legacyFile.path.contains('.conflict.')) {
+        continue;
+      }
+
+      final relativePath = p.relative(
+        legacyFile.path,
+        from: layout.orphansDirectory.path,
+      );
+      final target = File(p.join(layout.notebookRootDirectory.path, relativePath));
+      await _fileSystemUtils.ensureDirectory(target.parent);
+
+      if (await target.exists()) {
+        final same = await _sameFileContent(legacyFile, target);
+        if (same) {
+          await _fileSystemUtils.deleteIfExists(legacyFile);
+          continue;
+        }
+
+        final collisionTarget = await _nextLegacyCollisionTarget(target);
+        await _moveFilePreservingBytes(
+          source: legacyFile,
+          destination: collisionTarget,
+        );
+        continue;
+      }
+
+      await _moveFilePreservingBytes(source: legacyFile, destination: target);
+    }
+  }
+
+  Future<bool> _sameFileContent(File source, File target) async {
+    final sourceBytes = await source.readAsBytes();
+    final targetBytes = await target.readAsBytes();
+    if (sourceBytes.length != targetBytes.length) {
+      return false;
+    }
+    for (var i = 0; i < sourceBytes.length; i++) {
+      if (sourceBytes[i] != targetBytes[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<File> _nextLegacyCollisionTarget(File originalTarget) async {
+    final parent = originalTarget.parent.path;
+    final ext = p.extension(originalTarget.path);
+    final basename = p.basenameWithoutExtension(originalTarget.path);
+    var index = 1;
+    while (true) {
+      final candidate = File(
+        p.join(parent, '$basename.legacy-$index$ext'),
+      );
+      if (!await candidate.exists()) {
+        return candidate;
+      }
+      index++;
+    }
+  }
+
+  Future<void> _moveFilePreservingBytes({
+    required File source,
+    required File destination,
+  }) async {
+    final bytes = await source.readAsBytes();
+    await _fileSystemUtils.atomicWriteBytes(destination, bytes);
+    await _fileSystemUtils.deleteIfExists(source);
   }
 }

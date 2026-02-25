@@ -79,6 +79,7 @@ void main() {
     id: 'note-1',
     matterId: 'matter-1',
     phaseId: 'phase-start',
+    notebookFolderId: null,
     title: 'Editor Note',
     content: '# Editor Note\ncontent',
     tags: const <String>['one'],
@@ -91,6 +92,7 @@ void main() {
     id: 'note-2',
     matterId: null,
     phaseId: null,
+    notebookFolderId: null,
     title: 'Search Hit',
     content: 'searchable content',
     tags: const <String>['two'],
@@ -230,7 +232,7 @@ void main() {
     expect(find.byType(SegmentedButton<MatterViewMode>), findsNothing);
   });
 
-  testWidgets('macOS orphans mode uses native header and list controls', (
+  testWidgets('macOS notebook mode uses native header and list controls', (
     tester,
   ) async {
     _setDesktopViewport(tester);
@@ -253,7 +255,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('macos_orphan_new_note_button')),
+      find.byKey(const Key('macos_notebook_new_note_button')),
       findsOneWidget,
     );
     expect(find.byType(MacosPulldownButton), findsWidgets);
@@ -339,7 +341,7 @@ void main() {
     expect(modeToggle.groupValue, NoteEditorViewMode.edit);
   });
 
-  testWidgets('orphan New Note creates untitled orphan draft without dialog', (
+  testWidgets('notebook New Note creates untitled notebook draft without dialog', (
     tester,
   ) async {
     _setDesktopViewport(tester);
@@ -365,7 +367,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('macos_orphan_new_note_button')));
+    await tester.tap(find.byKey(const Key('macos_notebook_new_note_button')));
     await tester.pumpAndSettle();
 
     expect(find.text('Create Note'), findsNothing);
@@ -465,7 +467,7 @@ void main() {
       find.byKey(const ValueKey<String>('note_drag_list_macos_note-1')),
     );
     await drag.moveTo(
-      tester.getCenter(find.byKey(const Key('sidebar_orphans_drop_target'))),
+      tester.getCenter(find.byKey(const Key('sidebar_notebook_root_drop_target'))),
     );
     await tester.pump(const Duration(milliseconds: 80));
 
@@ -582,7 +584,7 @@ void main() {
   });
 
   testWidgets(
-    'material list menu moves note to orphans without switching view',
+    'material list menu opens move-to-notebook flow without switching view',
     (tester) async {
       _setDesktopViewport(tester);
       final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
@@ -613,12 +615,12 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.more_horiz).first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Move to Orphans').last);
+      await tester.tap(find.text('Move to Notebook...').last);
       await tester.pumpAndSettle();
 
       final moved = noteRepository.noteById('note-1');
-      expect(moved?.matterId, isNull);
-      expect(moved?.phaseId, isNull);
+      expect(moved?.matterId, 'matter-1');
+      expect(moved?.phaseId, 'phase-start');
 
       final container = _containerForApp(tester);
       expect(container.read(selectedMatterIdProvider), 'matter-1');
@@ -678,7 +680,7 @@ void main() {
     expect(moved?.phaseId, 'phase-2-start');
   });
 
-  testWidgets('drag from timeline card to orphans target creates orphan', (
+  testWidgets('drag from timeline card to notebook root target creates notebook note', (
     tester,
   ) async {
     _setDesktopViewport(tester);
@@ -712,7 +714,7 @@ void main() {
     await _longPressDragTo(
       tester,
       find.byKey(const ValueKey<String>('note_drag_timeline_note-1')),
-      find.byKey(const Key('sidebar_orphans_drop_target')),
+      find.byKey(const Key('sidebar_notebook_root_drop_target')),
     );
 
     final moved = noteRepository.noteById('note-1');
@@ -804,7 +806,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Move to Matter...'), findsWidgets);
     expect(find.text('Move to Phase...'), findsWidgets);
-    expect(find.text('Move to Orphans'), findsWidgets);
+    expect(find.text('Move to Notebook...'), findsWidgets);
     await tester.tapAt(const Offset(20, 20));
     await tester.pumpAndSettle();
 
@@ -812,7 +814,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Move to Matter...'), findsWidgets);
     expect(find.text('Move to Phase...'), findsWidgets);
-    expect(find.text('Move to Orphans'), findsWidgets);
+    expect(find.text('Move to Notebook...'), findsWidgets);
   });
 
   testWidgets('macOS list and editor menus expose move actions', (
@@ -849,7 +851,7 @@ void main() {
       final titles = _macosPulldownTitles(button);
       return titles.contains('Move to Matter...') &&
           titles.contains('Move to Phase...') &&
-          titles.contains('Move to Orphans');
+          titles.contains('Move to Notebook...');
     }).toList();
 
     expect(moveMenuButtons.length, greaterThanOrEqualTo(2));
@@ -1288,7 +1290,7 @@ Inline \$x^2\$ and:
       await tester.enterText(find.byType(MacosSearchField<void>), 'search');
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Orphans • Orphan'), findsOneWidget);
+      expect(find.textContaining('Notebook • Root'), findsOneWidget);
       expect(find.textContaining('searchable content'), findsOneWidget);
       final container = _containerForApp(tester);
       expect(container.read(searchResultsVisibleProvider), isTrue);
@@ -1315,7 +1317,7 @@ Inline \$x^2\$ and:
       await tester.tap(returnButtonFinder);
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Orphans • Orphan'), findsOneWidget);
+      expect(find.textContaining('Notebook • Root'), findsOneWidget);
       expect(find.text('Search Hit'), findsOneWidget);
       expect(container.read(searchResultsVisibleProvider), isTrue);
 
@@ -2048,7 +2050,7 @@ Inline \$x^2\$ and:
       await tester.pumpAndSettle();
 
       expect(find.text('Tags (comma separated)'), findsNothing);
-      expect(find.text('Move to Orphans'), findsNothing);
+      expect(find.text('Move to Notebook...'), findsNothing);
       expect(find.text('Assign to Selected Matter'), findsNothing);
 
       await tester.tap(find.byKey(const Key('note_editor_utility_tags')));
@@ -2784,6 +2786,7 @@ class _MemoryNoteRepository implements NoteRepository {
     required String content,
     String? matterId,
     String? phaseId,
+    String? notebookFolderId,
     List<String> tags = const <String>[],
     bool isPinned = false,
     List<String> attachments = const <String>[],
@@ -2794,6 +2797,7 @@ class _MemoryNoteRepository implements NoteRepository {
       id: id,
       matterId: matterId,
       phaseId: phaseId,
+      notebookFolderId: notebookFolderId,
       title: title,
       content: content,
       tags: tags,
@@ -2841,17 +2845,27 @@ class _MemoryNoteRepository implements NoteRepository {
   }
 
   @override
+  Future<List<Note>> listNotebookNotes({String? folderId}) async {
+    return _notes.values
+        .where((note) => note.isInNotebook && note.notebookFolderId == folderId)
+        .toList();
+  }
+
+  @override
   Future<void> moveNote({
     required String noteId,
     required String? matterId,
     required String? phaseId,
+    required String? notebookFolderId,
   }) async {
     final existing = _notes[noteId]!;
     _notes[noteId] = existing.copyWith(
       matterId: matterId,
       phaseId: phaseId,
+      notebookFolderId: notebookFolderId,
       clearMatterId: matterId == null,
       clearPhaseId: phaseId == null,
+      clearNotebookFolderId: notebookFolderId == null,
       updatedAt: DateTime.now().toUtc(),
     );
   }

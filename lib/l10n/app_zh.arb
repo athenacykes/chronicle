@@ -78,7 +78,9 @@
       }
     }
   },
-  "orphansLabel": "孤立笔记",
+  "orphansLabel": "笔记本",
+  "notebookLabel": "笔记本",
+  "notebookRootLabel": "根目录",
   "untitledMatterLabel": "（未命名 Matter）",
   "viewsSectionLabel": "视图",
   "matterActionsTitle": "Matter 操作",
@@ -118,7 +120,8 @@
   "matterStatusBadgeLetterPaused": "停",
   "matterStatusBadgeLetterCompleted": "完",
   "matterStatusBadgeLetterArchived": "档",
-  "selectMatterOrphansOrConflictsPrompt": "请选择 Matter、孤立笔记或冲突开始使用。",
+  "selectMatterOrphansOrConflictsPrompt": "请选择 Matter、笔记本或冲突开始使用。",
+  "selectMatterNotebookOrConflictsPrompt": "请选择 Matter、笔记本或冲突开始使用。",
   "matterNoLongerExistsMessage": "Matter 已不存在。",
   "conflictLoadFailed": "加载冲突失败：{error}",
   "@conflictLoadFailed": {
@@ -208,8 +211,8 @@
     }
   },
   "untitledLabel": "（未命名）",
-  "orphanNotesTitle": "孤立笔记",
-  "newOrphanNoteAction": "新建孤立笔记",
+  "orphanNotesTitle": "笔记本",
+  "newOrphanNoteAction": "新建笔记",
   "noNotesYetMessage": "还没有笔记。",
   "linkNoteActionEllipsis": "关联笔记...",
   "editorError": "编辑器错误：{error}",
@@ -224,7 +227,23 @@
   "togglePreviewAction": "切换预览",
   "deleteNoteAction": "删除笔记",
   "tagsCommaSeparatedLabel": "标签（逗号分隔）",
-  "moveToOrphansAction": "移动到孤立笔记",
+  "moveToOrphansAction": "移动到笔记本...",
+  "moveToNotebookAction": "移动到笔记本...",
+  "moveToNotebookDialogTitle": "将笔记移动到笔记本",
+  "moveNoteCurrentNotebookLabel": "当前位置",
+  "newFolderAction": "新建文件夹",
+  "renameFolderAction": "重命名文件夹",
+  "deleteFolderAction": "删除文件夹",
+  "notebookFolderNameLabel": "文件夹名称",
+  "notebookFolderCreateDialogTitle": "新建文件夹",
+  "notebookFolderRenameDialogTitle": "重命名文件夹",
+  "notebookFolderDeleteDialogTitle": "删除文件夹",
+  "notebookFolderDeleteConfirmation": "删除“{name}”？其子文件夹和直接笔记将移动到父级。",
+  "@notebookFolderDeleteConfirmation": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "moveNoteToMatterAction": "移动到 Matter...",
   "moveNoteToPhaseAction": "移动到阶段...",
   "moveNoteToMatterDialogTitle": "将笔记移动到 Matter",
@@ -361,7 +380,7 @@
   "linkContextHint": "这些笔记为什么相关？",
   "linkNoteDialogTitle": "关联笔记",
   "createLinkAction": "创建链接",
-  "orphanLabel": "孤立",
+  "orphanLabel": "笔记本",
   "conflictTypeNote": "笔记",
   "conflictTypeLink": "链接",
   "conflictTypeUnknown": "未知",

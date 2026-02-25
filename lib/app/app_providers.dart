@@ -12,6 +12,7 @@ import '../data/local_fs/local_category_repository.dart';
 import '../data/local_fs/local_link_repository.dart';
 import '../data/local_fs/local_matter_repository.dart';
 import '../data/local_fs/local_note_repository.dart';
+import '../data/local_fs/local_notebook_repository.dart';
 import '../data/local_fs/local_settings_repository.dart';
 import '../data/local_fs/matter_file_codec.dart';
 import '../data/local_fs/note_file_codec.dart';
@@ -23,6 +24,7 @@ import '../domain/repositories/category_repository.dart';
 import '../domain/repositories/link_repository.dart';
 import '../domain/repositories/matter_repository.dart';
 import '../domain/repositories/note_repository.dart';
+import '../domain/repositories/notebook_repository.dart';
 import '../domain/repositories/search_repository.dart';
 import '../domain/repositories/settings_repository.dart';
 import '../domain/repositories/sync_repository.dart';
@@ -89,6 +91,18 @@ final noteRepositoryProvider = Provider<NoteRepository>((ref) {
     clock: ref.watch(clockProvider),
     idGenerator: ref.watch(idGeneratorProvider),
     matterRepository: ref.watch(matterRepositoryProvider),
+    notebookRepository: ref.watch(notebookRepositoryProvider),
+  );
+});
+
+final notebookRepositoryProvider = Provider<NotebookRepository>((ref) {
+  return LocalNotebookRepository(
+    storageRootLocator: ref.watch(storageRootLocatorProvider),
+    storageInitializer: ref.watch(storageInitializerProvider),
+    fileSystemUtils: ref.watch(fileSystemUtilsProvider),
+    clock: ref.watch(clockProvider),
+    idGenerator: ref.watch(idGeneratorProvider),
+    noteCodec: const NoteFileCodec(),
   );
 });
 

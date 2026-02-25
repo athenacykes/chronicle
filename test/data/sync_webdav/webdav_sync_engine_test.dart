@@ -80,7 +80,7 @@ void main() {
   test('classifies uploads and downloads', () async {
     final layout = ChronicleLayout(rootDir);
     await const FileSystemUtils().atomicWriteString(
-      layout.orphanNoteFile('local-note'),
+      layout.notebookRootNoteFile('local-note'),
       'local content',
     );
 
@@ -94,20 +94,20 @@ void main() {
     expect(result.uploadedCount, greaterThanOrEqualTo(1));
     expect(result.downloadedCount, greaterThanOrEqualTo(1));
 
-    final remoteLocalCopy = layout.fromRelativePath('orphans/remote-note.md');
+    final remoteLocalCopy = layout.fromRelativePath('notebook/root/remote-note.md');
     expect(await remoteLocalCopy.exists(), isTrue);
 
-    final uploaded = await webDavClient.downloadFile('orphans/local-note.md');
+    final uploaded = await webDavClient.downloadFile('notebook/root/local-note.md');
     expect(utf8.decode(uploaded), 'local content');
   });
 
   test('creates conflict copy when local and remote changed', () async {
     final layout = ChronicleLayout(rootDir);
-    final localFile = layout.orphanNoteFile('conflict-note');
+    final localFile = layout.notebookRootNoteFile('conflict-note');
 
     await const FileSystemUtils().atomicWriteString(localFile, 'v1');
     await webDavClient.uploadFile(
-      'orphans/conflict-note.md',
+      'notebook/root/conflict-note.md',
       utf8.encode('v1'),
     );
 
@@ -115,7 +115,7 @@ void main() {
 
     await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
     await webDavClient.uploadFile(
-      'orphans/conflict-note.md',
+      'notebook/root/conflict-note.md',
       utf8.encode('v2-remote'),
     );
 
@@ -166,7 +166,7 @@ void main() {
     final layout = ChronicleLayout(rootDir);
     for (var i = 0; i < 8; i++) {
       await const FileSystemUtils().atomicWriteString(
-        layout.orphanNoteFile('bulk-$i'),
+        layout.notebookRootNoteFile('bulk-$i'),
         'bulk-$i',
       );
     }
@@ -175,7 +175,7 @@ void main() {
 
     final remoteFiles = await webDavClient.listFilesRecursively('/');
     for (final file in remoteFiles) {
-      if (file.path.startsWith('orphans/')) {
+      if (file.path.startsWith('notebook/root/')) {
         await webDavClient.deleteFile(file.path);
       }
     }
@@ -184,7 +184,7 @@ void main() {
     expect(result.blocker, isNotNull);
     expect(result.blocker!.type, SyncBlockerType.failSafeDeletionBlocked);
     expect(result.blocker!.candidateDeletionCount, 8);
-    expect(result.blocker!.trackedCount, 9);
+    expect(result.blocker!.trackedCount, 10);
   });
 
   test('blocks normal sync when remote format version is older', () async {
@@ -209,7 +209,7 @@ void main() {
     () async {
       final layout = ChronicleLayout(rootDir);
       await const FileSystemUtils().atomicWriteString(
-        layout.orphanNoteFile('local-note'),
+        layout.notebookRootNoteFile('local-note'),
         'local content',
       );
       await webDavClient.uploadFile(
@@ -242,6 +242,41 @@ void main() {
       );
     },
   );
+
+  test('prefers canonical notebook path when legacy and canonical remote both exist', () async {
+    final layout = ChronicleLayout(rootDir);
+    await webDavClient.uploadFile('orphans/dup.md', utf8.encode('legacy'));
+    await webDavClient.uploadFile(
+      'notebook/root/dup.md',
+      utf8.encode('canonical'),
+    );
+
+    final result = await runSync();
+    expect(result.downloadedCount, greaterThanOrEqualTo(1));
+
+    final localFile = layout.notebookRootNoteFile('dup');
+    expect(await localFile.exists(), isTrue);
+    expect(await localFile.readAsString(), 'canonical');
+  });
+
+  test('legacy remote orphan coexistence does not trigger fail-safe deletion block', () async {
+    final layout = ChronicleLayout(rootDir);
+    await const FileSystemUtils().atomicWriteString(
+      layout.notebookRootNoteFile('steady'),
+      'stable',
+    );
+
+    await runSync();
+
+    await webDavClient.uploadFile('orphans/steady.md', utf8.encode('stable'));
+    final result = await runSync();
+
+    expect(result.blocker, isNull);
+    expect(
+      utf8.decode(await webDavClient.downloadFile('orphans/steady.md')),
+      'stable',
+    );
+  });
 
   test('recover remote wins is blocked when remote format is older', () async {
     await webDavClient.uploadFile(

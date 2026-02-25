@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/app_providers.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/note.dart';
+import '../../domain/entities/notebook_folder.dart';
 import '../../domain/usecases/notes/create_note.dart';
 import '../../l10n/localization.dart';
 import '../common/state/value_notifier_provider.dart';
@@ -13,6 +14,10 @@ import '../settings/settings_controller.dart';
 import '../sync/conflicts_controller.dart';
 
 final selectedNoteIdProvider =
+    NotifierProvider<ValueNotifierController<String?>, String?>(
+      () => ValueNotifierController<String?>(null),
+    );
+final selectedNotebookFolderIdProvider =
     NotifierProvider<ValueNotifierController<String?>, String?>(
       () => ValueNotifierController<String?>(null),
     );
@@ -54,6 +59,54 @@ final noteListProvider = FutureProvider<List<Note>>((ref) async {
 final orphanNotesProvider = FutureProvider<List<Note>>((ref) {
   return ref.watch(noteRepositoryProvider).listOrphanNotes();
 });
+
+final notebookFoldersProvider = FutureProvider<List<NotebookFolder>>((ref) {
+  return ref.watch(notebookRepositoryProvider).listFolders();
+});
+
+final notebookFolderTreeProvider = Provider<List<NotebookFolderTreeNode>>((ref) {
+  final folders = ref.watch(notebookFoldersProvider).asData?.value ?? <NotebookFolder>[];
+  return buildNotebookFolderTree(folders);
+});
+
+final notebookNoteListProvider = FutureProvider<List<Note>>((ref) {
+  final folderId = ref.watch(selectedNotebookFolderIdProvider);
+  return ref.watch(noteRepositoryProvider).listNotebookNotes(folderId: folderId);
+});
+
+class NotebookFolderTreeNode {
+  const NotebookFolderTreeNode({
+    required this.folder,
+    required this.children,
+  });
+
+  final NotebookFolder folder;
+  final List<NotebookFolderTreeNode> children;
+}
+
+List<NotebookFolderTreeNode> buildNotebookFolderTree(List<NotebookFolder> folders) {
+  final byParent = <String?, List<NotebookFolder>>{};
+  for (final folder in folders) {
+    byParent.putIfAbsent(folder.parentId, () => <NotebookFolder>[]).add(folder);
+  }
+  for (final items in byParent.values) {
+    items.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  List<NotebookFolderTreeNode> build(String? parentId) {
+    final items = byParent[parentId] ?? const <NotebookFolder>[];
+    return items
+        .map(
+          (folder) => NotebookFolderTreeNode(
+            folder: folder,
+            children: build(folder.id),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  return build(null);
+}
 
 final noteEditorControllerProvider =
     AsyncNotifierProvider<NoteEditorController, Note?>(
@@ -120,6 +173,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     required bool isPinned,
     required String? matterId,
     required String? phaseId,
+    String? notebookFolderId,
   }) async {
     final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
       title: title,
@@ -128,6 +182,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       isPinned: isPinned,
       matterId: matterId,
       phaseId: phaseId,
+      notebookFolderId: notebookFolderId,
     );
 
     await _refreshCollections();
@@ -145,6 +200,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       content: '# ${l10n.defaultQuickCaptureTitle}\n',
       matterId: null,
       phaseId: null,
+      notebookFolderId: null,
     );
 
     await _refreshCollections();
@@ -162,11 +218,55 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       content: '# ${l10n.defaultUntitledNoteTitle}\n',
       matterId: null,
       phaseId: null,
+      notebookFolderId: ref.read(selectedNotebookFolderIdProvider),
     );
 
     await _refreshCollections();
     await selectNote(created.id);
     return created;
+  }
+
+  Future<Note> createUntitledNotebookNote() async {
+    return createUntitledOrphanNote();
+  }
+
+  Future<void> selectNotebookFolder(String? folderId) async {
+    ref.read(showNotebookProvider.notifier).set(true);
+    ref.read(showConflictsProvider.notifier).set(false);
+    ref.read(selectedMatterIdProvider.notifier).set(null);
+    ref.read(selectedPhaseIdProvider.notifier).set(null);
+    ref.read(selectedNotebookFolderIdProvider.notifier).set(folderId);
+    ref.invalidate(notebookNoteListProvider);
+  }
+
+  Future<void> createNotebookFolder({
+    required String name,
+    String? parentId,
+  }) async {
+    await ref
+        .read(notebookRepositoryProvider)
+        .createFolder(name: name, parentId: parentId);
+    await _refreshCollections();
+  }
+
+  Future<void> renameNotebookFolder({
+    required String folderId,
+    required String name,
+  }) async {
+    await ref
+        .read(notebookRepositoryProvider)
+        .renameFolder(folderId: folderId, name: name);
+    await _refreshCollections();
+  }
+
+  Future<void> deleteNotebookFolder(String folderId) async {
+    final selectedFolderId = ref.read(selectedNotebookFolderIdProvider);
+    final folder = await ref.read(notebookRepositoryProvider).getFolderById(folderId);
+    await ref.read(notebookRepositoryProvider).deleteFolder(folderId);
+    if (selectedFolderId == folderId) {
+      ref.read(selectedNotebookFolderIdProvider.notifier).set(folder?.parentId);
+    }
+    await _refreshCollections();
   }
 
   Future<void> updateCurrent({
@@ -201,8 +301,10 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     bool? isPinned,
     String? matterId,
     String? phaseId,
+    String? notebookFolderId,
     bool clearMatter = false,
     bool clearPhase = false,
+    bool clearNotebookFolder = false,
   }) async {
     final existing = await ref.read(noteRepositoryProvider).getNoteById(noteId);
     if (existing == null) {
@@ -216,8 +318,12 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       isPinned: isPinned ?? existing.isPinned,
       matterId: clearMatter ? null : matterId ?? existing.matterId,
       phaseId: clearPhase ? null : phaseId ?? existing.phaseId,
+      notebookFolderId: clearNotebookFolder
+          ? null
+          : notebookFolderId ?? existing.notebookFolderId,
       clearMatterId: clearMatter,
       clearPhaseId: clearPhase,
+      clearNotebookFolderId: clearNotebookFolder,
       updatedAt: DateTime.now().toUtc(),
     );
 
@@ -231,6 +337,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   Future<void> moveCurrent({
     required String? matterId,
     required String? phaseId,
+    required String? notebookFolderId,
   }) async {
     final current = state.asData?.value;
     if (current == null) {
@@ -241,6 +348,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       noteId: current.id,
       matterId: matterId,
       phaseId: phaseId,
+      notebookFolderId: notebookFolderId,
     );
   }
 
@@ -248,10 +356,16 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     required String noteId,
     required String? matterId,
     required String? phaseId,
+    required String? notebookFolderId,
   }) async {
     await ref
         .read(noteRepositoryProvider)
-        .moveNote(noteId: noteId, matterId: matterId, phaseId: phaseId);
+        .moveNote(
+          noteId: noteId,
+          matterId: matterId,
+          phaseId: phaseId,
+          notebookFolderId: notebookFolderId,
+        );
 
     await _refreshCollections();
     if (ref.read(selectedNoteIdProvider) == noteId) {
@@ -338,14 +452,18 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
     ref.read(showConflictsProvider.notifier).set(false);
 
-    if (note.isOrphan) {
-      ref.read(showOrphansProvider.notifier).set(true);
+    if (note.isInNotebook) {
+      ref.read(showNotebookProvider.notifier).set(true);
       ref.read(selectedMatterIdProvider.notifier).set(null);
       ref.read(selectedPhaseIdProvider.notifier).set(null);
+      ref
+          .read(selectedNotebookFolderIdProvider.notifier)
+          .set(note.notebookFolderId);
     } else {
-      ref.read(showOrphansProvider.notifier).set(false);
+      ref.read(showNotebookProvider.notifier).set(false);
       ref.read(selectedMatterIdProvider.notifier).set(note.matterId);
       ref.read(selectedPhaseIdProvider.notifier).set(note.phaseId);
+      ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
       ref.read(matterViewModeProvider.notifier).set(MatterViewMode.phase);
       if (note.matterId != null && note.phaseId != null) {
         final matter = ref
@@ -370,6 +488,9 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
   Future<void> _refreshCollections() async {
     ref.invalidate(noteListProvider);
+    ref.invalidate(notebookNoteListProvider);
+    ref.invalidate(notebookFoldersProvider);
+    ref.invalidate(notebookFolderTreeProvider);
     ref.invalidate(orphanNotesProvider);
     await ref.read(searchRepositoryProvider).rebuildIndex();
     ref.read(linksControllerProvider).invalidateAll();

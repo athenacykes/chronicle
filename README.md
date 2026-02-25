@@ -6,14 +6,14 @@ Chronicle is a timeline-centric, local-first note app organized around **Matters
 
 - Matter model with lifecycle phases: `start`, `process`, `end`
 - Markdown note model with YAML front matter
-- File-based source of truth (`info.json`, `matters/`, `orphans/`, `links/`, `resources/`)
+- File-based source of truth (`info.json`, `matters/`, `notebook/`, `links/`, `resources/`)
 - Rebuildable SQLite search index (FTS)
 - WebDAV sync engine with lock files, conflict copies, and fail-safe deletion guard
 - Riverpod-driven desktop UI shell:
   - storage root setup
   - sidebar matter sections
   - phase/timeline/list note views
-  - orphan workspace
+  - notebook workspace (root + nested folders)
   - markdown editor + preview
   - manual sync + sync status
   - settings dialog for root/sync config

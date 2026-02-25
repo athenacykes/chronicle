@@ -8,6 +8,7 @@ import 'package:chronicle/data/local_fs/chronicle_layout.dart';
 import 'package:chronicle/data/local_fs/chronicle_storage_initializer.dart';
 import 'package:chronicle/data/local_fs/local_matter_repository.dart';
 import 'package:chronicle/data/local_fs/local_note_repository.dart';
+import 'package:chronicle/data/local_fs/local_notebook_repository.dart';
 import 'package:chronicle/data/local_fs/matter_file_codec.dart';
 import 'package:chronicle/data/local_fs/note_file_codec.dart';
 import 'package:chronicle/data/local_fs/storage_root_locator.dart';
@@ -24,6 +25,7 @@ void main() {
   late StorageRootLocator storageRootLocator;
   late ChronicleStorageInitializer storageInitializer;
   late LocalMatterRepository matterRepository;
+  late LocalNotebookRepository notebookRepository;
   late LocalNoteRepository noteRepository;
 
   setUp(() async {
@@ -52,6 +54,15 @@ void main() {
       idGenerator: _IncrementalIdGenerator(),
     );
 
+    notebookRepository = LocalNotebookRepository(
+      storageRootLocator: storageRootLocator,
+      storageInitializer: storageInitializer,
+      fileSystemUtils: fileSystemUtils,
+      clock: _FixedClock(DateTime.utc(2026, 1, 1, 12)),
+      idGenerator: _IncrementalIdGenerator(start: 10_000),
+      noteCodec: const NoteFileCodec(),
+    );
+
     noteRepository = LocalNoteRepository(
       storageRootLocator: storageRootLocator,
       storageInitializer: storageInitializer,
@@ -60,6 +71,7 @@ void main() {
       clock: _FixedClock(DateTime.utc(2026, 1, 1, 13)),
       idGenerator: _IncrementalIdGenerator(start: 100),
       matterRepository: matterRepository,
+      notebookRepository: notebookRepository,
     );
   });
 
@@ -95,6 +107,7 @@ void main() {
       noteId: note.id,
       matterId: null,
       phaseId: null,
+      notebookFolderId: null,
     );
 
     final orphanNotes = await noteRepository.listOrphanNotes();
@@ -106,6 +119,7 @@ void main() {
       noteId: note.id,
       matterId: matter.id,
       phaseId: matter.phases[1].id,
+      notebookFolderId: null,
     );
 
     final timeline = await noteRepository.listMatterTimeline(matter.id);
@@ -159,6 +173,7 @@ void main() {
       clock: _FixedClock(DateTime.utc(2026, 1, 1, 13)),
       idGenerator: _IncrementalIdGenerator(start: 200),
       matterRepository: matterRepository,
+      notebookRepository: notebookRepository,
       maxAttachmentBytes: 4,
     );
     final matter = await matterRepository.createMatter(

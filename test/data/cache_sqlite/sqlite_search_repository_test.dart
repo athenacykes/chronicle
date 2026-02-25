@@ -8,6 +8,7 @@ import 'package:chronicle/data/cache_sqlite/sqlite_search_repository.dart';
 import 'package:chronicle/data/local_fs/chronicle_storage_initializer.dart';
 import 'package:chronicle/data/local_fs/local_matter_repository.dart';
 import 'package:chronicle/data/local_fs/local_note_repository.dart';
+import 'package:chronicle/data/local_fs/local_notebook_repository.dart';
 import 'package:chronicle/data/local_fs/matter_file_codec.dart';
 import 'package:chronicle/data/local_fs/note_file_codec.dart';
 import 'package:chronicle/data/local_fs/storage_root_locator.dart';
@@ -67,6 +68,14 @@ void main() {
         clock: _FixedClock(DateTime.utc(2026, 2, 1, 1)),
         idGenerator: _IncrementalIdGenerator(start: 100),
         matterRepository: matterRepository,
+        notebookRepository: LocalNotebookRepository(
+          storageRootLocator: storageRootLocator,
+          storageInitializer: storageInitializer,
+          fileSystemUtils: fs,
+          clock: _FixedClock(DateTime.utc(2026, 2, 1, 1)),
+          idGenerator: _IncrementalIdGenerator(start: 10_000),
+          noteCodec: const NoteFileCodec(),
+        ),
       );
 
       final matter = await matterRepository.createMatter(

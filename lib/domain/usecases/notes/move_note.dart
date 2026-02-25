@@ -9,11 +9,13 @@ class MoveNote {
     required String noteId,
     required String? matterId,
     required String? phaseId,
+    required String? notebookFolderId,
   }) {
     return _noteRepository.moveNote(
       noteId: noteId,
       matterId: matterId,
       phaseId: phaseId,
+      notebookFolderId: notebookFolderId,
     );
   }
 }

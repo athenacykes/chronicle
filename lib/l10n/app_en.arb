@@ -79,7 +79,9 @@
       }
     }
   },
-  "orphansLabel": "Orphans",
+  "orphansLabel": "Notebook",
+  "notebookLabel": "Notebook",
+  "notebookRootLabel": "Root",
   "untitledMatterLabel": "(untitled matter)",
   "viewsSectionLabel": "Views",
   "matterActionsTitle": "Matter Actions",
@@ -119,7 +121,8 @@
   "matterStatusBadgeLetterPaused": "P",
   "matterStatusBadgeLetterCompleted": "D",
   "matterStatusBadgeLetterArchived": "R",
-  "selectMatterOrphansOrConflictsPrompt": "Select a Matter, Orphans, or Conflicts to begin.",
+  "selectMatterOrphansOrConflictsPrompt": "Select a Matter, Notebook, or Conflicts to begin.",
+  "selectMatterNotebookOrConflictsPrompt": "Select a Matter, Notebook, or Conflicts to begin.",
   "matterNoLongerExistsMessage": "Matter no longer exists.",
   "conflictLoadFailed": "Conflict load failed: {error}",
   "@conflictLoadFailed": {
@@ -209,8 +212,8 @@
     }
   },
   "untitledLabel": "(untitled)",
-  "orphanNotesTitle": "Orphan Notes",
-  "newOrphanNoteAction": "New Orphan Note",
+  "orphanNotesTitle": "Notebook",
+  "newOrphanNoteAction": "New Note",
   "noNotesYetMessage": "No notes yet.",
   "linkNoteActionEllipsis": "Link Note...",
   "editorError": "Editor error: {error}",
@@ -225,7 +228,23 @@
   "togglePreviewAction": "Toggle Preview",
   "deleteNoteAction": "Delete Note",
   "tagsCommaSeparatedLabel": "Tags (comma separated)",
-  "moveToOrphansAction": "Move to Orphans",
+  "moveToOrphansAction": "Move to Notebook...",
+  "moveToNotebookAction": "Move to Notebook...",
+  "moveToNotebookDialogTitle": "Move Note to Notebook",
+  "moveNoteCurrentNotebookLabel": "Current location",
+  "newFolderAction": "New Folder",
+  "renameFolderAction": "Rename Folder",
+  "deleteFolderAction": "Delete Folder",
+  "notebookFolderNameLabel": "Folder name",
+  "notebookFolderCreateDialogTitle": "Create Folder",
+  "notebookFolderRenameDialogTitle": "Rename Folder",
+  "notebookFolderDeleteDialogTitle": "Delete Folder",
+  "notebookFolderDeleteConfirmation": "Delete \"{name}\"? Child folders and direct notes will move to the parent.",
+  "@notebookFolderDeleteConfirmation": {
+    "placeholders": {
+      "name": {}
+    }
+  },
   "moveNoteToMatterAction": "Move to Matter...",
   "moveNoteToPhaseAction": "Move to Phase...",
   "moveNoteToMatterDialogTitle": "Move Note to Matter",
@@ -362,7 +381,7 @@
   "linkContextHint": "Why are these notes related?",
   "linkNoteDialogTitle": "Link Note",
   "createLinkAction": "Create Link",
-  "orphanLabel": "Orphan",
+  "orphanLabel": "Notebook",
   "conflictTypeNote": "Note",
   "conflictTypeLink": "Link",
   "conflictTypeUnknown": "Unknown",
