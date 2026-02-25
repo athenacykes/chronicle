@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,6 +104,12 @@ class _ChronicleAppState extends ConsumerState<ChronicleApp> {
     final useMacOSNativeUI =
         widget.forceMacOSNativeUI ?? PlatformInfo.useMacOSNativeUI;
     if (useMacOSNativeUI) {
+      final nativeMacOSHome = PlatformInfo.isMacOS
+          ? _ChronicleMacOSMenuHost(
+              onOpenSettings: _openSettingsDialogFromApp,
+              child: const ChronicleHomeScreen(useMacOSNativeUI: true),
+            )
+          : const ChronicleHomeScreen(useMacOSNativeUI: true);
       return MacosApp(
         navigatorKey: _navigatorKey,
         onGenerateTitle: (context) => context.l10n.appTitle,
@@ -120,7 +128,7 @@ class _ChronicleAppState extends ConsumerState<ChronicleApp> {
           accentColor: AccentColor.green,
           visualDensity: VisualDensity.standard,
         ),
-        home: const ChronicleHomeScreen(useMacOSNativeUI: true),
+        home: nativeMacOSHome,
       );
     }
 
@@ -149,6 +157,183 @@ class _ChronicleAppState extends ConsumerState<ChronicleApp> {
         visualDensity: VisualDensity.standard,
       ),
       home: const ChronicleHomeScreen(useMacOSNativeUI: false),
+    );
+  }
+}
+
+class _ChronicleMacOSMenuHost extends StatelessWidget {
+  const _ChronicleMacOSMenuHost({
+    required this.onOpenSettings,
+    required this.child,
+  });
+
+  final Future<void> Function() onOpenSettings;
+  final Widget child;
+
+  static void _invokeFocusedIntent(Intent intent) {
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    if (focusContext == null) {
+      return;
+    }
+    Actions.maybeInvoke(focusContext, intent);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final materialL10n = MaterialLocalizations.of(context);
+
+    return PlatformMenuBar(
+      menus: <PlatformMenuItem>[
+        PlatformMenu(
+          label: 'APP_NAME',
+          menus: <PlatformMenuItem>[
+            const PlatformProvidedMenuItem(
+              type: PlatformProvidedMenuItemType.about,
+            ),
+            PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformMenuItem(
+                  label: '${l10n.settingsTitle}...',
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.comma,
+                    meta: true,
+                  ),
+                  onSelected: () => unawaited(onOpenSettings()),
+                ),
+              ],
+            ),
+            const PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.servicesSubmenu,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.hide,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.hideOtherApplications,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.showAllApplications,
+                ),
+              ],
+            ),
+            const PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.quit,
+                ),
+              ],
+            ),
+          ],
+        ),
+        PlatformMenu(
+          label: l10n.editAction,
+          menus: <PlatformMenuItem>[
+            PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformMenuItem(
+                  label: 'Undo',
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.keyZ,
+                    meta: true,
+                  ),
+                  onSelected: () => _invokeFocusedIntent(
+                    const UndoTextIntent(SelectionChangedCause.toolbar),
+                  ),
+                ),
+                PlatformMenuItem(
+                  label: 'Redo',
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.keyZ,
+                    meta: true,
+                    shift: true,
+                  ),
+                  onSelected: () => _invokeFocusedIntent(
+                    const RedoTextIntent(SelectionChangedCause.toolbar),
+                  ),
+                ),
+              ],
+            ),
+            PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformMenuItem(
+                  label: materialL10n.cutButtonLabel,
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.keyX,
+                    meta: true,
+                  ),
+                  onSelected: () => _invokeFocusedIntent(
+                    const CopySelectionTextIntent.cut(
+                      SelectionChangedCause.toolbar,
+                    ),
+                  ),
+                ),
+                PlatformMenuItem(
+                  label: materialL10n.copyButtonLabel,
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.keyC,
+                    meta: true,
+                  ),
+                  onSelected: () =>
+                      _invokeFocusedIntent(CopySelectionTextIntent.copy),
+                ),
+                PlatformMenuItem(
+                  label: materialL10n.pasteButtonLabel,
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.keyV,
+                    meta: true,
+                  ),
+                  onSelected: () => _invokeFocusedIntent(
+                    const PasteTextIntent(SelectionChangedCause.toolbar),
+                  ),
+                ),
+                PlatformMenuItem(
+                  label: materialL10n.selectAllButtonLabel,
+                  shortcut: const SingleActivator(
+                    LogicalKeyboardKey.keyA,
+                    meta: true,
+                  ),
+                  onSelected: () => _invokeFocusedIntent(
+                    const SelectAllTextIntent(SelectionChangedCause.toolbar),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const PlatformMenu(
+          label: 'Window',
+          menus: <PlatformMenuItem>[
+            PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.minimizeWindow,
+                ),
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.zoomWindow,
+                ),
+              ],
+            ),
+            PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.arrangeWindowsInFront,
+                ),
+              ],
+            ),
+            PlatformMenuItemGroup(
+              members: <PlatformMenuItem>[
+                PlatformProvidedMenuItem(
+                  type: PlatformProvidedMenuItemType.toggleFullScreen,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+      child: child,
     );
   }
 }
