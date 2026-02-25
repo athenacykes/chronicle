@@ -18,6 +18,41 @@ Chronicle is a timeline-centric, local-first note app organized around **Matters
   - manual sync + sync status
   - settings dialog for root/sync config
 
+## Home Shell Architecture (Refactor Status)
+
+The Chronicle home shell refactor is in progress and follows a staged split with no public API change.
+
+- Public surface remains:
+  - `ChronicleHomeScreen`
+  - `showChronicleSettingsDialog`
+- Coordinator entrypoint:
+  - `lib/presentation/common/shell/chronicle_home_coordinator.dart`
+- Coordinator-internal `part` files still in use:
+  - `lib/presentation/common/shell/chronicle_home/helpers.dart`
+  - `lib/presentation/common/shell/chronicle_home/sidebar.dart`
+  - `lib/presentation/common/shell/chronicle_home/workspace.dart`
+  - `lib/presentation/common/shell/chronicle_home/graph.dart`
+  - `lib/presentation/common/shell/chronicle_home/editor.dart`
+- Extracted standalone modules (Phase 2 so far):
+  - `lib/presentation/common/shell/chronicle_root_shell.dart`
+  - `lib/presentation/common/shell/chronicle_search_results_view.dart`
+  - `lib/presentation/common/shell/chronicle_settings_dialog.dart`
+  - `lib/presentation/common/shell/chronicle_entity_dialogs.dart`
+  - `lib/presentation/common/shell/chronicle_manage_phases_dialog.dart`
+  - `lib/presentation/common/shell/chronicle_graph_canvas.dart`
+  - `lib/presentation/common/shell/chronicle_note_editor_utilities.dart`
+  - `lib/presentation/common/shell/chronicle_note_title_header.dart`
+  - `lib/presentation/common/shell/chronicle_macos_widgets.dart`
+  - `lib/presentation/common/shell/chronicle_top_bar_controls.dart`
+  - `lib/presentation/common/shell/chronicle_sidebar_sync_panel.dart`
+  - `lib/presentation/common/shell/chronicle_sidebar_matter_actions.dart`
+
+Refactor intent:
+
+- Keep behavior and UX unchanged while reducing file size and implicit coupling.
+- Promote leaf/reusable widgets first; keep orchestration state centralized until explicitly decoupled.
+- Validate each extraction with `flutter analyze`, targeted shell widget tests, then full `flutter test`.
+
 ## Tooling
 
 - Flutter `3.38.3`
