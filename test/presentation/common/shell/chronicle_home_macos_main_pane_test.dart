@@ -511,19 +511,19 @@ void main() {
       final views = find.text('Views');
       final notebooks = find.text('Notebooks');
       final notebook = find.text('Notebook');
+      final sidebar = find.byKey(const Key('sidebar_root'));
       expect(views, findsOneWidget);
       expect(notebooks, findsOneWidget);
       expect(notebook, findsOneWidget);
       expect(
-        tester.getTopLeft(views).dy,
-        lessThan(tester.getTopLeft(notebooks).dy),
+        find.descendant(of: sidebar, matching: find.text('Conflicts')),
+        findsNothing,
       );
-      expect(
-        tester.getTopLeft(notebooks).dy,
-        lessThan(tester.getTopLeft(notebook).dy),
-      );
-
-      final sidebar = find.byKey(const Key('sidebar_root'));
+      final viewsTop = tester.getTopLeft(views).dy;
+      final notebooksTop = tester.getTopLeft(notebooks).dy;
+      expect(viewsTop, lessThan(notebooksTop));
+      expect(notebooksTop - viewsTop, greaterThan(16));
+      expect(notebooksTop, lessThan(tester.getTopLeft(notebook).dy));
       expect(
         find.descendant(
           of: sidebar,
@@ -595,19 +595,19 @@ void main() {
       final views = find.text('Views');
       final notebooks = find.text('Notebooks');
       final notebook = find.text('Notebook');
+      final sidebar = find.byKey(const Key('sidebar_root'));
       expect(views, findsOneWidget);
       expect(notebooks, findsOneWidget);
       expect(notebook, findsOneWidget);
       expect(
-        tester.getTopLeft(views).dy,
-        lessThan(tester.getTopLeft(notebooks).dy),
+        find.descendant(of: sidebar, matching: find.text('Conflicts')),
+        findsNothing,
       );
-      expect(
-        tester.getTopLeft(notebooks).dy,
-        lessThan(tester.getTopLeft(notebook).dy),
-      );
-
-      final sidebar = find.byKey(const Key('sidebar_root'));
+      final viewsTop = tester.getTopLeft(views).dy;
+      final notebooksTop = tester.getTopLeft(notebooks).dy;
+      expect(viewsTop, lessThan(notebooksTop));
+      expect(notebooksTop - viewsTop, greaterThan(16));
+      expect(notebooksTop, lessThan(tester.getTopLeft(notebook).dy));
       expect(
         find.descendant(
           of: sidebar,

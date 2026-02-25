@@ -14,8 +14,6 @@ class _MatterSidebar extends ConsumerWidget {
       selectedNotebookFolderIdProvider,
     );
     final notebookTree = ref.watch(notebookFolderTreeProvider);
-    final showConflicts = ref.watch(showConflictsProvider);
-    final conflictCount = ref.watch(conflictCountProvider);
     final noteDragPayload = ref.watch(_activeNoteDragPayloadProvider);
     final settings = ref.watch(settingsControllerProvider).asData?.value;
     final collapsedCategoryIds =
@@ -29,8 +27,6 @@ class _MatterSidebar extends ConsumerWidget {
         showNotebook: showNotebook,
         selectedNotebookFolderId: selectedNotebookFolderId,
         notebookTree: notebookTree,
-        showConflicts: showConflicts,
-        conflictCount: conflictCount,
         noteDragPayload: noteDragPayload,
         collapsedCategoryIds: collapsedCategoryIds,
       );
@@ -43,8 +39,6 @@ class _MatterSidebar extends ConsumerWidget {
       showNotebook: showNotebook,
       selectedNotebookFolderId: selectedNotebookFolderId,
       notebookTree: notebookTree,
-      showConflicts: showConflicts,
-      conflictCount: conflictCount,
       noteDragPayload: noteDragPayload,
       collapsedCategoryIds: collapsedCategoryIds,
     );
@@ -57,8 +51,6 @@ class _MatterSidebar extends ConsumerWidget {
     required bool showNotebook,
     required String? selectedNotebookFolderId,
     required List<NotebookFolderTreeNode> notebookTree,
-    required bool showConflicts,
-    required int conflictCount,
     required _NoteDragPayload? noteDragPayload,
     required Set<String> collapsedCategoryIds,
   }) {
@@ -175,8 +167,9 @@ class _MatterSidebar extends ConsumerWidget {
                       categoryId: null,
                     ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               _SectionHeader(title: l10n.viewsSectionLabel),
+              const SizedBox(height: 12),
               _SectionHeader(title: l10n.notebooksSectionLabel),
               _buildMaterialNotebookRootTile(
                 context: context,
@@ -193,19 +186,6 @@ class _MatterSidebar extends ConsumerWidget {
                   showNotebook: showNotebook,
                   selectedNotebookFolderId: selectedNotebookFolderId,
                 ),
-              ListTile(
-                selected: showConflicts,
-                leading: Badge(
-                  isLabelVisible: conflictCount > 0,
-                  label: Text('$conflictCount'),
-                  child: const Icon(Icons.report_problem_outlined),
-                ),
-                title: Text(l10n.conflictsLabel),
-                onTap: () {
-                  ref.read(showConflictsProvider.notifier).set(true);
-                  ref.read(showNotebookProvider.notifier).set(false);
-                },
-              ),
             ],
           ),
         ),
@@ -222,8 +202,6 @@ class _MatterSidebar extends ConsumerWidget {
     required bool showNotebook,
     required String? selectedNotebookFolderId,
     required List<NotebookFolderTreeNode> notebookTree,
-    required bool showConflicts,
-    required int conflictCount,
     required _NoteDragPayload? noteDragPayload,
     required Set<String> collapsedCategoryIds,
   }) {
@@ -231,11 +209,17 @@ class _MatterSidebar extends ConsumerWidget {
     final sidebarItems = <SidebarItem>[];
     final selectableEntries = <_MacSidebarSelectableEntry>[];
 
-    void addSection(String label) {
+    void addSection(String label, {double topPadding = 0}) {
       sidebarItems.add(
         SidebarItem(
           section: true,
-          label: Text(label, style: MacosTheme.of(context).typography.caption1),
+          label: Padding(
+            padding: EdgeInsets.only(top: topPadding),
+            child: Text(
+              label,
+              style: MacosTheme.of(context).typography.caption1,
+            ),
+          ),
         ),
       );
     }
@@ -443,8 +427,8 @@ class _MatterSidebar extends ConsumerWidget {
     addSection(l10n.uncategorizedSectionLabel(sections.uncategorized.length));
     addMatterItems(sections.uncategorized);
 
-    addSection(l10n.viewsSectionLabel);
-    addSection(l10n.notebooksSectionLabel);
+    addSection(l10n.viewsSectionLabel, topPadding: 12);
+    addSection(l10n.notebooksSectionLabel, topPadding: 12);
     _addMacNotebookRootItem(
       context: context,
       ref: ref,
@@ -464,25 +448,6 @@ class _MatterSidebar extends ConsumerWidget {
       selectedNotebookFolderId: selectedNotebookFolderId,
     );
 
-    selectableEntries.add(
-      _MacSidebarSelectableEntry(
-        key: 'conflicts',
-        onSelected: () {
-          ref.read(showConflictsProvider.notifier).set(true);
-          ref.read(showNotebookProvider.notifier).set(false);
-        },
-      ),
-    );
-    sidebarItems.add(
-      SidebarItem(
-        leading: const MacosIcon(CupertinoIcons.exclamationmark_triangle),
-        label: Text(l10n.conflictsLabel),
-        trailing: conflictCount > 0
-            ? ChronicleMacosCountBadge(label: '$conflictCount')
-            : null,
-      ),
-    );
-
     if (selectableEntries.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -491,8 +456,6 @@ class _MatterSidebar extends ConsumerWidget {
         ? (selectedNotebookFolderId == null
               ? 'notebook:root'
               : 'notebook:$selectedNotebookFolderId')
-        : showConflicts
-        ? 'conflicts'
         : selectedMatterId == null
         ? selectableEntries.first.key
         : 'matter:$selectedMatterId';
