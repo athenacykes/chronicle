@@ -11,6 +11,10 @@ import '../chronicle_shell_contract.dart';
 const Key _kReturnSearchResultsButtonKey = Key(
   'macos_return_search_results_button',
 );
+const Key _kMacosTopBarSearchSlotKey = Key('macos_top_bar_search_slot');
+const Key _kMacosTopBarConflictsButtonKey = Key(
+  'macos_top_bar_conflicts_button',
+);
 
 class MacosChronicleShell extends StatelessWidget {
   const MacosChronicleShell({super.key, required this.viewModel});
@@ -19,9 +23,8 @@ class MacosChronicleShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     return MacosWindow(
-      titleBar: TitleBar(title: Text(l10n.appTitle)),
+      titleBar: TitleBar(title: Text(viewModel.appWindowTitle)),
       sidebar: Sidebar(
         minWidth: viewModel.sidebarWidth,
         maxWidth: viewModel.sidebarWidth + 80,
@@ -104,7 +107,7 @@ class _MacosTopBar extends StatelessWidget {
 
     return Container(
       height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: MacosTheme.of(context).dividerColor),
@@ -119,56 +122,90 @@ class _MacosTopBar extends StatelessWidget {
               : viewModel.searchFieldWidth;
 
           return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
-              _ToolbarActionIcon(
-                tooltip: l10n.toggleSidebarTooltip,
-                icon: const MacosIcon(CupertinoIcons.sidebar_left),
-                onPressed: MacosWindowScope.maybeOf(context)?.toggleSidebar,
-              ),
-              const SizedBox(width: 6),
-              Text(viewModel.title, style: titleStyle),
-              const Spacer(),
-              SizedBox(
-                width: searchWidth,
-                child: MacosSearchField<void>(
-                  controller: viewModel.searchController,
-                  placeholder: l10n.searchNotesHint,
-                  onChanged: viewModel.onSearchChanged,
-                  onTap: viewModel.onSearchFieldTap,
-                  maxLines: 1,
-                  minLines: 1,
-                  inputFormatters: <TextInputFormatter>[
-                    FilteringTextInputFormatter.singleLineFormatter,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * 0.35,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _ToolbarActionIcon(
+                      tooltip: l10n.toggleSidebarTooltip,
+                      icon: const MacosIcon(CupertinoIcons.sidebar_left),
+                      onPressed: MacosWindowScope.maybeOf(
+                        context,
+                      )?.toggleSidebar,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        viewModel.title,
+                        style: titleStyle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
-                  decoration: hasParkedSearchResults
-                      ? parkedSearchDecoration
-                      : kDefaultRoundedBorderDecoration,
-                  focusedDecoration: hasParkedSearchResults
-                      ? parkedSearchFocusedDecoration
-                      : kDefaultFocusedBorderDecoration,
                 ),
               ),
-              if (hasParkedSearchResults) ...<Widget>[
-                const SizedBox(width: 4),
-                _ToolbarActionIcon(
-                  buttonKey: _kReturnSearchResultsButtonKey,
-                  tooltip: l10n.returnToSearchResultsAction,
-                  icon: const MacosIcon(CupertinoIcons.arrow_uturn_left),
-                  onPressed: viewModel.onReturnToSearchResults,
-                ),
-              ],
               const SizedBox(width: 8),
-              _ToolbarActionIcon(
-                tooltip: l10n.conflictsLabel,
-                icon: _ConflictIconBadge(count: viewModel.conflictCount),
-                onPressed: viewModel.onShowConflicts,
-              ),
-              _ToolbarActionIcon(
-                tooltip: l10n.settingsTitle,
-                icon: const MacosIcon(CupertinoIcons.gear_solid),
-                onPressed: () {
-                  unawaited(viewModel.onOpenSettings());
-                },
+              Expanded(child: Center(child: viewModel.topBarContextActions)),
+              const SizedBox(width: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: <Widget>[
+                  SizedBox(
+                    key: _kMacosTopBarSearchSlotKey,
+                    width: searchWidth,
+                    height: 32,
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: MacosSearchField<void>(
+                        controller: viewModel.searchController,
+                        placeholder: l10n.searchNotesHint,
+                        onChanged: viewModel.onSearchChanged,
+                        onTap: viewModel.onSearchFieldTap,
+                        maxLines: 1,
+                        minLines: 1,
+                        inputFormatters: <TextInputFormatter>[
+                          FilteringTextInputFormatter.singleLineFormatter,
+                        ],
+                        decoration: hasParkedSearchResults
+                            ? parkedSearchDecoration
+                            : kDefaultRoundedBorderDecoration,
+                        focusedDecoration: hasParkedSearchResults
+                            ? parkedSearchFocusedDecoration
+                            : kDefaultFocusedBorderDecoration,
+                      ),
+                    ),
+                  ),
+                  if (hasParkedSearchResults) ...<Widget>[
+                    const SizedBox(width: 4),
+                    _ToolbarActionIcon(
+                      buttonKey: _kReturnSearchResultsButtonKey,
+                      tooltip: l10n.returnToSearchResultsAction,
+                      icon: const MacosIcon(CupertinoIcons.arrow_uturn_left),
+                      onPressed: viewModel.onReturnToSearchResults,
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  _ToolbarActionIcon(
+                    buttonKey: _kMacosTopBarConflictsButtonKey,
+                    tooltip: l10n.conflictsLabel,
+                    icon: _ConflictIconBadge(count: viewModel.conflictCount),
+                    onPressed: viewModel.onShowConflicts,
+                  ),
+                  _ToolbarActionIcon(
+                    tooltip: l10n.settingsTitle,
+                    icon: const MacosIcon(CupertinoIcons.gear_solid),
+                    onPressed: () {
+                      unawaited(viewModel.onOpenSettings());
+                    },
+                  ),
+                ],
               ),
             ],
           );

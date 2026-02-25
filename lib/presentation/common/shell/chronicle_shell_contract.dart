@@ -5,6 +5,7 @@ typedef ChronicleSidebarBuilder =
 
 class ChronicleShellViewModel {
   const ChronicleShellViewModel({
+    required this.appWindowTitle,
     required this.title,
     required this.searchController,
     required this.onSearchChanged,
@@ -16,10 +17,12 @@ class ChronicleShellViewModel {
     required this.conflictCount,
     required this.sidebarBuilder,
     required this.content,
+    this.topBarContextActions,
     this.searchFieldWidth = 340,
     this.sidebarWidth = 320,
   });
 
+  final String appWindowTitle;
   final String title;
   final TextEditingController searchController;
   final ValueChanged<String> onSearchChanged;
@@ -31,6 +34,7 @@ class ChronicleShellViewModel {
   final int conflictCount;
   final ChronicleSidebarBuilder sidebarBuilder;
   final Widget content;
+  final Widget? topBarContextActions;
   final double searchFieldWidth;
   final double sidebarWidth;
 }

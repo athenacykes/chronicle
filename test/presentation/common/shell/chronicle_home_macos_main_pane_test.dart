@@ -205,16 +205,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('macos_matter_mode_segmented_control')),
-      findsOneWidget,
-    );
-    expect(
       find.byKey(const Key('macos_matter_new_note_button')),
       findsOneWidget,
     );
-    expect(find.byType(MacosSegmentedControl), findsWidgets);
+    expect(
+      find.byKey(const Key('matter_top_phase_menu_button')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('matter_top_timeline_button')), findsOneWidget);
+    expect(find.byKey(const Key('matter_top_graph_button')), findsOneWidget);
+    expect(find.text('New Note'), findsOneWidget);
+    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Timeline'), findsOneWidget);
+    expect(find.text('Graph'), findsOneWidget);
+    final searchCenter = tester.getCenter(
+      find.byKey(const Key('macos_top_bar_search_slot')),
+    );
+    final conflictsCenter = tester.getCenter(
+      find.byKey(const Key('macos_top_bar_conflicts_button')),
+    );
+    expect((searchCenter.dy - conflictsCenter.dy).abs(), lessThanOrEqualTo(2));
     expect(find.byType(MacosPulldownButton), findsWidgets);
-    expect(find.byKey(const Key('macos_note_editor_title')), findsOneWidget);
+    expect(find.byKey(const Key('note_header_title_display')), findsOneWidget);
     expect(find.byType(SegmentedButton<MatterViewMode>), findsNothing);
   });
 
@@ -246,6 +258,38 @@ void main() {
     );
     expect(find.byType(MacosPulldownButton), findsWidgets);
   });
+
+  testWidgets(
+    'top phase control shows All Phases label when filter is unselected',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild((ref, notifier) => null),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('matter_top_phase_menu_button')),
+        findsOneWidget,
+      );
+      expect(find.text('All Phases'), findsOneWidget);
+    },
+  );
 
   testWidgets('matter New Note creates untitled draft without dialog', (
     tester,
@@ -634,45 +678,6 @@ void main() {
     expect(moved?.phaseId, 'phase-2-start');
   });
 
-  testWidgets('drag from phase list to phase target moves within same matter', (
-    tester,
-  ) async {
-    _setDesktopViewport(tester);
-    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
-    final repos = _TestRepos(
-      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
-      noteRepository: noteRepository,
-      linkRepository: _MemoryLinkRepository(),
-    );
-
-    await tester.pumpWidget(
-      _buildApp(
-        useMacOSNativeUI: false,
-        repos: repos,
-        overrides: [
-          selectedMatterIdProvider.overrideWithBuild(
-            (ref, notifier) => 'matter-1',
-          ),
-          selectedPhaseIdProvider.overrideWithBuild(
-            (ref, notifier) => 'phase-start',
-          ),
-          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await _longPressDragTo(
-      tester,
-      find.byKey(const ValueKey<String>('note_drag_list_material_note-1')),
-      find.byKey(const ValueKey<String>('phase_drop_target_phase-progress')),
-    );
-
-    final moved = noteRepository.noteById('note-1');
-    expect(moved?.matterId, 'matter-1');
-    expect(moved?.phaseId, 'phase-progress');
-  });
-
   testWidgets('drag from timeline card to orphans target creates orphan', (
     tester,
   ) async {
@@ -936,13 +941,55 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Manage Phases').first);
+    await tester.tap(find.byKey(const Key('matter_top_phase_menu_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Manage Phases...'));
     await tester.pumpAndSettle();
 
     expect(find.text('Manage Phases'), findsWidgets);
     expect(find.text('Current'), findsWidgets);
     expect(find.byType(ChoiceChip), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('top phase menu can switch to phase mode and set phase filter', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+          matterViewModeProvider.overrideWithBuild(
+            (ref, notifier) => MatterViewMode.timeline,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('matter_top_phase_menu_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Progress'));
+    await tester.pumpAndSettle();
+
+    final container = _containerForApp(tester);
+    expect(container.read(matterViewModeProvider), MatterViewMode.phase);
+    expect(container.read(selectedPhaseIdProvider), 'phase-progress');
   });
 
   testWidgets('Edit in Phase does not use disposed ref after timeline switch', (
@@ -978,7 +1025,10 @@ void main() {
     await tester.tap(find.text('Edit in Phase').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Manage Phases'), findsOneWidget);
+    expect(
+      find.byKey(const Key('matter_top_phase_menu_button')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -1359,7 +1409,7 @@ Inline \$x^2\$ and:
 
       final container = _containerForApp(tester);
       expect(
-        find.byKey(const Key('macos_matter_mode_segmented_control')),
+        find.byKey(const Key('matter_top_timeline_button')),
         findsOneWidget,
       );
 
@@ -1373,7 +1423,7 @@ Inline \$x^2\$ and:
         findsNothing,
       );
       expect(
-        find.byKey(const Key('macos_matter_mode_segmented_control')),
+        find.byKey(const Key('matter_top_timeline_button')),
         findsOneWidget,
       );
 
@@ -1382,10 +1432,7 @@ Inline \$x^2\$ and:
 
       expect(container.read(searchResultsVisibleProvider), isTrue);
       expect(find.text('Search Hit'), findsOneWidget);
-      expect(
-        find.byKey(const Key('macos_matter_mode_segmented_control')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('matter_top_timeline_button')), findsNothing);
 
       final searchField = tester.widget<MacosSearchField<void>>(
         find.byType(MacosSearchField<void>),
@@ -1400,7 +1447,7 @@ Inline \$x^2\$ and:
         findsNothing,
       );
       expect(
-        find.byKey(const Key('macos_matter_mode_segmented_control')),
+        find.byKey(const Key('matter_top_timeline_button')),
         findsOneWidget,
       );
     },
@@ -1437,10 +1484,7 @@ Inline \$x^2\$ and:
     await tester.enterText(find.byType(MacosSearchField<void>), 'zz');
     await tester.pumpAndSettle();
     expect(container.read(searchResultsVisibleProvider), isTrue);
-    expect(
-      find.byKey(const Key('macos_matter_mode_segmented_control')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('matter_top_timeline_button')), findsNothing);
 
     final searchField = tester.widget<MacosSearchField<void>>(
       find.byType(MacosSearchField<void>),
@@ -1449,10 +1493,7 @@ Inline \$x^2\$ and:
     await tester.pumpAndSettle();
 
     expect(container.read(searchResultsVisibleProvider), isFalse);
-    expect(
-      find.byKey(const Key('macos_matter_mode_segmented_control')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('matter_top_timeline_button')), findsOneWidget);
   });
 
   testWidgets(
@@ -1491,7 +1532,10 @@ Inline \$x^2\$ and:
         matching: find.byType(TextField),
       );
 
-      expect(find.byType(SegmentedButton<MatterViewMode>), findsOneWidget);
+      expect(
+        find.byKey(const Key('matter_top_timeline_button')),
+        findsOneWidget,
+      );
 
       await tester.enterText(searchFieldFinder, 's');
       await tester.pumpAndSettle();
@@ -1501,12 +1545,16 @@ Inline \$x^2\$ and:
         find.byKey(const Key('material_return_search_results_button')),
         findsNothing,
       );
-      expect(find.byType(SegmentedButton<MatterViewMode>), findsOneWidget);
+      expect(
+        find.byKey(const Key('matter_top_timeline_button')),
+        findsOneWidget,
+      );
 
       await tester.enterText(searchFieldFinder, 'se');
       await tester.pumpAndSettle();
       expect(container.read(searchResultsVisibleProvider), isTrue);
       expect(find.widgetWithText(ListTile, 'Search Hit'), findsOneWidget);
+      expect(find.byKey(const Key('matter_top_timeline_button')), findsNothing);
 
       final searchField = tester.widget<TextField>(searchFieldFinder);
       searchField.controller?.clear();
@@ -1518,9 +1566,220 @@ Inline \$x^2\$ and:
         find.byKey(const Key('material_return_search_results_button')),
         findsNothing,
       );
-      expect(find.byType(SegmentedButton<MatterViewMode>), findsOneWidget);
+      expect(
+        find.byKey(const Key('matter_top_timeline_button')),
+        findsOneWidget,
+      );
     },
   );
+
+  testWidgets('startup with preselected matter auto-opens first phase note', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = _containerForApp(tester);
+    expect(container.read(selectedNoteIdProvider), 'note-1');
+    expect(find.text('Select a note to edit.'), findsNothing);
+  });
+
+  testWidgets('switching notes does not flash select-note prompt', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final secondMatterNote = noteTwo.copyWith(
+      matterId: 'matter-1',
+      phaseId: 'phase-start',
+      title: 'Second Matter Note',
+      content: '# Second Matter Note\ncontent',
+      tags: const <String>['second'],
+    );
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, secondMatterNote]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Second Matter Note').first);
+    await tester.pump();
+
+    expect(find.text('Select a note to edit.'), findsNothing);
+
+    await tester.pumpAndSettle();
+    final container = _containerForApp(tester);
+    expect(container.read(selectedNoteIdProvider), 'note-2');
+  });
+
+  testWidgets('switching matter auto-opens first note in current phase', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final matterTwo = matter.copyWith(
+      id: 'matter-2',
+      title: 'Matter Two',
+      phases: const <Phase>[
+        Phase(
+          id: 'phase-2-start',
+          matterId: 'matter-2',
+          name: 'Start',
+          order: 0,
+        ),
+      ],
+      currentPhaseId: 'phase-2-start',
+    );
+    final noteThree = noteOne.copyWith(
+      id: 'note-3',
+      matterId: 'matter-2',
+      phaseId: 'phase-2-start',
+      title: 'Matter Two First',
+      content: '# Matter Two First\nhello',
+      tags: const <String>['three'],
+      updatedAt: now.add(const Duration(minutes: 1)),
+    );
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter, matterTwo]),
+      noteRepository: _MemoryNoteRepository(<Note>[
+        noteOne,
+        noteTwo,
+        noteThree,
+      ]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Matter Two').first);
+    await tester.pump();
+    expect(find.text('Select a note to edit.'), findsNothing);
+    await tester.pumpAndSettle();
+
+    final container = _containerForApp(tester);
+    expect(container.read(selectedMatterIdProvider), 'matter-2');
+    expect(container.read(selectedNoteIdProvider), 'note-3');
+  });
+
+  testWidgets(
+    'empty selected phase does not fallback and keeps select-note prompt',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-end',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      expect(container.read(selectedNoteIdProvider), isNull);
+      expect(find.text('Select a note to edit.'), findsWidgets);
+    },
+  );
+
+  testWidgets('note header title supports click-to-edit', (tester) async {
+    _setDesktopViewport(tester);
+    final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: noteRepository,
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('note_header_title_display')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('note_header_title_edit')),
+      'Header Edited Title',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(noteRepository.noteById('note-1')?.title, 'Header Edited Title');
+  });
 
   testWidgets('macOS note editor save uses existing controller path', (
     tester,
@@ -1551,8 +1810,8 @@ Inline \$x^2\$ and:
     await tester.pumpAndSettle();
 
     await tester.enterText(
-      find.byKey(const Key('macos_note_editor_title')),
-      'Editor Note Updated',
+      find.byKey(const Key('macos_note_editor_content')),
+      '# Editor Note\ncontent updated through save',
     );
     await tester.tap(find.byKey(const Key('macos_note_editor_save')));
     await tester.pumpAndSettle();
@@ -1560,13 +1819,20 @@ Inline \$x^2\$ and:
     final saveButtonTop = tester.getTopLeft(
       find.byKey(const Key('macos_note_editor_save')),
     );
+    final modeToggleTop = tester.getTopLeft(
+      find.byKey(const Key('note_editor_mode_toggle')),
+    );
     final utilitiesTop = tester.getTopLeft(
       find.byKey(const Key('note_editor_utility_tags')),
     );
+    expect(modeToggleTop.dx, lessThan(saveButtonTop.dx));
     expect(saveButtonTop.dy, lessThan(utilitiesTop.dy));
     expect(find.textContaining('Updated:'), findsNothing);
     expect(noteRepository.updateCount, greaterThanOrEqualTo(1));
-    expect(noteRepository.noteById('note-1')?.title, 'Editor Note Updated');
+    expect(
+      noteRepository.noteById('note-1')?.content,
+      '# Editor Note\ncontent updated through save',
+    );
   });
 
   testWidgets(
@@ -1694,10 +1960,14 @@ Inline \$x^2\$ and:
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byKey(const Key('note_header_title_display')));
+    await tester.pumpAndSettle();
     await tester.enterText(
-      find.byKey(const Key('macos_note_editor_title')),
+      find.byKey(const Key('note_header_title_edit')),
       'Autosaved Title',
     );
+    await tester.tap(find.byKey(const Key('macos_note_editor_content')));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('macos_note_editor_content')),
       '# Autosaved Title\nnew markdown',
@@ -2225,11 +2495,13 @@ Inline \$x^2\$ and:
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(SegmentedButton<MatterViewMode>), findsOneWidget);
+    expect(find.byType(SegmentedButton<MatterViewMode>), findsNothing);
     expect(
-      find.byKey(const Key('macos_matter_mode_segmented_control')),
-      findsNothing,
+      find.byKey(const Key('matter_top_phase_menu_button')),
+      findsOneWidget,
     );
+    expect(find.byKey(const Key('matter_top_timeline_button')), findsOneWidget);
+    expect(find.byKey(const Key('matter_top_graph_button')), findsOneWidget);
   });
 }
 

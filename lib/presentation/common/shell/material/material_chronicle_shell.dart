@@ -18,15 +18,38 @@ class MaterialChronicleShell extends StatelessWidget {
     final l10n = context.l10n;
     final colorScheme = Theme.of(context).colorScheme;
     final hasParkedSearchResults = viewModel.hasParkedSearchResults;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final searchWidth = viewportWidth < 760
+        ? 180.0
+        : viewportWidth < 980
+        ? 240.0
+        : viewModel.searchFieldWidth;
+    final topControlsSlotWidth = ((viewportWidth - searchWidth - 320).clamp(
+      180.0,
+      420.0,
+    )).toDouble();
 
     return Scaffold(
       appBar: AppBar(
         title: Text(viewModel.title),
         actions: <Widget>[
+          if (viewModel.topBarContextActions != null)
+            SizedBox(
+              width: topControlsSlotWidth,
+              child: Center(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: viewModel.topBarContextActions!,
+                  ),
+                ),
+              ),
+            ),
           SizedBox(
-            width: viewModel.searchFieldWidth,
+            width: searchWidth,
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
               child: TextField(
                 controller: viewModel.searchController,
                 onChanged: viewModel.onSearchChanged,

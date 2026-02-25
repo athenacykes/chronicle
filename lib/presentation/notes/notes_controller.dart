@@ -77,7 +77,6 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       return;
     }
 
-    state = const AsyncLoading();
     final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
     state = AsyncData(note);
     ref.read(selectedNoteIdProvider.notifier).set(noteId);
