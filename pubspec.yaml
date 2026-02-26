@@ -55,6 +55,7 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   path: ^1.9.1
   xml: ^6.6.1
+  archive: ^4.0.7
   macos_ui: ^2.1.12
   macos_window_utils: ^1.7.4
   flutter_colorpicker: ^1.1.0

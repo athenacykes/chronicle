@@ -5,6 +5,7 @@ import '../../app/app_providers.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/note.dart';
 import '../../domain/entities/notebook_folder.dart';
+import '../../domain/entities/notebook_import_result.dart';
 import '../../domain/usecases/notes/create_note.dart';
 import '../../l10n/localization.dart';
 import '../common/state/value_notifier_provider.dart';
@@ -233,6 +234,34 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
   Future<Note> createUntitledNotebookNote() async {
     return createUntitledOrphanNote();
+  }
+
+  Future<NotebookImportBatchResult?> importNotebookFilesFromPicker() async {
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: false,
+      type: FileType.custom,
+      allowedExtensions: const <String>['enex', 'jex'],
+    );
+    if (picked == null || picked.files.isEmpty) {
+      return null;
+    }
+
+    final sourcePaths = picked.files
+        .map((file) => file.path)
+        .whereType<String>()
+        .map((path) => path.trim())
+        .where((path) => path.isNotEmpty)
+        .toList(growable: false);
+    if (sourcePaths.isEmpty) {
+      return null;
+    }
+
+    final result = await ref
+        .read(notebookImportRepositoryProvider)
+        .importFiles(sourcePaths: sourcePaths);
+    await _refreshCollections();
+    return result;
   }
 
   Future<void> selectNotebookFolder(String? folderId) async {

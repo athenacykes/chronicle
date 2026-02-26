@@ -7,6 +7,54 @@
   "conflictsLabel": "冲突",
   "syncNowAction": "立即同步",
   "settingsTitle": "设置",
+  "fileMenuLabel": "文件",
+  "importNotebookActionEllipsis": "导入...",
+  "notebookImportDialogTitle": "笔记本导入",
+  "notebookImportSuccessSummary": "已导入 {notes} 条笔记、{folders} 个文件夹和 {resources} 个资源。",
+  "@notebookImportSuccessSummary": {
+    "placeholders": {
+      "notes": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      }
+    }
+  },
+  "notebookImportPartialSummary": "导入完成，但有警告。已导入 {notes} 条笔记、{folders} 个文件夹和 {resources} 个资源。警告：{warnings}。",
+  "@notebookImportPartialSummary": {
+    "placeholders": {
+      "notes": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      },
+      "warnings": {
+        "type": "int"
+      }
+    }
+  },
+  "notebookImportWarningsTitle": "警告（{count}）",
+  "@notebookImportWarningsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notebookImportFailed": "笔记本导入失败：{error}",
+  "@notebookImportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "storageSetupTitle": "设置 Chronicle 存储",
   "storageSetupDescription": "选择 Chronicle 存储 markdown/json 文件的位置。默认是 ~/Chronicle。",
   "storageRootPathLabel": "存储根路径",

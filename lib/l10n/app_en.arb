@@ -8,6 +8,54 @@
   "conflictsLabel": "Conflicts",
   "syncNowAction": "Sync now",
   "settingsTitle": "Settings",
+  "fileMenuLabel": "File",
+  "importNotebookActionEllipsis": "Import...",
+  "notebookImportDialogTitle": "Notebook Import",
+  "notebookImportSuccessSummary": "Imported {notes} notes, {folders} folders, and {resources} resources.",
+  "@notebookImportSuccessSummary": {
+    "placeholders": {
+      "notes": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      }
+    }
+  },
+  "notebookImportPartialSummary": "Import completed with warnings. Imported {notes} notes, {folders} folders, and {resources} resources. Warnings: {warnings}.",
+  "@notebookImportPartialSummary": {
+    "placeholders": {
+      "notes": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      },
+      "warnings": {
+        "type": "int"
+      }
+    }
+  },
+  "notebookImportWarningsTitle": "Warnings ({count})",
+  "@notebookImportWarningsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notebookImportFailed": "Notebook import failed: {error}",
+  "@notebookImportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
   "storageSetupTitle": "Set up Chronicle storage",
   "storageSetupDescription": "Choose where Chronicle stores markdown/json files. Default is ~/Chronicle.",
   "storageRootPathLabel": "Storage root path",
