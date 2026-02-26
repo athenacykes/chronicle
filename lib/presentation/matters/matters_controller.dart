@@ -26,6 +26,15 @@ final matterViewModeProvider =
     NotifierProvider<ValueNotifierController<MatterViewMode>, MatterViewMode>(
       () => ValueNotifierController<MatterViewMode>(MatterViewMode.phase),
     );
+
+enum ChronicleTimeView { today, yesterday, thisWeek, lastWeek }
+
+final selectedTimeViewProvider =
+    NotifierProvider<
+      ValueNotifierController<ChronicleTimeView?>,
+      ChronicleTimeView?
+    >(() => ValueNotifierController<ChronicleTimeView?>(null));
+
 final showNotebookProvider =
     NotifierProvider<ValueNotifierController<bool>, bool>(
       () => ValueNotifierController<bool>(false),
@@ -76,6 +85,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
     state = AsyncData(sections);
 
     ref.read(showNotebookProvider.notifier).set(false);
+    ref.read(selectedTimeViewProvider.notifier).set(null);
     ref.read(selectedMatterIdProvider.notifier).set(created.id);
     ref
         .read(selectedPhaseIdProvider.notifier)

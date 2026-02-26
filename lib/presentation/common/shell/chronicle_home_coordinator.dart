@@ -46,6 +46,8 @@ import 'chronicle_sidebar_sync_panel.dart';
 import 'chronicle_settings_dialog.dart';
 import 'chronicle_shell.dart';
 import 'chronicle_shell_contract.dart';
+import 'chronicle_time_views_controller.dart';
+import 'chronicle_time_views_workspace.dart';
 import 'chronicle_top_bar_controls.dart';
 
 part 'chronicle_home/helpers.dart';
@@ -346,6 +348,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             _hasSearchText(searchQuery.text) && searchResultsVisible;
         final conflictCount = ref.watch(conflictCountProvider);
         final selectedMatterId = ref.watch(selectedMatterIdProvider);
+        final selectedTimeView = ref.watch(selectedTimeViewProvider);
         final matterViewMode = ref.watch(matterViewModeProvider);
         final showNotebook = ref.watch(showNotebookProvider);
         final showConflicts = ref.watch(showConflictsProvider);
@@ -382,6 +385,8 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             ? (selectedNotebookFolder?.name.trim().isNotEmpty == true
                   ? selectedNotebookFolder!.name.trim()
                   : l10n.notebookLabel)
+            : selectedTimeView != null
+            ? _timeViewLabel(context, selectedTimeView)
             : selectedMatter != null
             ? _displayMatterTitle(context, selectedMatter)
             : l10n.appTitle;
@@ -479,6 +484,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             onShowConflicts: () {
               ref.read(showConflictsProvider.notifier).set(true);
               ref.read(showNotebookProvider.notifier).set(false);
+              ref.read(selectedTimeViewProvider.notifier).set(null);
             },
             onOpenSettings: () async {
               await _openSettingsDialog();

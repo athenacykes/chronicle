@@ -8,6 +8,7 @@ import '../../domain/entities/notebook_folder.dart';
 import '../../domain/usecases/notes/create_note.dart';
 import '../../l10n/localization.dart';
 import '../common/state/value_notifier_provider.dart';
+import '../common/shell/chronicle_time_views_controller.dart';
 import '../links/links_controller.dart';
 import '../matters/matters_controller.dart';
 import '../settings/settings_controller.dart';
@@ -64,27 +65,31 @@ final notebookFoldersProvider = FutureProvider<List<NotebookFolder>>((ref) {
   return ref.watch(notebookRepositoryProvider).listFolders();
 });
 
-final notebookFolderTreeProvider = Provider<List<NotebookFolderTreeNode>>((ref) {
-  final folders = ref.watch(notebookFoldersProvider).asData?.value ?? <NotebookFolder>[];
+final notebookFolderTreeProvider = Provider<List<NotebookFolderTreeNode>>((
+  ref,
+) {
+  final folders =
+      ref.watch(notebookFoldersProvider).asData?.value ?? <NotebookFolder>[];
   return buildNotebookFolderTree(folders);
 });
 
 final notebookNoteListProvider = FutureProvider<List<Note>>((ref) {
   final folderId = ref.watch(selectedNotebookFolderIdProvider);
-  return ref.watch(noteRepositoryProvider).listNotebookNotes(folderId: folderId);
+  return ref
+      .watch(noteRepositoryProvider)
+      .listNotebookNotes(folderId: folderId);
 });
 
 class NotebookFolderTreeNode {
-  const NotebookFolderTreeNode({
-    required this.folder,
-    required this.children,
-  });
+  const NotebookFolderTreeNode({required this.folder, required this.children});
 
   final NotebookFolder folder;
   final List<NotebookFolderTreeNode> children;
 }
 
-List<NotebookFolderTreeNode> buildNotebookFolderTree(List<NotebookFolder> folders) {
+List<NotebookFolderTreeNode> buildNotebookFolderTree(
+  List<NotebookFolder> folders,
+) {
   final byParent = <String?, List<NotebookFolder>>{};
   for (final folder in folders) {
     byParent.putIfAbsent(folder.parentId, () => <NotebookFolder>[]).add(folder);
@@ -231,6 +236,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }
 
   Future<void> selectNotebookFolder(String? folderId) async {
+    ref.read(selectedTimeViewProvider.notifier).set(null);
     ref.read(showNotebookProvider.notifier).set(true);
     ref.read(showConflictsProvider.notifier).set(false);
     ref.read(selectedMatterIdProvider.notifier).set(null);
@@ -261,7 +267,9 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
   Future<void> deleteNotebookFolder(String folderId) async {
     final selectedFolderId = ref.read(selectedNotebookFolderIdProvider);
-    final folder = await ref.read(notebookRepositoryProvider).getFolderById(folderId);
+    final folder = await ref
+        .read(notebookRepositoryProvider)
+        .getFolderById(folderId);
     await ref.read(notebookRepositoryProvider).deleteFolder(folderId);
     if (selectedFolderId == folderId) {
       ref.read(selectedNotebookFolderIdProvider.notifier).set(folder?.parentId);
@@ -450,6 +458,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       return;
     }
 
+    ref.read(selectedTimeViewProvider.notifier).set(null);
     ref.read(showConflictsProvider.notifier).set(false);
 
     if (note.isInNotebook) {
@@ -492,6 +501,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     ref.invalidate(notebookFoldersProvider);
     ref.invalidate(notebookFolderTreeProvider);
     ref.invalidate(orphanNotesProvider);
+    ref.invalidate(timeViewSummaryProvider);
     await ref.read(searchRepositoryProvider).rebuildIndex();
     ref.read(linksControllerProvider).invalidateAll();
   }

@@ -83,6 +83,47 @@
   "notebookRootLabel": "根目录",
   "untitledMatterLabel": "（未命名 Matter）",
   "viewsSectionLabel": "视图",
+  "timeViewTodayLabel": "今天",
+  "timeViewYesterdayLabel": "昨天",
+  "timeViewThisWeekLabel": "本周",
+  "timeViewLastWeekLabel": "上周",
+  "timeViewSummaryCounts": "{notesCount} 条笔记 • {matterCount} 个 Matter • {notebookCount} 条笔记本笔记",
+  "@timeViewSummaryCounts": {
+    "placeholders": {
+      "notesCount": {
+        "type": "int"
+      },
+      "matterCount": {
+        "type": "int"
+      },
+      "notebookCount": {
+        "type": "int"
+      }
+    }
+  },
+  "timeViewMatterSectionLabel": "Matter（{count}）",
+  "@timeViewMatterSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeViewNotebookSectionLabel": "笔记本（{count}）",
+  "@timeViewNotebookSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeViewNoNotesMessage": "该时间范围内没有笔记。",
+  "timeViewActivityAtLabel": "活动 {time}",
+  "@timeViewActivityAtLabel": {
+    "placeholders": {
+      "time": {}
+    }
+  },
   "notebooksSectionLabel": "笔记本",
   "matterActionsTitle": "Matter 操作",
   "editAction": "编辑",

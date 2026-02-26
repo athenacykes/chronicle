@@ -9,6 +9,7 @@ class _MatterSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
+    final selectedTimeView = ref.watch(selectedTimeViewProvider);
     final showNotebook = ref.watch(showNotebookProvider);
     final selectedNotebookFolderId = ref.watch(
       selectedNotebookFolderIdProvider,
@@ -24,6 +25,7 @@ class _MatterSidebar extends ConsumerWidget {
         context: context,
         ref: ref,
         selectedMatterId: selectedMatterId,
+        selectedTimeView: selectedTimeView,
         showNotebook: showNotebook,
         selectedNotebookFolderId: selectedNotebookFolderId,
         notebookTree: notebookTree,
@@ -36,6 +38,7 @@ class _MatterSidebar extends ConsumerWidget {
       context: context,
       ref: ref,
       selectedMatterId: selectedMatterId,
+      selectedTimeView: selectedTimeView,
       showNotebook: showNotebook,
       selectedNotebookFolderId: selectedNotebookFolderId,
       notebookTree: notebookTree,
@@ -48,6 +51,7 @@ class _MatterSidebar extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
     required String? selectedMatterId,
+    required ChronicleTimeView? selectedTimeView,
     required bool showNotebook,
     required String? selectedNotebookFolderId,
     required List<NotebookFolderTreeNode> notebookTree,
@@ -169,6 +173,30 @@ class _MatterSidebar extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               _SectionHeader(title: l10n.viewsSectionLabel),
+              _buildMaterialTimeViewTile(
+                context: context,
+                ref: ref,
+                timeView: ChronicleTimeView.today,
+                selectedTimeView: selectedTimeView,
+              ),
+              _buildMaterialTimeViewTile(
+                context: context,
+                ref: ref,
+                timeView: ChronicleTimeView.yesterday,
+                selectedTimeView: selectedTimeView,
+              ),
+              _buildMaterialTimeViewTile(
+                context: context,
+                ref: ref,
+                timeView: ChronicleTimeView.thisWeek,
+                selectedTimeView: selectedTimeView,
+              ),
+              _buildMaterialTimeViewTile(
+                context: context,
+                ref: ref,
+                timeView: ChronicleTimeView.lastWeek,
+                selectedTimeView: selectedTimeView,
+              ),
               const SizedBox(height: 12),
               _SectionHeader(title: l10n.notebooksSectionLabel),
               _buildMaterialNotebookRootTile(
@@ -199,6 +227,7 @@ class _MatterSidebar extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
     required String? selectedMatterId,
+    required ChronicleTimeView? selectedTimeView,
     required bool showNotebook,
     required String? selectedNotebookFolderId,
     required List<NotebookFolderTreeNode> notebookTree,
@@ -323,6 +352,13 @@ class _MatterSidebar extends ConsumerWidget {
                       _displayMatterTitle(context, matter),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      style: _macSidebarItemLabelStyle(
+                        context,
+                        selected:
+                            selectedTimeView == null &&
+                            !showNotebook &&
+                            selectedMatterId == matter.id,
+                      ),
                     ),
                   ),
                 );
@@ -427,6 +463,13 @@ class _MatterSidebar extends ConsumerWidget {
     addMatterItems(sections.uncategorized);
 
     addSection(l10n.viewsSectionLabel);
+    _addMacTimeViewItems(
+      context: context,
+      ref: ref,
+      sidebarItems: sidebarItems,
+      selectableEntries: selectableEntries,
+      selectedTimeView: selectedTimeView,
+    );
     addSection(l10n.notebooksSectionLabel);
     _addMacNotebookRootItem(
       context: context,
@@ -455,6 +498,8 @@ class _MatterSidebar extends ConsumerWidget {
         ? (selectedNotebookFolderId == null
               ? 'notebook:root'
               : 'notebook:$selectedNotebookFolderId')
+        : selectedTimeView != null
+        ? 'view:${selectedTimeView.name}'
         : selectedMatterId == null
         ? selectableEntries.first.key
         : 'matter:$selectedMatterId';
@@ -569,12 +614,22 @@ class _MatterSidebar extends ConsumerWidget {
   }
 
   void _selectNotebookFolder(WidgetRef ref, String? folderId) {
+    ref.read(selectedTimeViewProvider.notifier).set(null);
     ref.read(showNotebookProvider.notifier).set(true);
     ref.read(showConflictsProvider.notifier).set(false);
     ref.read(selectedMatterIdProvider.notifier).set(null);
     ref.read(selectedPhaseIdProvider.notifier).set(null);
     ref.read(selectedNotebookFolderIdProvider.notifier).set(folderId);
     ref.invalidate(notebookNoteListProvider);
+  }
+
+  void _selectTimeView(WidgetRef ref, ChronicleTimeView timeView) {
+    ref.read(showNotebookProvider.notifier).set(false);
+    ref.read(showConflictsProvider.notifier).set(false);
+    ref.read(selectedMatterIdProvider.notifier).set(null);
+    ref.read(selectedPhaseIdProvider.notifier).set(null);
+    ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
+    ref.read(selectedTimeViewProvider.notifier).set(timeView);
   }
 
   Future<void> _moveDroppedNoteToNotebook({
@@ -723,6 +778,28 @@ class _MatterSidebar extends ConsumerWidget {
     }
   }
 
+  Widget _buildMaterialTimeViewTile({
+    required BuildContext context,
+    required WidgetRef ref,
+    required ChronicleTimeView timeView,
+    required ChronicleTimeView? selectedTimeView,
+  }) {
+    return ListTile(
+      key: ValueKey<String>('sidebar_view_${timeView.name}'),
+      dense: true,
+      selected: selectedTimeView == timeView,
+      title: Text(
+        _timeViewLabel(context, timeView),
+        style: _materialSidebarItemLabelStyle(
+          context,
+          selected: selectedTimeView == timeView,
+        ),
+      ),
+      leading: const Icon(Icons.schedule),
+      onTap: () => _selectTimeView(ref, timeView),
+    );
+  }
+
   Widget _buildMaterialNotebookRootTile({
     required BuildContext context,
     required WidgetRef ref,
@@ -754,7 +831,13 @@ class _MatterSidebar extends ConsumerWidget {
               : null,
           child: ListTile(
             selected: showNotebook && selectedNotebookFolderId == null,
-            title: Text(l10n.notebookLabel),
+            title: Text(
+              l10n.notebookLabel,
+              style: _materialSidebarItemLabelStyle(
+                context,
+                selected: showNotebook && selectedNotebookFolderId == null,
+              ),
+            ),
             trailing: PopupMenuButton<String>(
               icon: const Icon(CupertinoIcons.ellipsis_circle),
               onSelected: (value) async {
@@ -817,7 +900,13 @@ class _MatterSidebar extends ConsumerWidget {
           child: ListTile(
             contentPadding: EdgeInsets.only(left: 12 + (depth * 16), right: 8),
             selected: showNotebook && selectedNotebookFolderId == folder.id,
-            title: Text(folder.name),
+            title: Text(
+              folder.name,
+              style: _materialSidebarItemLabelStyle(
+                context,
+                selected: showNotebook && selectedNotebookFolderId == folder.id,
+              ),
+            ),
             trailing: PopupMenuButton<String>(
               icon: const Icon(CupertinoIcons.ellipsis_circle),
               onSelected: (value) async {
@@ -933,11 +1022,10 @@ class _MatterSidebar extends ConsumerWidget {
               ),
               child: Text(
                 l10n.notebookLabel,
-                style: (showNotebook && selectedNotebookFolderId == null)
-                    ? MacosTheme.of(
-                        context,
-                      ).typography.body.copyWith(fontWeight: FontWeight.w700)
-                    : null,
+                style: _macSidebarItemLabelStyle(
+                  context,
+                  selected: showNotebook && selectedNotebookFolderId == null,
+                ),
               ),
             );
           },
@@ -961,6 +1049,38 @@ class _MatterSidebar extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _addMacTimeViewItems({
+    required BuildContext context,
+    required WidgetRef ref,
+    required List<SidebarItem> sidebarItems,
+    required List<_MacSidebarSelectableEntry> selectableEntries,
+    required ChronicleTimeView? selectedTimeView,
+  }) {
+    for (final timeView in ChronicleTimeView.values) {
+      selectableEntries.add(
+        _MacSidebarSelectableEntry(
+          key: 'view:${timeView.name}',
+          onSelected: () {
+            _selectTimeView(ref, timeView);
+          },
+        ),
+      );
+      sidebarItems.add(
+        SidebarItem(
+          leading: const MacosIcon(CupertinoIcons.calendar, size: 14),
+          label: Text(
+            _timeViewLabel(context, timeView),
+            key: ValueKey<String>('macos_sidebar_view_${timeView.name}'),
+            style: _macSidebarItemLabelStyle(
+              context,
+              selected: selectedTimeView == timeView,
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   void _addMacNotebookFolderItems({
@@ -1021,11 +1141,11 @@ class _MatterSidebar extends ConsumerWidget {
                   folder.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: (showNotebook && selectedNotebookFolderId == folder.id)
-                      ? MacosTheme.of(
-                          context,
-                        ).typography.body.copyWith(fontWeight: FontWeight.w700)
-                      : null,
+                  style: _macSidebarItemLabelStyle(
+                    context,
+                    selected:
+                        showNotebook && selectedNotebookFolderId == folder.id,
+                  ),
                 ),
               );
             },
@@ -1357,6 +1477,7 @@ class _MatterSidebar extends ConsumerWidget {
   }
 
   void _selectMatter(WidgetRef ref, Matter matter) {
+    ref.read(selectedTimeViewProvider.notifier).set(null);
     ref.read(showNotebookProvider.notifier).set(false);
     ref.read(showConflictsProvider.notifier).set(false);
     ref.read(selectedMatterIdProvider.notifier).set(matter.id);
@@ -1369,6 +1490,31 @@ class _MatterSidebar extends ConsumerWidget {
         );
     ref.invalidate(noteListProvider);
   }
+}
+
+TextStyle _materialSidebarItemLabelStyle(
+  BuildContext context, {
+  required bool selected,
+}) {
+  final base =
+      Theme.of(context).textTheme.titleMedium ?? const TextStyle(fontSize: 16);
+  final baseSize = base.fontSize ?? 16;
+  return base.copyWith(
+    fontSize: selected ? baseSize + 1 : baseSize - 0.5,
+    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+  );
+}
+
+TextStyle _macSidebarItemLabelStyle(
+  BuildContext context, {
+  required bool selected,
+}) {
+  final base = MacosTheme.of(context).typography.body;
+  final baseSize = base.fontSize ?? 14;
+  return base.copyWith(
+    fontSize: selected ? baseSize + 1 : baseSize - 0.5,
+    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+  );
 }
 
 class _MacSidebarSelectableEntry {
@@ -1657,7 +1803,15 @@ class _MatterList extends StatelessWidget {
           ),
           title: Row(
             children: <Widget>[
-              Expanded(child: Text(matter.title)),
+              Expanded(
+                child: Text(
+                  matter.title,
+                  style: _materialSidebarItemLabelStyle(
+                    context,
+                    selected: selectedMatterId == matter.id,
+                  ),
+                ),
+              ),
               const SizedBox(width: 4),
               _MatterStatusChip(status: matter.status),
             ],

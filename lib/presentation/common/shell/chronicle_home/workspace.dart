@@ -29,6 +29,11 @@ class _MainWorkspace extends ConsumerWidget {
       );
     }
 
+    final selectedTimeView = ref.watch(selectedTimeViewProvider);
+    if (selectedTimeView != null) {
+      return const _TimeViewWorkspace();
+    }
+
     final showNotebook = ref.watch(showNotebookProvider);
     if (showNotebook) {
       return const _NotebookWorkspace();
@@ -47,6 +52,51 @@ class _MainWorkspace extends ConsumerWidget {
     }
 
     return _MatterWorkspace(matter: selected);
+  }
+}
+
+class _TimeViewWorkspace extends ConsumerWidget {
+  const _TimeViewWorkspace();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final summaryAsync = ref.watch(timeViewSummaryProvider);
+    final sections = ref.watch(mattersControllerProvider).asData?.value;
+    final folders =
+        ref.watch(notebookFoldersProvider).asData?.value ?? <NotebookFolder>[];
+    final matterById = <String, Matter>{};
+    if (sections != null) {
+      for (final matter in _allMattersFromSections(sections)) {
+        matterById[matter.id] = matter;
+      }
+    }
+    final notebookFolderById = <String, NotebookFolder>{
+      for (final folder in folders) folder.id: folder,
+    };
+
+    return summaryAsync.when(
+      loading: () => Center(child: _adaptiveLoadingIndicator(context)),
+      error: (error, _) => Center(child: Text('$error')),
+      data: (summary) {
+        if (summary == null) {
+          return Center(
+            child: Text(l10n.selectMatterNotebookOrConflictsPrompt),
+          );
+        }
+        return ChronicleTimeViewsWorkspace(
+          summary: summary,
+          matterById: matterById,
+          notebookFolderById: notebookFolderById,
+          useMacOSNativeUI: _isMacOSNativeUIContext(context),
+          onOpenNote: (noteId) {
+            return ref
+                .read(noteEditorControllerProvider.notifier)
+                .openNoteInWorkspace(noteId, openInReadMode: true);
+          },
+        );
+      },
+    );
   }
 }
 

@@ -1,5 +1,6 @@
 import 'package:chronicle/app/app.dart';
 import 'package:chronicle/app/app_providers.dart';
+import 'package:chronicle/core/clock.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
 import 'package:chronicle/domain/entities/category.dart';
 import 'package:chronicle/domain/entities/enums.dart';
@@ -1646,6 +1647,171 @@ Inline \$x^2\$ and:
     await tester.pumpAndSettle();
 
     expect(_SpyNoteEditorController.openedNoteIds, contains('note-2'));
+  });
+
+  testWidgets('material sidebar shows time-based view entries', (tester) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          clockProvider.overrideWithValue(
+            _FixedClock(DateTime.utc(2026, 2, 18, 23)),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('sidebar_view_today')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('sidebar_view_yesterday')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('sidebar_view_thisWeek')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('sidebar_view_lastWeek')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'material Today view groups matter notes and notebook notes, and updates title',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            clockProvider.overrideWithValue(
+              _FixedClock(DateTime.utc(2026, 2, 18, 23)),
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sidebar_view_today')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('time_view_workspace_today')),
+        findsOneWidget,
+      );
+      expect(find.text('Matters (1)'), findsOneWidget);
+      expect(find.text('Notebook (1)'), findsOneWidget);
+      expect(find.text('Editor Note'), findsOneWidget);
+      expect(find.text('Search Hit'), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('Today')),
+        findsOneWidget,
+      );
+
+      final mattersDy = tester.getTopLeft(find.text('Matters (1)')).dy;
+      final notebookDy = tester.getTopLeft(find.text('Notebook (1)')).dy;
+      expect(notebookDy, greaterThan(mattersDy));
+    },
+  );
+
+  testWidgets('clicking a time-view note opens the note in native context', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          clockProvider.overrideWithValue(
+            _FixedClock(DateTime.utc(2026, 2, 18, 23)),
+          ),
+          noteEditorViewModeProvider.overrideWithBuild(
+            (ref, notifier) => NoteEditorViewMode.edit,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('sidebar_view_today')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('time_view_note_note-2')),
+    );
+    await tester.pumpAndSettle();
+
+    final container = _containerForApp(tester);
+    expect(container.read(selectedTimeViewProvider), isNull);
+    expect(container.read(showOrphansProvider), isTrue);
+    expect(container.read(selectedNotebookFolderIdProvider), isNull);
+    expect(container.read(selectedNoteIdProvider), 'note-2');
+    expect(container.read(noteEditorViewModeProvider), NoteEditorViewMode.read);
+  });
+
+  testWidgets('switching away from time view clears selected time view state', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          clockProvider.overrideWithValue(
+            _FixedClock(DateTime.utc(2026, 2, 18, 23)),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('sidebar_view_today')));
+    await tester.pumpAndSettle();
+
+    final container = _containerForApp(tester);
+    expect(container.read(selectedTimeViewProvider), ChronicleTimeView.today);
+
+    await tester.tap(find.text('Matter One').first);
+    await tester.pumpAndSettle();
+
+    expect(container.read(selectedTimeViewProvider), isNull);
+    expect(container.read(selectedMatterIdProvider), 'matter-1');
+    expect(container.read(showOrphansProvider), isFalse);
   });
 
   testWidgets(
@@ -3370,6 +3536,15 @@ class _NoopSyncRepository implements SyncRepository {
     lastOptions = options;
     return _nextResult ?? SyncResult.empty(DateTime.now().toUtc());
   }
+}
+
+class _FixedClock implements Clock {
+  const _FixedClock(this._nowUtc);
+
+  final DateTime _nowUtc;
+
+  @override
+  DateTime nowUtc() => _nowUtc;
 }
 
 class _FakeSettingsRepository implements SettingsRepository {

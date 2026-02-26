@@ -84,6 +84,47 @@
   "notebookRootLabel": "Root",
   "untitledMatterLabel": "(untitled matter)",
   "viewsSectionLabel": "Views",
+  "timeViewTodayLabel": "Today",
+  "timeViewYesterdayLabel": "Yesterday",
+  "timeViewThisWeekLabel": "This Week",
+  "timeViewLastWeekLabel": "Last Week",
+  "timeViewSummaryCounts": "{notesCount} notes • {matterCount} matters • {notebookCount} notebook",
+  "@timeViewSummaryCounts": {
+    "placeholders": {
+      "notesCount": {
+        "type": "int"
+      },
+      "matterCount": {
+        "type": "int"
+      },
+      "notebookCount": {
+        "type": "int"
+      }
+    }
+  },
+  "timeViewMatterSectionLabel": "Matters ({count})",
+  "@timeViewMatterSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeViewNotebookSectionLabel": "Notebook ({count})",
+  "@timeViewNotebookSectionLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "timeViewNoNotesMessage": "No notes in this time window.",
+  "timeViewActivityAtLabel": "Activity {time}",
+  "@timeViewActivityAtLabel": {
+    "placeholders": {
+      "time": {}
+    }
+  },
   "notebooksSectionLabel": "Notebooks",
   "matterActionsTitle": "Matter Actions",
   "editAction": "Edit",

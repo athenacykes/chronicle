@@ -90,6 +90,16 @@ bool _hasSearchText(String value) {
   return nonWhitespace.length >= 2;
 }
 
+String _timeViewLabel(BuildContext context, ChronicleTimeView timeView) {
+  final l10n = context.l10n;
+  return switch (timeView) {
+    ChronicleTimeView.today => l10n.timeViewTodayLabel,
+    ChronicleTimeView.yesterday => l10n.timeViewYesterdayLabel,
+    ChronicleTimeView.thisWeek => l10n.timeViewThisWeekLabel,
+    ChronicleTimeView.lastWeek => l10n.timeViewLastWeekLabel,
+  };
+}
+
 String _searchResultContextLine({
   required BuildContext context,
   required Note note,
