@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -45,6 +46,20 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
   final IdGenerator _idGenerator;
   final Clock _clock;
 
+  void _logInfo(String message) {
+    developer.log(message, name: 'ChronicleImport');
+  }
+
+  void _logWarning(NotebookImportWarning warning) {
+    final source = warning.sourcePath == null || warning.sourcePath!.isEmpty
+        ? ''
+        : ' source="${p.basename(warning.sourcePath!)}"';
+    final item = warning.itemId == null || warning.itemId!.isEmpty
+        ? ''
+        : ' itemId="${warning.itemId}"';
+    _logInfo('WARNING$source$item ${warning.message}');
+  }
+
   @override
   Future<NotebookImportBatchResult> importFiles({
     required List<String> sourcePaths,
@@ -53,7 +68,11 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
         .map((path) => path.trim())
         .where((path) => path.isNotEmpty)
         .toList(growable: false);
+    _logInfo(
+      'Starting notebook import for ${normalizedPaths.length} file(s): ${normalizedPaths.map(p.basename).join(', ')}',
+    );
     if (normalizedPaths.isEmpty) {
+      _logInfo('No import source paths provided.');
       return const NotebookImportBatchResult(
         files: <NotebookImportFileResult>[],
       );
@@ -62,32 +81,56 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
     final results = <NotebookImportFileResult>[];
     for (final sourcePath in normalizedPaths) {
       try {
-        results.add(await _importSingleFile(sourcePath));
-      } catch (error) {
-        results.add(
-          NotebookImportFileResult(
-            sourcePath: sourcePath,
-            importedNoteCount: 0,
-            importedFolderCount: 0,
-            importedResourceCount: 0,
-            warnings: <NotebookImportWarning>[
-              NotebookImportWarning(
-                sourcePath: sourcePath,
-                message: 'Import failed: $error',
-              ),
-            ],
-          ),
+        _logInfo('Importing source file: $sourcePath');
+        final result = await _importSingleFile(sourcePath);
+        _logInfo(
+          'Completed import for ${p.basename(sourcePath)}: notes=${result.importedNoteCount}, folders=${result.importedFolderCount}, resources=${result.importedResourceCount}, warnings=${result.warningCount}',
         );
+        if (result.warnings.isNotEmpty) {
+          for (final warning in result.warnings.take(100)) {
+            _logWarning(warning);
+          }
+          if (result.warnings.length > 100) {
+            _logInfo(
+              '... plus ${result.warnings.length - 100} additional warning(s).',
+            );
+          }
+        }
+        results.add(result);
+      } catch (error) {
+        final failure = NotebookImportFileResult(
+          sourcePath: sourcePath,
+          importedNoteCount: 0,
+          importedFolderCount: 0,
+          importedResourceCount: 0,
+          warnings: <NotebookImportWarning>[
+            NotebookImportWarning(
+              sourcePath: sourcePath,
+              message: 'Import failed: $error',
+            ),
+          ],
+        );
+        _logInfo(
+          'Import crashed for ${p.basename(sourcePath)} with unhandled error: $error',
+        );
+        for (final warning in failure.warnings) {
+          _logWarning(warning);
+        }
+        results.add(failure);
       }
     }
 
-    return NotebookImportBatchResult(files: results);
+    final batch = NotebookImportBatchResult(files: results);
+    _logInfo(
+      'Notebook import batch finished: notes=${batch.importedNoteCount}, folders=${batch.importedFolderCount}, resources=${batch.importedResourceCount}, warnings=${batch.warningCount}',
+    );
+    return batch;
   }
 
   Future<NotebookImportFileResult> _importSingleFile(String sourcePath) async {
     final sourceFile = File(sourcePath);
     if (!await sourceFile.exists()) {
-      return NotebookImportFileResult(
+      final failure = NotebookImportFileResult(
         sourcePath: sourcePath,
         importedNoteCount: 0,
         importedFolderCount: 0,
@@ -99,9 +142,16 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
           ),
         ],
       );
+      for (final warning in failure.warnings) {
+        _logWarning(warning);
+      }
+      return failure;
     }
 
     final extension = p.extension(sourcePath).toLowerCase();
+    _logInfo(
+      'Detected import source extension "$extension" for ${p.basename(sourcePath)}',
+    );
     if (extension == '.enex') {
       return _importEnexFile(sourceFile);
     }
@@ -109,7 +159,7 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
       return _importJexFile(sourceFile);
     }
 
-    return NotebookImportFileResult(
+    final failure = NotebookImportFileResult(
       sourcePath: sourcePath,
       importedNoteCount: 0,
       importedFolderCount: 0,
@@ -121,11 +171,16 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
         ),
       ],
     );
+    for (final warning in failure.warnings) {
+      _logWarning(warning);
+    }
+    return failure;
   }
 
   Future<NotebookImportFileResult> _importEnexFile(File sourceFile) async {
     final sourcePath = sourceFile.path;
     final warnings = <NotebookImportWarning>[];
+    _logInfo('ENEX import start: $sourcePath');
     final layout = await _layout();
     final folderResolver = await _newFolderResolver();
     final now = _clock.nowUtc();
@@ -133,8 +188,9 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
     String raw;
     try {
       raw = await sourceFile.readAsString();
+      _logInfo('Read ENEX file (${raw.length} chars).');
     } catch (error) {
-      return NotebookImportFileResult(
+      final failure = NotebookImportFileResult(
         sourcePath: sourcePath,
         importedNoteCount: 0,
         importedFolderCount: 0,
@@ -146,13 +202,17 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
           ),
         ],
       );
+      for (final warning in failure.warnings) {
+        _logWarning(warning);
+      }
+      return failure;
     }
 
     XmlDocument document;
     try {
       document = XmlDocument.parse(raw);
     } catch (error) {
-      return NotebookImportFileResult(
+      final failure = NotebookImportFileResult(
         sourcePath: sourcePath,
         importedNoteCount: 0,
         importedFolderCount: 0,
@@ -164,14 +224,24 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
           ),
         ],
       );
+      for (final warning in failure.warnings) {
+        _logWarning(warning);
+      }
+      return failure;
     }
+
+    final noteElements = document
+        .findAllElements('note')
+        .toList(growable: false);
+    _logInfo('ENEX contains ${noteElements.length} note node(s).');
 
     var importedNotes = 0;
     var importedResources = 0;
-    for (final noteElement in document.findAllElements('note')) {
+    for (final noteElement in noteElements) {
       final noteTitle = _directChildText(noteElement, 'title').trim().isEmpty
           ? 'Untitled Note'
           : _directChildText(noteElement, 'title').trim();
+      _logInfo('Importing ENEX note "$noteTitle"...');
       final noteId = _idGenerator.newId();
       final createdAt = _parseEnexDate(
         _directChildText(noteElement, 'created'),
@@ -193,6 +263,7 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
 
       try {
         final resources = noteElement.findElements('resource').toList();
+        _logInfo('ENEX note "$noteTitle" has ${resources.length} resource(s).');
         for (var i = 0; i < resources.length; i++) {
           final resource = resources[i];
           final dataElement = resource.getElement('data');
@@ -287,6 +358,9 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
           updatedAt: updatedAt,
         );
         importedNotes += 1;
+        _logInfo(
+          'Imported ENEX note "$noteTitle" as $noteId (attachments=${attachments.length}, tags=${tags.length}).',
+        );
       } catch (error) {
         warnings.add(
           NotebookImportWarning(
@@ -298,18 +372,23 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
       }
     }
 
-    return NotebookImportFileResult(
+    final result = NotebookImportFileResult(
       sourcePath: sourcePath,
       importedNoteCount: importedNotes,
       importedFolderCount: folderResolver.createdCount,
       importedResourceCount: importedResources,
       warnings: warnings,
     );
+    _logInfo(
+      'ENEX import completed: notes=${result.importedNoteCount}, resources=${result.importedResourceCount}, warnings=${result.warningCount}',
+    );
+    return result;
   }
 
   Future<NotebookImportFileResult> _importJexFile(File sourceFile) async {
     final sourcePath = sourceFile.path;
     final warnings = <NotebookImportWarning>[];
+    _logInfo('JEX import start: $sourcePath');
     final layout = await _layout();
     final folderResolver = await _newFolderResolver();
     final now = _clock.nowUtc();
@@ -317,10 +396,15 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
     final tempDir = await Directory.systemTemp.createTemp('chronicle-jex-');
     try {
       final archiveBytes = await sourceFile.readAsBytes();
+      _logInfo(
+        'Read JEX archive bytes: ${archiveBytes.length} bytes. Temp dir: ${tempDir.path}',
+      );
       Archive archive;
       try {
         archive = TarDecoder().decodeBytes(archiveBytes);
+        _logInfo('Decoded TAR archive with ${archive.length} entrie(s).');
       } catch (error) {
+        _logInfo('Failed to decode JEX TAR archive: $error');
         return NotebookImportFileResult(
           sourcePath: sourcePath,
           importedNoteCount: 0,
@@ -359,12 +443,23 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
         );
         extractedFilesByRelativePath[relativePath] = target;
       }
+      _logInfo(
+        'Extracted ${extractedFilesByRelativePath.length} file entrie(s) from JEX.',
+      );
 
       final parsed = await _parseJexItems(
         sourcePath: sourcePath,
         filesByRelativePath: extractedFilesByRelativePath,
         warnings: warnings,
       );
+      _logInfo(
+        'Parsed JEX items: folders=${parsed.foldersById.length}, notes=${parsed.notesById.length}, resources=${parsed.resourcesById.length}, tags=${parsed.tagsById.length}, noteTagLinks=${parsed.tagIdsByNoteId.length}, resourceBinaries=${parsed.resourceBinaryPathById.length}',
+      );
+      if (parsed.notesById.isEmpty) {
+        _logInfo(
+          'No note items were parsed from this JEX. This usually means the archive structure/schema differs from expected Joplin raw-export format.',
+        );
+      }
 
       final folderIdByOldId = <String, String?>{};
       Future<String?> ensureFolder(String? oldFolderId) async {
@@ -404,6 +499,7 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
       final sortedNotes = parsed.notesById.values.toList()
         ..sort((a, b) => a.id.compareTo(b.id));
       for (final note in sortedNotes) {
+        _logInfo('Importing JEX note id=${note.id} title="${note.title}"');
         final newNoteId = newNoteIdByOldId[note.id];
         if (newNoteId == null) {
           warnings.add(
@@ -456,6 +552,9 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
           );
 
           importedNotes += 1;
+          _logInfo(
+            'Imported JEX note id=${note.id} -> $newNoteId (attachments=${rewritten.attachments.length}, importedResources=${rewritten.importedResourceCount}, tags=${tags.length})',
+          );
         } catch (error) {
           warnings.add(
             NotebookImportWarning(
@@ -467,13 +566,17 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
         }
       }
 
-      return NotebookImportFileResult(
+      final result = NotebookImportFileResult(
         sourcePath: sourcePath,
         importedNoteCount: importedNotes,
         importedFolderCount: folderResolver.createdCount,
         importedResourceCount: importedResources,
         warnings: warnings,
       );
+      _logInfo(
+        'JEX import completed: notes=${result.importedNoteCount}, foldersCreated=${result.importedFolderCount}, resources=${result.importedResourceCount}, warnings=${result.warningCount}',
+      );
+      return result;
     } finally {
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
@@ -486,21 +589,124 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
     required Map<String, File> filesByRelativePath,
     required List<NotebookImportWarning> warnings,
   }) async {
+    _logInfo(
+      'Parsing JEX extracted payload: ${filesByRelativePath.length} file entrie(s).',
+    );
     final foldersById = <String, _JexFolder>{};
     final notesById = <String, _JexNote>{};
     final resourcesById = <String, _JexResource>{};
     final tagsById = <String, _JexTag>{};
     final tagIdsByNoteId = <String, Set<String>>{};
     final resourceBinaryPathById = <String, String>{};
+    var jsonItemCount = 0;
+    var unknownTypeCount = 0;
+    var rawMarkdownItemCount = 0;
 
     final markdownBodyByNoteId = <String, String>{};
+    void processJexItem({
+      required Map<String, dynamic> itemMap,
+      required String locationLabel,
+      String? bodyFallback,
+      String? titleFallback,
+    }) {
+      final itemType = _asInt(itemMap['type_']);
+      final itemId = _asString(itemMap['id']).trim();
+      if (itemType == null || itemId.isEmpty) {
+        warnings.add(
+          NotebookImportWarning(
+            sourcePath: sourcePath,
+            message:
+                'Skipped JEX item with missing id/type in "$locationLabel".',
+          ),
+        );
+        return;
+      }
+
+      switch (itemType) {
+        case 1:
+          final bodyFromItem = _asString(itemMap['body']);
+          final noteBody = bodyFromItem.trim().isNotEmpty
+              ? bodyFromItem
+              : (bodyFallback ?? markdownBodyByNoteId[itemId] ?? '');
+          final titleFromItem = _asString(itemMap['title']);
+          final noteTitle = titleFromItem.trim().isNotEmpty
+              ? titleFromItem
+              : (titleFallback ?? '');
+          notesById[itemId] = _JexNote(
+            id: itemId,
+            parentId: _asString(itemMap['parent_id']).trim(),
+            title: noteTitle,
+            body: noteBody,
+            createdAt: _parseJexTimestamp(
+              itemMap['user_created_time'] ?? itemMap['created_time'],
+            ),
+            updatedAt: _parseJexTimestamp(
+              itemMap['user_updated_time'] ?? itemMap['updated_time'],
+            ),
+          );
+          break;
+        case 2:
+          final folderTitle = _asString(itemMap['title']).trim().isNotEmpty
+              ? _asString(itemMap['title'])
+              : (titleFallback ?? '');
+          foldersById[itemId] = _JexFolder(
+            id: itemId,
+            parentId: _asString(itemMap['parent_id']).trim(),
+            title: folderTitle,
+          );
+          break;
+        case 4:
+          final resourceTitle = _asString(itemMap['title']).trim().isNotEmpty
+              ? _asString(itemMap['title'])
+              : (titleFallback ?? '');
+          resourcesById[itemId] = _JexResource(
+            id: itemId,
+            title: resourceTitle,
+            mime: _asString(itemMap['mime']),
+            fileName: _asString(itemMap['filename']),
+          );
+          break;
+        case 5:
+          final tagTitle = _asString(itemMap['title']).trim().isNotEmpty
+              ? _asString(itemMap['title'])
+              : (titleFallback ?? '');
+          tagsById[itemId] = _JexTag(id: itemId, title: tagTitle);
+          break;
+        case 6:
+          final noteId = _asString(itemMap['note_id']).trim();
+          final tagId = _asString(itemMap['tag_id']).trim();
+          if (noteId.isNotEmpty && tagId.isNotEmpty) {
+            tagIdsByNoteId.putIfAbsent(noteId, () => <String>{}).add(tagId);
+          }
+          break;
+        default:
+          unknownTypeCount += 1;
+          _logInfo(
+            'Ignored unsupported JEX item type_=$itemType in "$locationLabel".',
+          );
+          break;
+      }
+    }
+
     for (final entry in filesByRelativePath.entries) {
       final relativePath = entry.key;
       final lowerExt = p.extension(relativePath).toLowerCase();
       if (lowerExt == '.md') {
-        final basename = p.basenameWithoutExtension(relativePath);
         try {
-          markdownBodyByNoteId[basename] = await entry.value.readAsString();
+          final markdown = await entry.value.readAsString();
+          final rawItem = _parseJexRawMarkdownItem(markdown);
+          if (rawItem != null) {
+            rawMarkdownItemCount += 1;
+            processJexItem(
+              itemMap: rawItem.metadata,
+              locationLabel: relativePath,
+              bodyFallback: rawItem.body,
+              titleFallback: rawItem.title,
+            );
+          } else {
+            final basename = p.basenameWithoutExtension(relativePath);
+            markdownBodyByNoteId[basename] = markdown;
+          }
         } catch (_) {
           // Ignore markdown read errors here; json body may still exist.
         }
@@ -512,6 +718,7 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
       if (p.extension(relativePath).toLowerCase() != '.json') {
         continue;
       }
+      jsonItemCount += 1;
 
       Map<String, dynamic> jsonMap;
       try {
@@ -531,67 +738,7 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
         continue;
       }
 
-      final itemType = _asInt(jsonMap['type_']);
-      final itemId = _asString(jsonMap['id']).trim();
-      if (itemType == null || itemId.isEmpty) {
-        warnings.add(
-          NotebookImportWarning(
-            sourcePath: sourcePath,
-            message:
-                'Skipped JEX item with missing id/type in "$relativePath".',
-          ),
-        );
-        continue;
-      }
-
-      switch (itemType) {
-        case 1:
-          final bodyFromJson = _asString(jsonMap['body']);
-          final noteBody = bodyFromJson.trim().isEmpty
-              ? (markdownBodyByNoteId[itemId] ?? '')
-              : bodyFromJson;
-          notesById[itemId] = _JexNote(
-            id: itemId,
-            parentId: _asString(jsonMap['parent_id']).trim(),
-            title: _asString(jsonMap['title']),
-            body: noteBody,
-            createdAt: _parseMillisTimestamp(
-              jsonMap['user_created_time'] ?? jsonMap['created_time'],
-            ),
-            updatedAt: _parseMillisTimestamp(
-              jsonMap['user_updated_time'] ?? jsonMap['updated_time'],
-            ),
-          );
-          break;
-        case 2:
-          foldersById[itemId] = _JexFolder(
-            id: itemId,
-            parentId: _asString(jsonMap['parent_id']).trim(),
-            title: _asString(jsonMap['title']),
-          );
-          break;
-        case 4:
-          resourcesById[itemId] = _JexResource(
-            id: itemId,
-            title: _asString(jsonMap['title']),
-            mime: _asString(jsonMap['mime']),
-            fileName: _asString(jsonMap['filename']),
-          );
-          break;
-        case 5:
-          tagsById[itemId] = _JexTag(
-            id: itemId,
-            title: _asString(jsonMap['title']),
-          );
-          break;
-        case 6:
-          final noteId = _asString(jsonMap['note_id']).trim();
-          final tagId = _asString(jsonMap['tag_id']).trim();
-          if (noteId.isNotEmpty && tagId.isNotEmpty) {
-            tagIdsByNoteId.putIfAbsent(noteId, () => <String>{}).add(tagId);
-          }
-          break;
-      }
+      processJexItem(itemMap: jsonMap, locationLabel: relativePath);
     }
 
     for (final resourceId in resourcesById.keys) {
@@ -603,6 +750,10 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
         resourceBinaryPathById[resourceId] = resolved;
       }
     }
+
+    _logInfo(
+      'JEX parse summary: jsonItems=$jsonItemCount, rawMarkdownItems=$rawMarkdownItemCount, markdownBodies=${markdownBodyByNoteId.length}, folders=${foldersById.length}, notes=${notesById.length}, resources=${resourcesById.length}, tags=${tagsById.length}, noteTagLinks=${tagIdsByNoteId.length}, resourceBinaries=${resourceBinaryPathById.length}, unknownTypeItems=$unknownTypeCount',
+    );
 
     return _ParsedJexItems(
       foldersById: foldersById,
@@ -924,12 +1075,77 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
     }
   }
 
-  DateTime? _parseMillisTimestamp(dynamic value) {
+  DateTime? _parseJexTimestamp(dynamic value) {
     final millis = _asInt(value);
-    if (millis == null || millis <= 0) {
+    if (millis != null && millis > 0) {
+      return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+    }
+
+    final raw = _asString(value).trim();
+    if (raw.isEmpty) {
       return null;
     }
-    return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+
+    final parsed = DateTime.tryParse(raw);
+    return parsed?.toUtc();
+  }
+
+  _ParsedRawJexItem? _parseJexRawMarkdownItem(String markdown) {
+    final normalized = markdown.replaceAll('\r\n', '\n');
+    final lines = normalized.split('\n');
+    final metadata = <String, dynamic>{};
+
+    var index = lines.length - 1;
+    var foundMetadataLine = false;
+
+    while (index >= 0) {
+      final line = lines[index];
+      if (line.trim().isEmpty) {
+        index -= 1;
+        continue;
+      }
+
+      final match = RegExp(r'^([A-Za-z0-9_]+):\s?(.*)$').firstMatch(line);
+      if (match == null) {
+        break;
+      }
+
+      foundMetadataLine = true;
+      metadata[match.group(1)!] = match.group(2) ?? '';
+      index -= 1;
+    }
+
+    if (!foundMetadataLine ||
+        _asString(metadata['id']).trim().isEmpty ||
+        _asInt(metadata['type_']) == null) {
+      return null;
+    }
+
+    final contentLines = lines.sublist(0, index + 1);
+    while (contentLines.isNotEmpty && contentLines.last.trim().isEmpty) {
+      contentLines.removeLast();
+    }
+
+    final content = contentLines.join('\n');
+    if (content.isEmpty) {
+      return _ParsedRawJexItem(title: '', body: '', metadata: metadata);
+    }
+
+    final firstLineBreak = content.indexOf('\n');
+    if (firstLineBreak < 0) {
+      return _ParsedRawJexItem(
+        title: content.trim(),
+        body: '',
+        metadata: metadata,
+      );
+    }
+
+    final title = content.substring(0, firstLineBreak).trim();
+    var body = content.substring(firstLineBreak + 1);
+    body = body.replaceFirst(RegExp(r'^\n+'), '');
+    body = body.replaceFirst(RegExp(r'\n+$'), '');
+
+    return _ParsedRawJexItem(title: title, body: body, metadata: metadata);
   }
 
   String _directChildText(XmlElement parent, String childName) {
@@ -1231,6 +1447,18 @@ class _ParsedJexItems {
   final Map<String, _JexTag> tagsById;
   final Map<String, Set<String>> tagIdsByNoteId;
   final Map<String, String> resourceBinaryPathById;
+}
+
+class _ParsedRawJexItem {
+  const _ParsedRawJexItem({
+    required this.title,
+    required this.body,
+    required this.metadata,
+  });
+
+  final String title;
+  final String body;
+  final Map<String, dynamic> metadata;
 }
 
 class _JexFolder {

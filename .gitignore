@@ -43,6 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Dev tools
+.codebuddy/
+.claude/
 **/AGENTS.md
+**/CLAUDE.md
 
 /lib/l10n/generated/
+
+# Flutter devtools options
+devtools_options.yaml

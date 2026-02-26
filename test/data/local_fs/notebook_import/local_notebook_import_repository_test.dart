@@ -298,6 +298,102 @@ void main() {
     },
   );
 
+  test('imports JEX raw markdown items without JSON sidecars', () async {
+    final resourceBytes = Uint8List.fromList(<int>[8, 6, 7, 5, 3, 0, 9]);
+    final jexFile = File('${tempDir.path}/raw-items.jex');
+    await jexFile.writeAsBytes(
+      _buildJexArchive(<String, List<int>>{
+        'f1.md': utf8.encode('''
+Projects
+
+id: f1
+parent_id: 
+type_: 2
+'''),
+        'f2.md': utf8.encode('''
+Sub
+
+id: f2
+parent_id: f1
+type_: 2
+'''),
+        'n1.md': utf8.encode('''
+Alpha
+
+# Alpha body
+
+id: n1
+parent_id: f2
+created_time: 2026-01-01T00:00:00.000Z
+updated_time: 2026-01-02T00:00:00.000Z
+type_: 1
+'''),
+        'n2.md': utf8.encode('''
+Beta
+
+Link to [alpha](:/n1) and ![](:/r1)
+
+id: n2
+parent_id: f2
+created_time: 2026-01-03T00:00:00.000Z
+updated_time: 2026-01-04T00:00:00.000Z
+type_: 1
+'''),
+        'r1.md': utf8.encode('''
+chart
+
+id: r1
+mime: image/png
+filename: chart.png
+type_: 4
+'''),
+        'resources/r1.png': resourceBytes,
+        't1.md': utf8.encode('''
+research
+
+id: t1
+type_: 5
+'''),
+        'nt1.md': utf8.encode('''
+id: nt1
+note_id: n1
+tag_id: t1
+type_: 6
+'''),
+      }),
+    );
+
+    final result = await importRepository.importFiles(
+      sourcePaths: <String>[jexFile.path],
+    );
+
+    expect(result.importedNoteCount, 2);
+    expect(result.importedFolderCount, 2);
+    expect(result.importedResourceCount, 1);
+
+    final folders = await notebookRepository.listFolders();
+    expect(
+      folders.map((folder) => folder.name),
+      containsAll(<String>['Projects', 'Sub']),
+    );
+    final subFolder = folders.firstWhere((folder) => folder.name == 'Sub');
+    final subNotes = await noteRepository.listNotebookNotes(
+      folderId: subFolder.id,
+    );
+    expect(subNotes, hasLength(2));
+
+    final byTitle = <String, Note>{
+      for (final note in subNotes) note.title: note,
+    };
+    final alpha = byTitle['Alpha']!;
+    final beta = byTitle['Beta']!;
+    expect(alpha.tags, equals(<String>['research']));
+    expect(beta.content, contains('chronicle://note/${alpha.id}'));
+    expect(beta.attachments, hasLength(1));
+    expect(beta.attachments.first, startsWith('resources/${beta.id}/'));
+    expect(beta.content, contains(beta.attachments.first));
+  });
+
   test('continues import when one JEX note is malformed', () async {
     final jexFile = File('${tempDir.path}/partial.jex');
     await jexFile.writeAsBytes(
