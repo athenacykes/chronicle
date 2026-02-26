@@ -702,23 +702,48 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
             ],
           );
 
+    final headerActions = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        saveAction,
+        const SizedBox(width: 4),
+        pinAction,
+        const SizedBox(width: 4),
+        deleteAction,
+        const SizedBox(width: 4),
+        moreAction,
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              modeToggle,
-              const Spacer(),
-              saveAction,
-              const SizedBox(width: 4),
-              pinAction,
-              const SizedBox(width: 4),
-              deleteAction,
-              const SizedBox(width: 4),
-              moreAction,
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final useCompactHeader =
+                  constraints.maxWidth < kMacosCompactContentWidth;
+              if (!useCompactHeader) {
+                return Row(
+                  children: <Widget>[modeToggle, const Spacer(), headerActions],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Row(children: <Widget>[modeToggle, const Spacer()]),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: headerActions,
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 8),
           Expanded(

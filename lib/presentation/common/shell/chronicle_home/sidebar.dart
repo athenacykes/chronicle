@@ -209,16 +209,15 @@ class _MatterSidebar extends ConsumerWidget {
     final sidebarItems = <SidebarItem>[];
     final selectableEntries = <_MacSidebarSelectableEntry>[];
 
-    void addSection(String label, {double topPadding = 0}) {
+    void addSection(String label) {
       sidebarItems.add(
         SidebarItem(
           section: true,
-          label: Padding(
-            padding: EdgeInsets.only(top: topPadding),
-            child: Text(
-              label,
-              style: MacosTheme.of(context).typography.caption1,
-            ),
+          label: Text(
+            label,
+            style: MacosTheme.of(
+              context,
+            ).typography.caption1.copyWith(height: 1.2),
           ),
         ),
       );
@@ -427,8 +426,8 @@ class _MatterSidebar extends ConsumerWidget {
     addSection(l10n.uncategorizedSectionLabel(sections.uncategorized.length));
     addMatterItems(sections.uncategorized);
 
-    addSection(l10n.viewsSectionLabel, topPadding: 12);
-    addSection(l10n.notebooksSectionLabel, topPadding: 12);
+    addSection(l10n.viewsSectionLabel);
+    addSection(l10n.notebooksSectionLabel);
     _addMacNotebookRootItem(
       context: context,
       ref: ref,

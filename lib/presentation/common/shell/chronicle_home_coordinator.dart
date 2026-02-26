@@ -346,6 +346,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             _hasSearchText(searchQuery.text) && searchResultsVisible;
         final conflictCount = ref.watch(conflictCountProvider);
         final selectedMatterId = ref.watch(selectedMatterIdProvider);
+        final matterViewMode = ref.watch(matterViewModeProvider);
         final showNotebook = ref.watch(showNotebookProvider);
         final showConflicts = ref.watch(showConflictsProvider);
         final selectedNotebookFolderId = ref.watch(
@@ -385,13 +386,22 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             ? _displayMatterTitle(context, selectedMatter)
             : l10n.appTitle;
         Widget? topBarContextActions;
+        Widget? compactHamburgerContent;
         if (!showConflicts && !hasSearchResultsOpen) {
           if (showNotebook) {
             topBarContextActions = const ChronicleNotebookTopControls();
+            compactHamburgerContent = _CompactPanelNotePicker(
+              notesAsync: ref.watch(notebookNoteListProvider),
+            );
           } else if (selectedMatter != null) {
             topBarContextActions = ChronicleMatterTopControls(
               matter: selectedMatter,
             );
+            if (matterViewMode == MatterViewMode.phase) {
+              compactHamburgerContent = _CompactPanelNotePicker(
+                notesAsync: ref.watch(noteListProvider),
+              );
+            }
           }
         }
 
@@ -475,6 +485,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             },
             conflictCount: conflictCount,
             topBarContextActions: topBarContextActions,
+            compactHamburgerContent: compactHamburgerContent,
             sidebarBuilder: (scrollController) => mattersState.when(
               loading: () => _SidebarMessageView(
                 scrollController: scrollController,

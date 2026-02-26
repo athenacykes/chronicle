@@ -636,6 +636,227 @@ void main() {
     },
   );
 
+  testWidgets(
+    'macOS zh locale shows section headers and search without overflow',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(useMacOSNativeUI: true, repos: repos, localeTag: 'zh'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('视图'), findsOneWidget);
+      expect(find.text('笔记本'), findsWidgets);
+      expect(find.byType(MacosSearchField<void>), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('macOS narrow mode shows compact top bar with hamburger', (
+    tester,
+  ) async {
+    _setNarrowDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('macos_top_bar_compact_menu_button')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('macos_top_bar_search_slot')), findsNothing);
+    expect(find.text('Matter One'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('macOS narrow hamburger panel shows search and context actions', (
+    tester,
+  ) async {
+    _setNarrowDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('macos_top_bar_compact_menu_button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('macos_top_bar_compact_panel')),
+      findsOneWidget,
+    );
+    expect(find.byType(MacosSearchField<void>), findsOneWidget);
+    expect(find.text('New Note'), findsOneWidget);
+    expect(
+      find.byKey(const Key('macos_top_bar_conflicts_button')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'macOS narrow hamburger note picker opens selected note and closes panel',
+    (tester) async {
+      _setNarrowDesktopViewport(tester);
+      final secondMatterNote = Note(
+        id: 'note-3',
+        matterId: 'matter-1',
+        phaseId: 'phase-start',
+        notebookFolderId: null,
+        title: 'Second Matter Note',
+        content: '# Second Matter Note\nmore content',
+        tags: const <String>['three'],
+        isPinned: false,
+        attachments: const <String>[],
+        createdAt: now,
+        updatedAt: now,
+      );
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[
+          noteOne,
+          secondMatterNote,
+        ]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('macos_top_bar_compact_menu_button')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('macos_compact_note_picker_note-3')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('macos_top_bar_compact_panel')),
+        findsNothing,
+      );
+      expect(_containerForApp(tester).read(selectedNoteIdProvider), 'note-3');
+      expect(find.text('Second Matter Note'), findsWidgets);
+      expect(
+        find.byKey(const Key('macos_note_editor_content')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('macOS narrow matter layout does not overflow', (tester) async {
+    _setNarrowDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('macOS narrow notebook layout does not overflow', (tester) async {
+    _setNarrowDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          showOrphansProvider.overrideWithBuild((ref, notifier) => true),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-2'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('material list menu moves note to another matter', (
     tester,
   ) async {
@@ -2714,6 +2935,7 @@ List<String> _macosPulldownTitles(MacosPulldownButton button) {
 Widget _buildApp({
   required bool useMacOSNativeUI,
   required _TestRepos repos,
+  String localeTag = 'en',
   List overrides = const [],
 }) {
   final hasSyncRepositoryOverride = overrides.any(
@@ -2728,6 +2950,7 @@ Widget _buildApp({
       clientId: 'test-client',
       syncConfig: SyncConfig.initial(),
       lastSyncAt: null,
+      localeTag: localeTag,
     ),
   );
 
@@ -3213,6 +3436,13 @@ class _SpyNoteEditorController extends NoteEditorController {
 
 void _setDesktopViewport(WidgetTester tester) {
   tester.view.physicalSize = const Size(1720, 1120);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+void _setNarrowDesktopViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(980, 1120);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);

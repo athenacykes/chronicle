@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 typedef ChronicleSidebarBuilder =
     Widget Function(ScrollController? scrollController);
 
+const double kMacosCompactContentWidth = 720.0;
+
 class ChronicleShellViewModel {
   const ChronicleShellViewModel({
     required this.appWindowTitle,
@@ -18,6 +20,7 @@ class ChronicleShellViewModel {
     required this.sidebarBuilder,
     required this.content,
     this.topBarContextActions,
+    this.compactHamburgerContent,
     this.searchFieldWidth = 340,
     this.sidebarWidth = 320,
   });
@@ -35,6 +38,7 @@ class ChronicleShellViewModel {
   final ChronicleSidebarBuilder sidebarBuilder;
   final Widget content;
   final Widget? topBarContextActions;
+  final Widget? compactHamburgerContent;
   final double searchFieldWidth;
   final double sidebarWidth;
 }
