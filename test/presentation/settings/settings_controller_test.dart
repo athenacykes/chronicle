@@ -31,6 +31,40 @@ void main() {
     expect(state?.localeTag, 'zh');
     expect((await repository.loadSettings()).localeTag, 'zh');
   });
+
+  test('setSidebarSectionCollapsed persists collapsed section ids', () async {
+    final repository = _InMemorySettingsRepository(
+      AppSettings(
+        storageRootPath: null,
+        clientId: 'settings-test',
+        syncConfig: SyncConfig.initial(),
+        lastSyncAt: null,
+      ),
+    );
+
+    final container = ProviderContainer(
+      overrides: [settingsRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(settingsControllerProvider.future);
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setSidebarSectionCollapsed('views', true);
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setSidebarSectionCollapsed('notebooks', true);
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setSidebarSectionCollapsed('views', false);
+
+    final state = container.read(settingsControllerProvider).asData?.value;
+    expect(state?.collapsedSidebarSectionIds, <String>['notebooks']);
+    expect(
+      (await repository.loadSettings()).collapsedSidebarSectionIds,
+      <String>['notebooks'],
+    );
+  });
 }
 
 class _InMemorySettingsRepository implements SettingsRepository {

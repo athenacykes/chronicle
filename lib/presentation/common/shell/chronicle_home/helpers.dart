@@ -36,11 +36,13 @@ Future<List<Matter>> _allMattersForMove(WidgetRef ref) async {
 }
 
 List<Matter> _allMattersFromSections(MatterSections sections) {
-  return <Matter>[
+  final combined = <Matter>[
     ...sections.pinned,
     ...sections.uncategorized,
     ...sections.categorySections.expand((section) => section.matters),
   ];
+  final seenIds = <String>{};
+  return combined.where((matter) => seenIds.add(matter.id)).toList();
 }
 
 Matter? _findMatterById(MatterSections? sections, String? matterId) {
@@ -130,11 +132,7 @@ String _searchResultContextLine({
 
   Matter? matter;
   if (sections != null) {
-    final allMatters = <Matter>[
-      ...sections.pinned,
-      ...sections.uncategorized,
-      ...sections.categorySections.expand((section) => section.matters),
-    ];
+    final allMatters = _allMattersFromSections(sections);
     for (final candidate in allMatters) {
       if (candidate.id == note.matterId) {
         matter = candidate;

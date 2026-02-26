@@ -28,7 +28,6 @@ class ListMatterSections {
     for (final matter in matters) {
       if (matter.isPinned) {
         pinned.add(matter);
-        continue;
       }
 
       final categoryId = matter.categoryId;

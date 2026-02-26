@@ -75,7 +75,7 @@ void main() {
     );
     expect(
       sections.categorySections.first.matters.map((matter) => matter.id),
-      <String>['in-a-newer', 'in-a-older'],
+      <String>['pinned-in-a', 'in-a-newer', 'in-a-older'],
     );
     expect(
       sections.categorySections.last.matters.map((matter) => matter.id),

@@ -1156,6 +1156,296 @@ void main() {
     expect(moved?.phaseId, 'phase-2-start');
   });
 
+  testWidgets('material sidebar drag moves matter into category', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final categoryRepository = _MemoryCategoryRepository(<Category>[
+      Category(
+        id: 'category-1',
+        name: 'Work',
+        color: '#4C956C',
+        icon: 'folder',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ]);
+    final looseMatter = matter.copyWith(
+      id: 'matter-loose',
+      title: 'Loose Matter',
+      categoryId: null,
+      clearCategoryId: true,
+      isPinned: false,
+    );
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[looseMatter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        categoryRepository: categoryRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _longPressDragTo(
+      tester,
+      find.byKey(
+        const ValueKey<String>('sidebar_matter_reassign_drag_matter-loose'),
+      ),
+      find.byKey(
+        const ValueKey<String>(
+          'sidebar_category_drop_target_material_category-1',
+        ),
+      ),
+    );
+
+    final moved = await repos.matterRepository.getMatterById('matter-loose');
+    expect(moved?.categoryId, 'category-1');
+  });
+
+  testWidgets('material sidebar drag moves matter into uncategorized', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final categoryRepository = _MemoryCategoryRepository(<Category>[
+      Category(
+        id: 'category-1',
+        name: 'Work',
+        color: '#4C956C',
+        icon: 'folder',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ]);
+    final categorizedMatter = matter.copyWith(
+      id: 'matter-work',
+      title: 'Work Matter',
+      categoryId: 'category-1',
+      isPinned: false,
+    );
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[categorizedMatter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        categoryRepository: categoryRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _longPressDragTo(
+      tester,
+      find.byKey(
+        const ValueKey<String>('sidebar_matter_reassign_drag_matter-work'),
+      ),
+      find.byKey(
+        const ValueKey<String>('sidebar_uncategorized_drop_target_material'),
+      ),
+    );
+
+    final moved = await repos.matterRepository.getMatterById('matter-work');
+    expect(moved?.categoryId, isNull);
+  });
+
+  testWidgets(
+    'macOS sidebar does not reassign matter when dropped on Views or Notebooks headers',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final categoryRepository = _MemoryCategoryRepository(<Category>[
+        Category(
+          id: 'category-1',
+          name: 'Work',
+          color: '#4C956C',
+          icon: 'folder',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+      final categorizedMatter = matter.copyWith(
+        id: 'matter-work',
+        title: 'Work Matter',
+        categoryId: 'category-1',
+        isPinned: false,
+      );
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[categorizedMatter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          categoryRepository: categoryRepository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _longPressDragTo(
+        tester,
+        find.byKey(
+          const ValueKey<String>('sidebar_matter_reassign_drag_matter-work'),
+        ),
+        find.byKey(const ValueKey<String>('sidebar_section_header_views')),
+      );
+      var moved = await repos.matterRepository.getMatterById('matter-work');
+      expect(moved?.categoryId, 'category-1');
+
+      await _longPressDragTo(
+        tester,
+        find.byKey(
+          const ValueKey<String>('sidebar_matter_reassign_drag_matter-work'),
+        ),
+        find.byKey(const ValueKey<String>('sidebar_section_header_notebooks')),
+      );
+      moved = await repos.matterRepository.getMatterById('matter-work');
+      expect(moved?.categoryId, 'category-1');
+    },
+  );
+
+  testWidgets('material sidebar top-level sections collapse and expand', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final categoryRepository = _MemoryCategoryRepository(<Category>[
+      Category(
+        id: 'category-1',
+        name: 'Work',
+        color: '#4C956C',
+        icon: 'folder',
+        createdAt: now,
+        updatedAt: now,
+      ),
+    ]);
+    final pinnedMatter = matter.copyWith(
+      id: 'matter-pinned',
+      title: 'Pinned Matter',
+      categoryId: 'category-1',
+      isPinned: true,
+    );
+    final categoryMatter = matter.copyWith(
+      id: 'matter-category',
+      title: 'Category Matter',
+      categoryId: 'category-1',
+      isPinned: false,
+    );
+    final uncategorizedMatter = matter.copyWith(
+      id: 'matter-uncategorized',
+      title: 'Uncategorized Matter',
+      categoryId: null,
+      clearCategoryId: true,
+      isPinned: false,
+    );
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[
+        pinnedMatter,
+        categoryMatter,
+        uncategorizedMatter,
+      ]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        categoryRepository: categoryRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_categories')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_pinned')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Pinned Matter'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_pinned')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Pinned Matter'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_categories')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Category Matter'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_categories')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Category Matter'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_categories')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Category Matter'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('sidebar_section_header_uncategorized'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Uncategorized Matter'), findsNothing);
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('sidebar_section_header_uncategorized'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Uncategorized Matter'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_views')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Today'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('sidebar_section_header_views')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Today'), findsOneWidget);
+
+    final notebookHeader = find.byKey(
+      const ValueKey<String>('sidebar_section_header_notebooks'),
+    );
+    await tester.dragUntilVisible(
+      notebookHeader,
+      find.byType(Scrollable).first,
+      const Offset(0, -180),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(notebookHeader);
+    await tester.pumpAndSettle();
+    expect(find.text('Notebook'), findsNothing);
+    await tester.dragUntilVisible(
+      notebookHeader,
+      find.byType(Scrollable).first,
+      const Offset(0, -180),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(notebookHeader);
+    await tester.pumpAndSettle();
+    expect(find.text('Notebook'), findsOneWidget);
+  });
+
   testWidgets('material list and editor menus expose move actions', (
     tester,
   ) async {
@@ -3066,7 +3356,7 @@ Future<void> _longPressDragTo(
   final sourceCenter = tester.getCenter(source);
   final targetCenter = tester.getCenter(target);
   final gesture = await tester.startGesture(sourceCenter);
-  await tester.pump(const Duration(milliseconds: 220));
+  await tester.pump(const Duration(milliseconds: 550));
   await gesture.moveTo(targetCenter);
   await tester.pump(const Duration(milliseconds: 40));
   await gesture.up();
@@ -3079,7 +3369,7 @@ Future<TestGesture> _startLongPressDrag(
 ) async {
   final sourceCenter = tester.getCenter(source);
   final gesture = await tester.startGesture(sourceCenter);
-  await tester.pump(const Duration(milliseconds: 220));
+  await tester.pump(const Duration(milliseconds: 550));
   return gesture;
 }
 
@@ -3101,6 +3391,7 @@ List<String> _macosPulldownTitles(MacosPulldownButton button) {
 Widget _buildApp({
   required bool useMacOSNativeUI,
   required _TestRepos repos,
+  CategoryRepository? categoryRepository,
   String localeTag = 'en',
   List overrides = const [],
 }) {
@@ -3124,7 +3415,9 @@ Widget _buildApp({
     overrides: [
       settingsRepositoryProvider.overrideWithValue(settingsRepository),
       matterRepositoryProvider.overrideWithValue(repos.matterRepository),
-      categoryRepositoryProvider.overrideWithValue(_MemoryCategoryRepository()),
+      categoryRepositoryProvider.overrideWithValue(
+        categoryRepository ?? _MemoryCategoryRepository(),
+      ),
       noteRepositoryProvider.overrideWithValue(repos.noteRepository),
       linkRepositoryProvider.overrideWithValue(repos.linkRepository),
       searchRepositoryProvider.overrideWithValue(

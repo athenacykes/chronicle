@@ -84,6 +84,7 @@
   "neverLabel": "从未",
   "newMatterAction": "新建 Matter",
   "newCategoryAction": "新建分类",
+  "categoriesSectionLabel": "分类",
   "pinnedLabel": "置顶",
   "uncategorizedSectionLabel": "未分类（{count}）",
   "@uncategorizedSectionLabel": {

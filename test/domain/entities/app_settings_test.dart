@@ -13,6 +13,7 @@ void main() {
 
     expect(settings.localeTag, 'en');
     expect(settings.collapsedCategoryIds, isEmpty);
+    expect(settings.collapsedSidebarSectionIds, isEmpty);
   });
 
   test('toJson/fromJson roundtrip preserves localeTag', () {
@@ -37,9 +38,11 @@ void main() {
       lastSyncAt: null,
       localeTag: 'en',
       collapsedCategoryIds: const <String>['a', 'b'],
+      collapsedSidebarSectionIds: const <String>['views', 'notebooks'],
     );
 
     final restored = AppSettings.fromJson(original.toJson());
     expect(restored.collapsedCategoryIds, <String>['a', 'b']);
+    expect(restored.collapsedSidebarSectionIds, <String>['views', 'notebooks']);
   });
 }

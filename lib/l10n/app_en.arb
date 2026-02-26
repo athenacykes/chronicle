@@ -85,6 +85,7 @@
   "neverLabel": "never",
   "newMatterAction": "New Matter",
   "newCategoryAction": "New Category",
+  "categoriesSectionLabel": "Categories",
   "pinnedLabel": "Pinned",
   "uncategorizedSectionLabel": "Uncategorized ({count})",
   "@uncategorizedSectionLabel": {

@@ -43,12 +43,16 @@ class _ChronicleManagePhasesDialogState
     final sections = ref.watch(mattersControllerProvider).asData?.value;
     Matter? matter;
     if (sections != null) {
-      final all = <Matter>{
+      final seenIds = <String>{};
+      final all = <Matter>[
         ...sections.pinned,
         ...sections.uncategorized,
         ...sections.categorySections.expand((section) => section.matters),
-      };
+      ];
       for (final candidate in all) {
+        if (!seenIds.add(candidate.id)) {
+          continue;
+        }
         if (candidate.id == widget.matterId) {
           matter = candidate;
           break;

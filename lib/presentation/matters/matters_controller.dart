@@ -316,10 +316,12 @@ class MattersController extends AsyncNotifier<MatterSections> {
   }
 
   List<Matter> _allMatters(MatterSections sections) {
-    return <Matter>[
+    final combined = <Matter>[
       ...sections.pinned,
       ...sections.uncategorized,
       ...sections.categorySections.expand((section) => section.matters),
     ];
+    final seenIds = <String>{};
+    return combined.where((matter) => seenIds.add(matter.id)).toList();
   }
 }

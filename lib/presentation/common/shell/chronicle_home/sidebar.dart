@@ -1,5 +1,11 @@
 part of '../chronicle_home_coordinator.dart';
 
+const String _kSidebarSectionPinnedId = 'pinned';
+const String _kSidebarSectionCategoriesId = 'categories';
+const String _kSidebarSectionUncategorizedId = 'uncategorized';
+const String _kSidebarSectionViewsId = 'views';
+const String _kSidebarSectionNotebooksId = 'notebooks';
+
 class _MatterSidebar extends ConsumerWidget {
   const _MatterSidebar({required this.sections, this.scrollController});
 
@@ -19,6 +25,8 @@ class _MatterSidebar extends ConsumerWidget {
     final settings = ref.watch(settingsControllerProvider).asData?.value;
     final collapsedCategoryIds =
         settings?.collapsedCategoryIds.toSet() ?? <String>{};
+    final collapsedSidebarSectionIds =
+        settings?.collapsedSidebarSectionIds.toSet() ?? <String>{};
 
     if (_isMacOSNativeUIContext(context)) {
       return _buildMacOSSidebar(
@@ -31,6 +39,7 @@ class _MatterSidebar extends ConsumerWidget {
         notebookTree: notebookTree,
         noteDragPayload: noteDragPayload,
         collapsedCategoryIds: collapsedCategoryIds,
+        collapsedSidebarSectionIds: collapsedSidebarSectionIds,
       );
     }
 
@@ -44,6 +53,7 @@ class _MatterSidebar extends ConsumerWidget {
       notebookTree: notebookTree,
       noteDragPayload: noteDragPayload,
       collapsedCategoryIds: collapsedCategoryIds,
+      collapsedSidebarSectionIds: collapsedSidebarSectionIds,
     );
   }
 
@@ -57,8 +67,24 @@ class _MatterSidebar extends ConsumerWidget {
     required List<NotebookFolderTreeNode> notebookTree,
     required _NoteDragPayload? noteDragPayload,
     required Set<String> collapsedCategoryIds,
+    required Set<String> collapsedSidebarSectionIds,
   }) {
     final l10n = context.l10n;
+    final pinnedCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionPinnedId,
+    );
+    final categoriesCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionCategoriesId,
+    );
+    final uncategorizedCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionUncategorizedId,
+    );
+    final viewsCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionViewsId,
+    );
+    final notebooksCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionNotebooksId,
+    );
     return Column(
       key: _kSidebarRootKey,
       children: <Widget>[
@@ -79,44 +105,28 @@ class _MatterSidebar extends ConsumerWidget {
                 label: Text(l10n.newCategoryAction),
               ),
               const SizedBox(height: 12),
-              _SectionHeader(title: l10n.pinnedLabel),
-              _MatterList(
-                matters: sections.pinned,
-                selectedMatterId: selectedMatterId,
-                onSelect: (matter) => _selectMatter(ref, matter),
-                onAction: (matter, action) => _handleMatterAction(
-                  context: context,
-                  ref: ref,
-                  matter: matter,
-                  action: action,
+              _MaterialSidebarSectionHeader(
+                key: const ValueKey<String>('sidebar_section_header_pinned'),
+                title: l10n.pinnedLabel,
+                collapsed: pinnedCollapsed,
+                onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+                  ref,
+                  _kSidebarSectionPinnedId,
+                  !pinnedCollapsed,
                 ),
-                noteDragPayload: noteDragPayload,
-                onDropNoteToMatter: (payload, matter) =>
-                    _moveDroppedNoteToMatter(
-                      context: context,
-                      ref: ref,
-                      payload: payload,
-                      matter: matter,
-                    ),
               ),
-              for (final section in sections.categorySections)
-                _MaterialCategorySection(
-                  section: section,
-                  collapsed: collapsedCategoryIds.contains(section.category.id),
+              if (!pinnedCollapsed)
+                _MatterList(
+                  matters: sections.pinned,
                   selectedMatterId: selectedMatterId,
-                  noteDragPayload: noteDragPayload,
-                  onToggleCollapsed: () => _toggleCategoryCollapsed(
-                    ref,
-                    section.category.id,
-                    !collapsedCategoryIds.contains(section.category.id),
-                  ),
+                  onSelect: (matter) => _selectMatter(ref, matter),
                   onAction: (matter, action) => _handleMatterAction(
                     context: context,
                     ref: ref,
                     matter: matter,
                     action: action,
                   ),
-                  onSelect: (matter) => _selectMatter(ref, matter),
+                  noteDragPayload: noteDragPayload,
                   onDropNoteToMatter: (payload, matter) =>
                       _moveDroppedNoteToMatter(
                         context: context,
@@ -124,27 +134,74 @@ class _MatterSidebar extends ConsumerWidget {
                         payload: payload,
                         matter: matter,
                       ),
-                  onDropMatterToCategory: (payload) =>
-                      _moveDroppedMatterToCategory(
-                        context: context,
-                        ref: ref,
-                        payload: payload,
-                        categoryId: section.category.id,
-                      ),
-                  onEditCategory: () => _editCategory(
-                    context: context,
-                    ref: ref,
-                    category: section.category,
-                  ),
-                  onDeleteCategory: () => _deleteCategory(
-                    context: context,
-                    ref: ref,
-                    category: section.category,
-                  ),
                 ),
+              _MaterialSidebarSectionHeader(
+                key: const ValueKey<String>(
+                  'sidebar_section_header_categories',
+                ),
+                title: l10n.categoriesSectionLabel,
+                collapsed: categoriesCollapsed,
+                onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+                  ref,
+                  _kSidebarSectionCategoriesId,
+                  !categoriesCollapsed,
+                ),
+              ),
+              if (!categoriesCollapsed)
+                for (final section in sections.categorySections)
+                  _MaterialCategorySection(
+                    section: section,
+                    collapsed: collapsedCategoryIds.contains(
+                      section.category.id,
+                    ),
+                    selectedMatterId: selectedMatterId,
+                    noteDragPayload: noteDragPayload,
+                    onToggleCollapsed: () => _toggleCategoryCollapsed(
+                      ref,
+                      section.category.id,
+                      !collapsedCategoryIds.contains(section.category.id),
+                    ),
+                    onAction: (matter, action) => _handleMatterAction(
+                      context: context,
+                      ref: ref,
+                      matter: matter,
+                      action: action,
+                    ),
+                    onSelect: (matter) => _selectMatter(ref, matter),
+                    onDropNoteToMatter: (payload, matter) =>
+                        _moveDroppedNoteToMatter(
+                          context: context,
+                          ref: ref,
+                          payload: payload,
+                          matter: matter,
+                        ),
+                    onDropMatterToCategory: (payload) =>
+                        _moveDroppedMatterToCategory(
+                          context: context,
+                          ref: ref,
+                          payload: payload,
+                          categoryId: section.category.id,
+                        ),
+                    onEditCategory: () => _editCategory(
+                      context: context,
+                      ref: ref,
+                      category: section.category,
+                    ),
+                    onDeleteCategory: () => _deleteCategory(
+                      context: context,
+                      ref: ref,
+                      category: section.category,
+                    ),
+                  ),
               _MaterialUncategorizedSection(
                 title: l10n.uncategorizedSectionLabel(
                   sections.uncategorized.length,
+                ),
+                collapsed: uncategorizedCollapsed,
+                onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+                  ref,
+                  _kSidebarSectionUncategorizedId,
+                  !uncategorizedCollapsed,
                 ),
                 matters: sections.uncategorized,
                 selectedMatterId: selectedMatterId,
@@ -171,49 +228,69 @@ class _MatterSidebar extends ConsumerWidget {
                       categoryId: null,
                     ),
               ),
-              const SizedBox(height: 12),
-              _SectionHeader(title: l10n.viewsSectionLabel),
-              _buildMaterialTimeViewTile(
-                context: context,
-                ref: ref,
-                timeView: ChronicleTimeView.today,
-                selectedTimeView: selectedTimeView,
+              _MaterialSidebarSectionHeader(
+                key: const ValueKey<String>('sidebar_section_header_views'),
+                title: l10n.viewsSectionLabel,
+                collapsed: viewsCollapsed,
+                onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+                  ref,
+                  _kSidebarSectionViewsId,
+                  !viewsCollapsed,
+                ),
               ),
-              _buildMaterialTimeViewTile(
-                context: context,
-                ref: ref,
-                timeView: ChronicleTimeView.yesterday,
-                selectedTimeView: selectedTimeView,
-              ),
-              _buildMaterialTimeViewTile(
-                context: context,
-                ref: ref,
-                timeView: ChronicleTimeView.thisWeek,
-                selectedTimeView: selectedTimeView,
-              ),
-              _buildMaterialTimeViewTile(
-                context: context,
-                ref: ref,
-                timeView: ChronicleTimeView.lastWeek,
-                selectedTimeView: selectedTimeView,
-              ),
-              const SizedBox(height: 12),
-              _SectionHeader(title: l10n.notebooksSectionLabel),
-              _buildMaterialNotebookRootTile(
-                context: context,
-                ref: ref,
-                showNotebook: showNotebook,
-                selectedNotebookFolderId: selectedNotebookFolderId,
-              ),
-              for (final node in notebookTree)
-                _buildMaterialNotebookFolderTile(
+              if (!viewsCollapsed) ...<Widget>[
+                _buildMaterialTimeViewTile(
                   context: context,
                   ref: ref,
-                  node: node,
-                  depth: 1,
+                  timeView: ChronicleTimeView.today,
+                  selectedTimeView: selectedTimeView,
+                ),
+                _buildMaterialTimeViewTile(
+                  context: context,
+                  ref: ref,
+                  timeView: ChronicleTimeView.yesterday,
+                  selectedTimeView: selectedTimeView,
+                ),
+                _buildMaterialTimeViewTile(
+                  context: context,
+                  ref: ref,
+                  timeView: ChronicleTimeView.thisWeek,
+                  selectedTimeView: selectedTimeView,
+                ),
+                _buildMaterialTimeViewTile(
+                  context: context,
+                  ref: ref,
+                  timeView: ChronicleTimeView.lastWeek,
+                  selectedTimeView: selectedTimeView,
+                ),
+              ],
+              _MaterialSidebarSectionHeader(
+                key: const ValueKey<String>('sidebar_section_header_notebooks'),
+                title: l10n.notebooksSectionLabel,
+                collapsed: notebooksCollapsed,
+                onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+                  ref,
+                  _kSidebarSectionNotebooksId,
+                  !notebooksCollapsed,
+                ),
+              ),
+              if (!notebooksCollapsed) ...<Widget>[
+                _buildMaterialNotebookRootTile(
+                  context: context,
+                  ref: ref,
                   showNotebook: showNotebook,
                   selectedNotebookFolderId: selectedNotebookFolderId,
                 ),
+                for (final node in notebookTree)
+                  _buildMaterialNotebookFolderTile(
+                    context: context,
+                    ref: ref,
+                    node: node,
+                    depth: 1,
+                    showNotebook: showNotebook,
+                    selectedNotebookFolderId: selectedNotebookFolderId,
+                  ),
+              ],
             ],
           ),
         ),
@@ -233,20 +310,41 @@ class _MatterSidebar extends ConsumerWidget {
     required List<NotebookFolderTreeNode> notebookTree,
     required _NoteDragPayload? noteDragPayload,
     required Set<String> collapsedCategoryIds,
+    required Set<String> collapsedSidebarSectionIds,
   }) {
     final l10n = context.l10n;
+    final pinnedCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionPinnedId,
+    );
+    final categoriesCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionCategoriesId,
+    );
+    final uncategorizedCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionUncategorizedId,
+    );
+    final viewsCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionViewsId,
+    );
+    final notebooksCollapsed = collapsedSidebarSectionIds.contains(
+      _kSidebarSectionNotebooksId,
+    );
     final sidebarItems = <SidebarItem>[];
     final selectableEntries = <_MacSidebarSelectableEntry>[];
 
-    void addSection(String label) {
+    void addSection({
+      required String sectionId,
+      required String label,
+      required bool collapsed,
+      required VoidCallback onToggleCollapsed,
+    }) {
       sidebarItems.add(
         SidebarItem(
           section: true,
-          label: Text(
-            label,
-            style: MacosTheme.of(
-              context,
-            ).typography.caption1.copyWith(height: 1.2),
+          label: _MacSidebarSectionHeader(
+            key: ValueKey<String>('sidebar_section_header_$sectionId'),
+            title: label,
+            collapsed: collapsed,
+            onTap: onToggleCollapsed,
           ),
         ),
       );
@@ -311,6 +409,9 @@ class _MatterSidebar extends ConsumerWidget {
                     noteDragPayload != null && matter.phases.isNotEmpty;
                 final highlight = candidateData.isNotEmpty;
                 return LongPressDraggable<_MatterReassignPayload>(
+                  key: ValueKey<String>(
+                    'sidebar_matter_reassign_drag_${matter.id}',
+                  ),
                   data: _MatterReassignPayload(
                     matterId: matter.id,
                     categoryId: matter.categoryId,
@@ -385,113 +486,213 @@ class _MatterSidebar extends ConsumerWidget {
       }
     }
 
-    addSection(l10n.pinnedLabel);
-    addMatterItems(sections.pinned);
+    addSection(
+      sectionId: _kSidebarSectionPinnedId,
+      label: l10n.pinnedLabel,
+      collapsed: pinnedCollapsed,
+      onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+        ref,
+        _kSidebarSectionPinnedId,
+        !pinnedCollapsed,
+      ),
+    );
+    if (!pinnedCollapsed) {
+      addMatterItems(sections.pinned);
+    }
 
-    for (final section in sections.categorySections) {
-      final category = section.category;
-      final collapsed = collapsedCategoryIds.contains(category.id);
-      selectableEntries.add(
-        _MacSidebarSelectableEntry(
-          key: 'category:${category.id}',
-          onSelected: () =>
-              _toggleCategoryCollapsed(ref, category.id, !collapsed),
-        ),
-      );
-      sidebarItems.add(
-        SidebarItem(
-          leading: MacosIcon(_matterIconDataForKey(category.icon), size: 14),
-          label: DragTarget<_MatterReassignPayload>(
-            onWillAcceptWithDetails: (details) =>
-                details.data.categoryId != category.id,
-            onAcceptWithDetails: (details) {
-              unawaited(
-                _moveDroppedMatterToCategory(
-                  context: context,
-                  ref: ref,
-                  payload: details.data,
-                  categoryId: category.id,
-                ),
-              );
-            },
-            builder: (targetContext, candidateData, rejectedData) {
-              final highlight = candidateData.isNotEmpty;
-              return Row(
-                children: <Widget>[
-                  Expanded(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 100),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: highlight
-                            ? MacosTheme.of(context).primaryColor.withAlpha(64)
-                            : null,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '${_displayCategoryName(context, category)} (${section.matters.length})',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+    addSection(
+      sectionId: _kSidebarSectionCategoriesId,
+      label: l10n.categoriesSectionLabel,
+      collapsed: categoriesCollapsed,
+      onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+        ref,
+        _kSidebarSectionCategoriesId,
+        !categoriesCollapsed,
+      ),
+    );
+    if (!categoriesCollapsed) {
+      for (final section in sections.categorySections) {
+        final category = section.category;
+        final collapsed = collapsedCategoryIds.contains(category.id);
+        selectableEntries.add(
+          _MacSidebarSelectableEntry(
+            key: 'category:${category.id}',
+            onSelected: () =>
+                _toggleCategoryCollapsed(ref, category.id, !collapsed),
+          ),
+        );
+        sidebarItems.add(
+          SidebarItem(
+            leading: MacosIcon(_matterIconDataForKey(category.icon), size: 14),
+            label: DragTarget<_MatterReassignPayload>(
+              key: ValueKey<String>(
+                'sidebar_category_drop_target_macos_${category.id}',
+              ),
+              onWillAcceptWithDetails: (details) =>
+                  details.data.categoryId != category.id,
+              onAcceptWithDetails: (details) {
+                unawaited(
+                  _moveDroppedMatterToCategory(
+                    context: context,
+                    ref: ref,
+                    payload: details.data,
+                    categoryId: category.id,
+                  ),
+                );
+              },
+              builder: (targetContext, candidateData, rejectedData) {
+                final highlight = candidateData.isNotEmpty;
+                return Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 100),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: highlight
+                              ? MacosTheme.of(
+                                  context,
+                                ).primaryColor.withAlpha(64)
+                              : null,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${_displayCategoryName(context, category)} (${section.matters.length})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(
-                    collapsed
-                        ? CupertinoIcons.chevron_right
-                        : CupertinoIcons.chevron_down,
-                    size: 12,
-                  ),
-                ],
-              );
-            },
+                    const SizedBox(width: 6),
+                    Icon(
+                      collapsed
+                          ? CupertinoIcons.chevron_right
+                          : CupertinoIcons.chevron_down,
+                      size: 12,
+                    ),
+                  ],
+                );
+              },
+            ),
+            trailing: ChronicleMacosCategoryActionMenu(
+              onEdit: () =>
+                  _editCategory(context: context, ref: ref, category: category),
+              onDelete: () => _deleteCategory(
+                context: context,
+                ref: ref,
+                category: category,
+              ),
+            ),
           ),
-          trailing: ChronicleMacosCategoryActionMenu(
-            onEdit: () =>
-                _editCategory(context: context, ref: ref, category: category),
-            onDelete: () =>
-                _deleteCategory(context: context, ref: ref, category: category),
-          ),
-        ),
-      );
-      if (!collapsed) {
-        addMatterItems(section.matters);
+        );
+        if (!collapsed) {
+          addMatterItems(section.matters);
+        }
       }
     }
 
-    addSection(l10n.uncategorizedSectionLabel(sections.uncategorized.length));
-    addMatterItems(sections.uncategorized);
+    sidebarItems.add(
+      SidebarItem(
+        section: true,
+        label: DragTarget<_MatterReassignPayload>(
+          key: const ValueKey<String>(
+            'sidebar_uncategorized_drop_target_macos',
+          ),
+          onWillAcceptWithDetails: (details) => details.data.categoryId != null,
+          onAcceptWithDetails: (details) {
+            unawaited(
+              _moveDroppedMatterToCategory(
+                context: context,
+                ref: ref,
+                payload: details.data,
+                categoryId: null,
+              ),
+            );
+          },
+          builder: (targetContext, candidateData, rejectedData) {
+            final highlight = candidateData.isNotEmpty;
+            return _MacSidebarSectionHeader(
+              key: const ValueKey<String>(
+                'sidebar_section_header_uncategorized',
+              ),
+              title: l10n.uncategorizedSectionLabel(
+                sections.uncategorized.length,
+              ),
+              collapsed: uncategorizedCollapsed,
+              highlighted: highlight,
+              onTap: () => _toggleSidebarSectionCollapsed(
+                ref,
+                _kSidebarSectionUncategorizedId,
+                !uncategorizedCollapsed,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    if (!uncategorizedCollapsed) {
+      addMatterItems(sections.uncategorized);
+    }
 
-    addSection(l10n.viewsSectionLabel);
-    _addMacTimeViewItems(
-      context: context,
-      ref: ref,
-      sidebarItems: sidebarItems,
-      selectableEntries: selectableEntries,
-      selectedTimeView: selectedTimeView,
+    addSection(
+      sectionId: _kSidebarSectionViewsId,
+      label: l10n.viewsSectionLabel,
+      collapsed: viewsCollapsed,
+      onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+        ref,
+        _kSidebarSectionViewsId,
+        !viewsCollapsed,
+      ),
     );
-    addSection(l10n.notebooksSectionLabel);
-    _addMacNotebookRootItem(
-      context: context,
-      ref: ref,
-      sidebarItems: sidebarItems,
-      selectableEntries: selectableEntries,
-      showNotebook: showNotebook,
-      selectedNotebookFolderId: selectedNotebookFolderId,
+    if (!viewsCollapsed) {
+      _addMacTimeViewItems(
+        context: context,
+        ref: ref,
+        sidebarItems: sidebarItems,
+        selectableEntries: selectableEntries,
+        selectedTimeView: selectedTimeView,
+      );
+    }
+
+    addSection(
+      sectionId: _kSidebarSectionNotebooksId,
+      label: l10n.notebooksSectionLabel,
+      collapsed: notebooksCollapsed,
+      onToggleCollapsed: () => _toggleSidebarSectionCollapsed(
+        ref,
+        _kSidebarSectionNotebooksId,
+        !notebooksCollapsed,
+      ),
     );
-    _addMacNotebookFolderItems(
-      context: context,
-      ref: ref,
-      sidebarItems: sidebarItems,
-      selectableEntries: selectableEntries,
-      nodes: notebookTree,
-      depth: 1,
-      showNotebook: showNotebook,
-      selectedNotebookFolderId: selectedNotebookFolderId,
-    );
+    if (!notebooksCollapsed) {
+      _addMacNotebookRootItem(
+        context: context,
+        ref: ref,
+        sidebarItems: sidebarItems,
+        selectableEntries: selectableEntries,
+        showNotebook: showNotebook,
+        selectedNotebookFolderId: selectedNotebookFolderId,
+      );
+      _addMacNotebookFolderItems(
+        context: context,
+        ref: ref,
+        sidebarItems: sidebarItems,
+        selectableEntries: selectableEntries,
+        nodes: notebookTree,
+        depth: 1,
+        showNotebook: showNotebook,
+        selectedNotebookFolderId: selectedNotebookFolderId,
+      );
+    }
 
     if (selectableEntries.isEmpty) {
-      return const SizedBox.shrink();
+      selectableEntries.add(
+        _MacSidebarSelectableEntry(
+          key: '__sidebar_placeholder__',
+          onSelected: () {},
+        ),
+      );
+      sidebarItems.add(const SidebarItem(label: SizedBox.shrink()));
     }
 
     final selectedKey = showNotebook
@@ -549,36 +750,12 @@ class _MatterSidebar extends ConsumerWidget {
           ),
         ),
         Expanded(
-          child: DragTarget<_MatterReassignPayload>(
-            onWillAcceptWithDetails: (details) =>
-                details.data.categoryId != null,
-            onAcceptWithDetails: (details) {
-              unawaited(
-                _moveDroppedMatterToCategory(
-                  context: context,
-                  ref: ref,
-                  payload: details.data,
-                  categoryId: null,
-                ),
-              );
-            },
-            builder: (targetContext, candidateData, rejectedData) {
-              final highlight = candidateData.isNotEmpty;
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  color: highlight
-                      ? MacosTheme.of(context).primaryColor.withAlpha(28)
-                      : null,
-                ),
-                child: SidebarItems(
-                  scrollController: scrollController,
-                  items: sidebarItems,
-                  currentIndex: selectedIndex,
-                  onChanged: (index) => selectableEntries[index].onSelected(),
-                  itemSize: SidebarItemSize.large,
-                ),
-              );
-            },
+          child: SidebarItems(
+            scrollController: scrollController,
+            items: sidebarItems,
+            currentIndex: selectedIndex,
+            onChanged: (index) => selectableEntries[index].onSelected(),
+            itemSize: SidebarItemSize.large,
           ),
         ),
         const Divider(height: 1),
@@ -1327,6 +1504,18 @@ class _MatterSidebar extends ConsumerWidget {
     );
   }
 
+  void _toggleSidebarSectionCollapsed(
+    WidgetRef ref,
+    String sectionId,
+    bool collapsed,
+  ) {
+    unawaited(
+      ref
+          .read(settingsControllerProvider.notifier)
+          .setSidebarSectionCollapsed(sectionId, collapsed),
+    );
+  }
+
   Future<void> _createMatter({
     required BuildContext context,
     required WidgetRef ref,
@@ -1547,16 +1736,93 @@ class _SidebarMessageView extends StatelessWidget {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title});
+class _MaterialSidebarSectionHeader extends StatelessWidget {
+  const _MaterialSidebarSectionHeader({
+    super.key,
+    required this.title,
+    required this.collapsed,
+    required this.onToggleCollapsed,
+  });
 
   final String title;
+  final bool collapsed;
+  final VoidCallback onToggleCollapsed;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
-      child: Text(title, style: Theme.of(context).textTheme.labelLarge),
+    return InkWell(
+      onTap: onToggleCollapsed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 12, 8, 4),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(title, style: Theme.of(context).textTheme.labelLarge),
+            ),
+            Icon(
+              collapsed
+                  ? Icons.keyboard_arrow_right
+                  : Icons.keyboard_arrow_down,
+              size: 18,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MacSidebarSectionHeader extends StatelessWidget {
+  const _MacSidebarSectionHeader({
+    super.key,
+    required this.title,
+    required this.collapsed,
+    required this.onTap,
+    this.highlighted = false,
+  });
+
+  final String title;
+  final bool collapsed;
+  final VoidCallback onTap;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 100),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: highlighted
+              ? MacosTheme.of(context).primaryColor.withAlpha(40)
+              : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: MacosTheme.of(
+                  context,
+                ).typography.caption1.copyWith(height: 1.2),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              collapsed
+                  ? CupertinoIcons.chevron_right
+                  : CupertinoIcons.chevron_down,
+              size: 12,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1595,6 +1861,9 @@ class _MaterialCategorySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DragTarget<_MatterReassignPayload>(
+      key: ValueKey<String>(
+        'sidebar_category_drop_target_material_${section.category.id}',
+      ),
       onWillAcceptWithDetails: (details) =>
           details.data.categoryId != section.category.id,
       onAcceptWithDetails: (details) {
@@ -1640,6 +1909,8 @@ class _MaterialCategorySection extends StatelessWidget {
 class _MaterialUncategorizedSection extends StatelessWidget {
   const _MaterialUncategorizedSection({
     required this.title,
+    required this.collapsed,
+    required this.onToggleCollapsed,
     required this.matters,
     required this.selectedMatterId,
     required this.noteDragPayload,
@@ -1650,6 +1921,8 @@ class _MaterialUncategorizedSection extends StatelessWidget {
   });
 
   final String title;
+  final bool collapsed;
+  final VoidCallback onToggleCollapsed;
   final List<Matter> matters;
   final String? selectedMatterId;
   final _NoteDragPayload? noteDragPayload;
@@ -1663,6 +1936,7 @@ class _MaterialUncategorizedSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DragTarget<_MatterReassignPayload>(
+      key: const ValueKey<String>('sidebar_uncategorized_drop_target_material'),
       onWillAcceptWithDetails: (details) => details.data.categoryId != null,
       onAcceptWithDetails: (details) {
         unawaited(onDropMatterToUncategorized(details.data));
@@ -1680,15 +1954,23 @@ class _MaterialUncategorizedSection extends StatelessWidget {
               : null,
           child: Column(
             children: <Widget>[
-              _SectionHeader(title: title),
-              _MatterList(
-                matters: matters,
-                selectedMatterId: selectedMatterId,
-                onSelect: onSelect,
-                onAction: onAction,
-                noteDragPayload: noteDragPayload,
-                onDropNoteToMatter: onDropNoteToMatter,
+              _MaterialSidebarSectionHeader(
+                key: const ValueKey<String>(
+                  'sidebar_section_header_uncategorized',
+                ),
+                title: title,
+                collapsed: collapsed,
+                onToggleCollapsed: onToggleCollapsed,
               ),
+              if (!collapsed)
+                _MatterList(
+                  matters: matters,
+                  selectedMatterId: selectedMatterId,
+                  onSelect: onSelect,
+                  onAction: onAction,
+                  noteDragPayload: noteDragPayload,
+                  onDropNoteToMatter: onDropNoteToMatter,
+                ),
             ],
           ),
         );
@@ -1903,6 +2185,7 @@ class _MatterList extends StatelessWidget {
         }
 
         return LongPressDraggable<_MatterReassignPayload>(
+          key: ValueKey<String>('sidebar_matter_reassign_drag_${matter.id}'),
           data: _MatterReassignPayload(
             matterId: matter.id,
             categoryId: matter.categoryId,

@@ -9,6 +9,7 @@ class AppSettings {
     required this.lastSyncAt,
     this.localeTag = 'en',
     this.collapsedCategoryIds = const <String>[],
+    this.collapsedSidebarSectionIds = const <String>[],
   });
 
   final String? storageRootPath;
@@ -17,6 +18,7 @@ class AppSettings {
   final DateTime? lastSyncAt;
   final String localeTag;
   final List<String> collapsedCategoryIds;
+  final List<String> collapsedSidebarSectionIds;
 
   AppSettings copyWith({
     String? storageRootPath,
@@ -27,6 +29,7 @@ class AppSettings {
     bool clearLastSyncAt = false,
     String? localeTag,
     List<String>? collapsedCategoryIds,
+    List<String>? collapsedSidebarSectionIds,
   }) {
     return AppSettings(
       storageRootPath: clearStorageRootPath
@@ -37,6 +40,8 @@ class AppSettings {
       lastSyncAt: clearLastSyncAt ? null : lastSyncAt ?? this.lastSyncAt,
       localeTag: localeTag ?? this.localeTag,
       collapsedCategoryIds: collapsedCategoryIds ?? this.collapsedCategoryIds,
+      collapsedSidebarSectionIds:
+          collapsedSidebarSectionIds ?? this.collapsedSidebarSectionIds,
     );
   }
 
@@ -48,6 +53,7 @@ class AppSettings {
       'lastSyncAt': lastSyncAt == null ? null : formatIsoUtc(lastSyncAt!),
       'localeTag': localeTag,
       'collapsedCategoryIds': collapsedCategoryIds,
+      'collapsedSidebarSectionIds': collapsedSidebarSectionIds,
     };
   }
 
@@ -66,6 +72,11 @@ class AppSettings {
           (json['collapsedCategoryIds'] as List<dynamic>? ?? const <dynamic>[])
               .whereType<String>()
               .toList(growable: false),
+      collapsedSidebarSectionIds:
+          (json['collapsedSidebarSectionIds'] as List<dynamic>? ??
+                  const <dynamic>[])
+              .whereType<String>()
+              .toList(growable: false),
     );
   }
 
@@ -77,6 +88,7 @@ class AppSettings {
       lastSyncAt: null,
       localeTag: 'en',
       collapsedCategoryIds: const <String>[],
+      collapsedSidebarSectionIds: const <String>[],
     );
   }
 }
