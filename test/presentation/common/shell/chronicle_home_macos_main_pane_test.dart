@@ -27,6 +27,7 @@ import 'package:chronicle/presentation/notes/notes_controller.dart';
 import 'package:chronicle/presentation/search/search_controller.dart';
 import 'package:chronicle/presentation/sync/conflicts_controller.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter/material.dart';
@@ -565,13 +566,12 @@ void main() {
             titles.contains('Set Completed') &&
             titles.contains('Set Archived');
       }).toList();
-      expect(matterActionMenus, isNotEmpty);
-      expect(matterActionMenus.first.icon, CupertinoIcons.ellipsis_circle);
+      expect(matterActionMenus, isEmpty);
     },
   );
 
   testWidgets(
-    'material sidebar keeps Views then Notebooks and uses circular notebook/matter menus',
+    'material sidebar keeps Views then Notebooks and only keeps notebook ellipsis menus',
     (tester) async {
       _setDesktopViewport(tester);
       final repos = _TestRepos(
@@ -625,6 +625,15 @@ void main() {
       );
       expect(
         find.descendant(of: sidebar, matching: find.byIcon(Icons.more_horiz)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey<String>('sidebar_matter_drop_target_matter-1'),
+          ),
+          matching: find.byIcon(CupertinoIcons.ellipsis_circle),
+        ),
         findsNothing,
       );
       expect(
@@ -905,8 +914,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_horiz).first);
-    await tester.pumpAndSettle();
+    await _secondaryClick(
+      tester,
+      find.byKey(const ValueKey<String>('phase_note_row_note-1')),
+    );
     await tester.tap(find.text('Move to Matter...').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Matter Two').last);
@@ -949,8 +960,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_horiz).first);
-    await tester.pumpAndSettle();
+    await _secondaryClick(
+      tester,
+      find.byKey(const ValueKey<String>('phase_note_row_note-1')),
+    );
     await tester.tap(find.text('Move to Phase...').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('In Progress').last);
@@ -991,8 +1004,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.more_horiz).first);
-      await tester.pumpAndSettle();
+      await _secondaryClick(
+        tester,
+        find.byKey(const ValueKey<String>('phase_note_row_note-1')),
+      );
       await tester.tap(find.text('Move to Notebook...').last);
       await tester.pumpAndSettle();
 
@@ -1003,6 +1018,163 @@ void main() {
       final container = _containerForApp(tester);
       expect(container.read(selectedMatterIdProvider), 'matter-1');
       expect(container.read(showOrphansProvider), isFalse);
+    },
+  );
+
+  testWidgets(
+    'material phase list row opens context menu from text, whitespace, and right edge',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final row = find.byKey(const ValueKey<String>('phase_note_row_note-1'));
+      final rowRect = tester.getRect(row);
+      final titleText = find.descendant(
+        of: row,
+        matching: find.text('Editor Note'),
+      );
+
+      await _secondaryClick(tester, titleText);
+      expect(find.text('Move to Matter...'), findsWidgets);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      await _secondaryClickAt(
+        tester,
+        Offset(rowRect.left + 12, rowRect.center.dy),
+      );
+      expect(find.text('Move to Matter...'), findsWidgets);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      await _secondaryClickAt(
+        tester,
+        Offset(rowRect.right - 8, rowRect.center.dy),
+      );
+      expect(find.text('Move to Matter...'), findsWidgets);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('material timeline card opens move context menu on right click', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+          matterViewModeProvider.overrideWithBuild(
+            (ref, notifier) => MatterViewMode.timeline,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(
+      const ValueKey<String>('timeline_note_card_note-1'),
+    );
+    final cardRect = tester.getRect(card);
+    await _secondaryClickAt(
+      tester,
+      Offset(cardRect.right - 8, cardRect.center.dy),
+    );
+    expect(find.text('Move to Matter...'), findsWidgets);
+    expect(find.text('Move to Phase...'), findsWidgets);
+    expect(find.text('Move to Notebook...'), findsWidgets);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit in Phase'), findsOneWidget);
+  });
+
+  testWidgets(
+    'macOS timeline card opens native move context menu on right click',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+            matterViewModeProvider.overrideWithBuild(
+              (ref, notifier) => MatterViewMode.timeline,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final card = find.byKey(
+        const ValueKey<String>('timeline_note_card_note-1'),
+      );
+      final cardRect = tester.getRect(card);
+      await _secondaryClickAt(
+        tester,
+        Offset(cardRect.right - 8, cardRect.center.dy),
+      );
+      expect(find.text('Move to Matter...'), findsWidgets);
+      expect(find.text('Move to Phase...'), findsWidgets);
+      expect(find.text('Move to Notebook...'), findsWidgets);
+      expect(find.byType(PopupMenuDivider), findsNothing);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit in Phase'), findsOneWidget);
     },
   );
 
@@ -1473,8 +1645,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byIcon(Icons.more_horiz).first);
-    await tester.pumpAndSettle();
+    await _secondaryClick(
+      tester,
+      find.byKey(const ValueKey<String>('phase_note_row_note-1')),
+    );
     expect(find.text('Move to Matter...'), findsWidgets);
     expect(find.text('Move to Phase...'), findsWidgets);
     expect(find.text('Move to Notebook...'), findsWidgets);
@@ -1515,27 +1689,29 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _secondaryClick(
+      tester,
+      find.byKey(const ValueKey<String>('phase_note_row_note-1')),
+    );
+    expect(find.text('Edit'), findsWidgets);
+    expect(find.text('Move to Matter...'), findsWidgets);
+    expect(find.text('Move to Phase...'), findsWidgets);
+    expect(find.text('Move to Notebook...'), findsWidgets);
+    expect(find.byType(MacosPulldownMenuDivider), findsWidgets);
+    expect(find.byType(PopupMenuDivider), findsNothing);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+
     final buttons = tester
         .widgetList<MacosPulldownButton>(find.byType(MacosPulldownButton))
         .toList();
-    final moveMenuButtons = buttons.where((button) {
+    final editorMoveMenus = buttons.where((button) {
       final titles = _macosPulldownTitles(button);
       return titles.contains('Move to Matter...') &&
           titles.contains('Move to Phase...') &&
           titles.contains('Move to Notebook...');
     }).toList();
-
-    expect(moveMenuButtons.length, greaterThanOrEqualTo(2));
-
-    final rowMenus = moveMenuButtons.where(
-      (button) => _macosPulldownTitles(button).contains('Edit'),
-    );
-    final editorMenus = moveMenuButtons.where(
-      (button) => !_macosPulldownTitles(button).contains('Edit'),
-    );
-
-    expect(rowMenus, isNotEmpty);
-    expect(editorMenus, isNotEmpty);
+    expect(editorMoveMenus, isNotEmpty);
   });
 
   testWidgets('macOS matter sidebar menu exposes matter actions', (
@@ -1561,31 +1737,60 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final buttons = tester
-        .widgetList<MacosPulldownButton>(find.byType(MacosPulldownButton))
-        .toList();
-    final matterActionMenus = buttons.where((button) {
-      final titles = _macosPulldownTitles(button);
-      return titles.contains('Set Active') &&
-          titles.contains('Set Paused') &&
-          titles.contains('Set Completed') &&
-          titles.contains('Set Archived');
-    }).toList();
-
-    expect(matterActionMenus, isNotEmpty);
-    expect(
-      _macosPulldownTitles(matterActionMenus.first),
-      containsAll(<String>[
-        'Edit',
-        'Pin',
-        'Set Active',
-        'Set Paused',
-        'Set Completed',
-        'Set Archived',
-        'Delete',
-      ]),
+    await _secondaryClick(
+      tester,
+      find.byKey(const ValueKey<String>('sidebar_matter_drop_target_matter-1')),
     );
+    expect(find.text('Edit'), findsWidgets);
+    expect(find.text('Pin'), findsWidgets);
+    expect(find.text('Set Active'), findsWidgets);
+    expect(find.text('Set Paused'), findsWidgets);
+    expect(find.text('Set Completed'), findsWidgets);
+    expect(find.text('Set Archived'), findsWidgets);
+    expect(find.text('Delete'), findsWidgets);
+    expect(find.byType(MacosPulldownMenuDivider), findsWidgets);
+    expect(find.byType(PopupMenuDivider), findsNothing);
   });
+
+  testWidgets(
+    'macOS matter sidebar row opens menu from surrounding stripe area',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final row = find.byKey(
+        const ValueKey<String>('sidebar_matter_drop_target_matter-1'),
+      );
+      final rect = tester.getRect(row);
+
+      await _secondaryClickAt(tester, Offset(rect.left - 4, rect.center.dy));
+      expect(find.text('Set Active'), findsWidgets);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      await _secondaryClickAt(tester, Offset(rect.right + 4, rect.center.dy));
+      expect(find.text('Set Active'), findsWidgets);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets('macOS Manage Phases dialog uses native controls without crash', (
     tester,
@@ -3001,13 +3206,10 @@ Inline \$x^2\$ and:
     );
     await tester.pumpAndSettle();
 
-    final noteTile = find.widgetWithText(ListTile, 'Editor Note').first;
-    final noteMenu = find.descendant(
-      of: noteTile,
-      matching: find.byType(PopupMenuButton<String>),
+    await _secondaryClick(
+      tester,
+      find.byKey(const ValueKey<String>('phase_note_row_note-1')),
     );
-    await tester.tap(noteMenu);
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Edit').last);
     await tester.pumpAndSettle();
 
@@ -3359,6 +3561,20 @@ Future<void> _longPressDragTo(
   await tester.pump(const Duration(milliseconds: 550));
   await gesture.moveTo(targetCenter);
   await tester.pump(const Duration(milliseconds: 40));
+  await gesture.up();
+  await tester.pumpAndSettle();
+}
+
+Future<void> _secondaryClick(WidgetTester tester, Finder target) async {
+  await _secondaryClickAt(tester, tester.getCenter(target));
+}
+
+Future<void> _secondaryClickAt(WidgetTester tester, Offset position) async {
+  final gesture = await tester.startGesture(
+    position,
+    kind: PointerDeviceKind.mouse,
+    buttons: kSecondaryMouseButton,
+  );
   await gesture.up();
   await tester.pumpAndSettle();
 }

@@ -43,6 +43,7 @@ class ChronicleMacosSelectableRow extends StatelessWidget {
     this.trailing,
     this.selected = false,
     required this.onTap,
+    this.onSecondaryTapDown,
   });
 
   final Widget title;
@@ -51,6 +52,7 @@ class ChronicleMacosSelectableRow extends StatelessWidget {
   final Widget? trailing;
   final bool selected;
   final VoidCallback onTap;
+  final GestureTapDownCallback? onSecondaryTapDown;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +61,8 @@ class ChronicleMacosSelectableRow extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onSecondaryTapDown: onSecondaryTapDown,
+      behavior: HitTestBehavior.opaque,
       child: Container(
         decoration: BoxDecoration(
           color: selected ? selectedColor : null,

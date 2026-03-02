@@ -36,6 +36,7 @@ import '../../settings/settings_controller.dart';
 import '../../sync/conflicts_controller.dart';
 import 'chronicle_entity_dialogs.dart';
 import 'chronicle_graph_canvas.dart';
+import 'chronicle_macos_context_menu.dart';
 import 'chronicle_macos_widgets.dart';
 import 'chronicle_note_editor_utilities.dart';
 import 'chronicle_note_title_header.dart';

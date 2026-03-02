@@ -28,6 +28,45 @@ final _activeNoteDragPayloadProvider =
       _NoteDragPayload?
     >(() => ValueNotifierController<_NoteDragPayload?>(null));
 
+Future<void> _showSecondaryClickMenu<T>({
+  required BuildContext context,
+  required TapDownDetails details,
+  required List<PopupMenuEntry<T>> Function(BuildContext context) itemBuilder,
+  FutureOr<void> Function(T value)? onSelected,
+}) async {
+  final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+  final selected = await showMenu<T>(
+    context: context,
+    position: RelativeRect.fromRect(
+      Rect.fromPoints(details.globalPosition, details.globalPosition),
+      Offset.zero & overlay.size,
+    ),
+    items: itemBuilder(context),
+  );
+  if (selected == null || onSelected == null) {
+    return;
+  }
+  await onSelected(selected);
+}
+
+Future<void> _showMacosSecondaryClickMenu<T>({
+  required BuildContext context,
+  required TapDownDetails details,
+  required List<MacosPulldownMenuEntry> Function(BuildContext context)
+  itemBuilder,
+  FutureOr<void> Function(T value)? onSelected,
+}) async {
+  final selected = await showChronicleMacosContextMenu<T>(
+    context: context,
+    globalPosition: details.globalPosition,
+    items: itemBuilder(context),
+  );
+  if (selected == null || onSelected == null) {
+    return;
+  }
+  await onSelected(selected);
+}
+
 Future<List<Matter>> _allMattersForMove(WidgetRef ref) async {
   final MatterSections sections =
       ref.read(mattersControllerProvider).asData?.value ??

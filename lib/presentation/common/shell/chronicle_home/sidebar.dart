@@ -12,6 +12,78 @@ class _MatterSidebar extends ConsumerWidget {
   final MatterSections sections;
   final ScrollController? scrollController;
 
+  Widget _buildMacSidebarSecondaryClickSurface({
+    required Key key,
+    required Widget child,
+  }) {
+    return SizedBox.expand(key: key, child: child);
+  }
+
+  void _handleMacSidebarSecondaryClick({
+    required Offset globalPosition,
+    required List<_MacSidebarContextMenuTarget> contextMenuTargets,
+  }) {
+    for (final target in contextMenuTargets) {
+      final targetContext = target.targetKey.currentContext;
+      if (targetContext == null) {
+        continue;
+      }
+      final renderObject = targetContext.findRenderObject();
+      if (renderObject is! RenderBox || !renderObject.hasSize) {
+        continue;
+      }
+      final rect = renderObject.localToGlobal(Offset.zero) & renderObject.size;
+      if (globalPosition.dy < rect.top || globalPosition.dy > rect.bottom) {
+        continue;
+      }
+      unawaited(
+        target.onSecondaryTapDown(
+          TapDownDetails(
+            globalPosition: globalPosition,
+            localPosition: renderObject.globalToLocal(globalPosition),
+          ),
+        ),
+      );
+      return;
+    }
+  }
+
+  Future<void> _showCategoryMenu({
+    required BuildContext context,
+    required WidgetRef ref,
+    required Category category,
+    required TapDownDetails details,
+  }) async {
+    await _showMacosSecondaryClickMenu<_CategoryAction>(
+      context: context,
+      details: details,
+      itemBuilder: (menuContext) => <MacosPulldownMenuEntry>[
+        ChronicleMacosContextMenuItem<_CategoryAction>(
+          value: _CategoryAction.edit,
+          title: Text(menuContext.l10n.editAction),
+        ),
+        ChronicleMacosContextMenuItem<_CategoryAction>(
+          value: _CategoryAction.delete,
+          title: Text(menuContext.l10n.deleteAction),
+        ),
+      ],
+      onSelected: (value) async {
+        switch (value) {
+          case _CategoryAction.edit:
+            await _editCategory(context: context, ref: ref, category: category);
+            return;
+          case _CategoryAction.delete:
+            await _deleteCategory(
+              context: context,
+              ref: ref,
+              category: category,
+            );
+            return;
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
@@ -330,6 +402,7 @@ class _MatterSidebar extends ConsumerWidget {
     );
     final sidebarItems = <SidebarItem>[];
     final selectableEntries = <_MacSidebarSelectableEntry>[];
+    final contextMenuTargets = <_MacSidebarContextMenuTarget>[];
 
     void addSection({
       required String sectionId,
@@ -352,6 +425,67 @@ class _MatterSidebar extends ConsumerWidget {
 
     void addMatterItems(List<Matter> matters) {
       for (final matter in matters) {
+        Future<void> showMatterMenu(TapDownDetails details) async {
+          await _showMacosSecondaryClickMenu<_MatterAction>(
+            context: context,
+            details: details,
+            itemBuilder: (menuContext) => <MacosPulldownMenuEntry>[
+              ChronicleMacosContextMenuItem<_MatterAction>(
+                value: _MatterAction.edit,
+                title: Text(menuContext.l10n.editAction),
+              ),
+              ChronicleMacosContextMenuItem<_MatterAction>(
+                value: _MatterAction.togglePinned,
+                title: Text(
+                  matter.isPinned
+                      ? menuContext.l10n.unpinAction
+                      : menuContext.l10n.pinAction,
+                ),
+              ),
+              const MacosPulldownMenuDivider(),
+              ChronicleMacosContextMenuItem<_MatterAction>(
+                value: _MatterAction.setActive,
+                title: Text(menuContext.l10n.setActiveAction),
+              ),
+              ChronicleMacosContextMenuItem<_MatterAction>(
+                value: _MatterAction.setPaused,
+                title: Text(menuContext.l10n.setPausedAction),
+              ),
+              ChronicleMacosContextMenuItem<_MatterAction>(
+                value: _MatterAction.setCompleted,
+                title: Text(menuContext.l10n.setCompletedAction),
+              ),
+              ChronicleMacosContextMenuItem<_MatterAction>(
+                value: _MatterAction.setArchived,
+                title: Text(menuContext.l10n.setArchivedAction),
+              ),
+              const MacosPulldownMenuDivider(),
+              ChronicleMacosContextMenuItem<_MatterAction>(
+                value: _MatterAction.delete,
+                title: Text(menuContext.l10n.deleteAction),
+              ),
+            ],
+            onSelected: (action) async {
+              await _handleMatterAction(
+                context: context,
+                ref: ref,
+                matter: matter,
+                action: action,
+              );
+            },
+          );
+        }
+
+        final contextTargetKey = GlobalKey(
+          debugLabel: 'sidebar_matter_context_surface_${matter.id}',
+        );
+        contextMenuTargets.add(
+          _MacSidebarContextMenuTarget(
+            targetKey: contextTargetKey,
+            onSecondaryTapDown: showMatterMenu,
+          ),
+        );
+
         selectableEntries.add(
           _MacSidebarSelectableEntry(
             key: 'matter:${matter.id}',
@@ -360,126 +494,102 @@ class _MatterSidebar extends ConsumerWidget {
         );
         sidebarItems.add(
           SidebarItem(
-            leading: DragTarget<_NoteDragPayload>(
-              onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
-              onAcceptWithDetails: (details) {
-                unawaited(
-                  _moveDroppedNoteToMatter(
-                    context: context,
-                    ref: ref,
-                    payload: details.data,
-                    matter: matter,
-                  ),
-                );
-              },
-              builder: (targetContext, candidateData, rejectedData) {
-                final highlight = candidateData.isNotEmpty;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 100),
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: BoxDecoration(
-                    color: highlight
-                        ? MacosTheme.of(context).primaryColor.withAlpha(56)
-                        : null,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: _MatterLeadingIcon(
-                    iconKey: matter.icon,
-                    isPinned: matter.isPinned,
-                    isMacOS: true,
-                  ),
-                );
-              },
-            ),
-            label: DragTarget<_NoteDragPayload>(
-              key: ValueKey<String>('sidebar_matter_drop_target_${matter.id}'),
-              onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
-              onAcceptWithDetails: (details) {
-                unawaited(
-                  _moveDroppedNoteToMatter(
-                    context: context,
-                    ref: ref,
-                    payload: details.data,
-                    matter: matter,
-                  ),
-                );
-              },
-              builder: (targetContext, candidateData, rejectedData) {
-                final canAccept =
-                    noteDragPayload != null && matter.phases.isNotEmpty;
-                final highlight = candidateData.isNotEmpty;
-                return LongPressDraggable<_MatterReassignPayload>(
-                  key: ValueKey<String>(
-                    'sidebar_matter_reassign_drag_${matter.id}',
-                  ),
-                  data: _MatterReassignPayload(
-                    matterId: matter.id,
-                    categoryId: matter.categoryId,
-                  ),
-                  feedback: Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: Text(_displayMatterTitle(context, matter)),
-                    ),
-                  ),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 100),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: highlight
-                          ? MacosTheme.of(context).primaryColor.withAlpha(64)
-                          : null,
-                      borderRadius: BorderRadius.circular(6),
-                      border: canAccept && !highlight
-                          ? Border.all(
-                              color: MacosTheme.of(
-                                context,
-                              ).primaryColor.withAlpha(30),
-                            )
-                          : null,
-                    ),
-                    child: Text(
-                      _displayMatterTitle(context, matter),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _macSidebarItemLabelStyle(
-                        context,
-                        selected:
-                            selectedTimeView == null &&
-                            !showNotebook &&
-                            selectedMatterId == matter.id,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                ChronicleMacosMatterStatusBadge(status: matter.status),
-                const SizedBox(width: 6),
-                ChronicleMacosMatterActionMenu(
-                  matter: matter,
-                  onSelected: (action) => _handleMatterAction(
-                    context: context,
-                    ref: ref,
-                    matter: matter,
-                    action: _mapChronicleMatterAction(action),
-                  ),
+            label: _buildMacSidebarSecondaryClickSurface(
+              key: contextTargetKey,
+              child: DragTarget<_NoteDragPayload>(
+                key: ValueKey<String>(
+                  'sidebar_matter_drop_target_${matter.id}',
                 ),
-              ],
+                onWillAcceptWithDetails: (details) => matter.phases.isNotEmpty,
+                onAcceptWithDetails: (details) {
+                  unawaited(
+                    _moveDroppedNoteToMatter(
+                      context: context,
+                      ref: ref,
+                      payload: details.data,
+                      matter: matter,
+                    ),
+                  );
+                },
+                builder: (targetContext, candidateData, rejectedData) {
+                  final canAccept =
+                      noteDragPayload != null && matter.phases.isNotEmpty;
+                  final highlight = candidateData.isNotEmpty;
+                  return LongPressDraggable<_MatterReassignPayload>(
+                    key: ValueKey<String>(
+                      'sidebar_matter_reassign_drag_${matter.id}',
+                    ),
+                    data: _MatterReassignPayload(
+                      matterId: matter.id,
+                      categoryId: matter.categoryId,
+                    ),
+                    feedback: Material(
+                      color: Colors.transparent,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: Text(_displayMatterTitle(context, matter)),
+                      ),
+                    ),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 100),
+                      alignment: Alignment.centerLeft,
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: highlight
+                            ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                            : null,
+                        borderRadius: BorderRadius.circular(6),
+                        border: canAccept && !highlight
+                            ? Border.all(
+                                color: MacosTheme.of(
+                                  context,
+                                ).primaryColor.withAlpha(30),
+                              )
+                            : null,
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          _MatterLeadingIcon(
+                            iconKey: matter.icon,
+                            isPinned: matter.isPinned,
+                            isMacOS: true,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _displayMatterTitle(context, matter),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: _macSidebarItemLabelStyle(
+                                context,
+                                selected:
+                                    selectedTimeView == null &&
+                                    !showNotebook &&
+                                    selectedMatterId == matter.id,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ChronicleMacosMatterStatusBadge(
+                            status: matter.status,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         );
@@ -514,6 +624,20 @@ class _MatterSidebar extends ConsumerWidget {
       for (final section in sections.categorySections) {
         final category = section.category;
         final collapsed = collapsedCategoryIds.contains(category.id);
+        final contextTargetKey = GlobalKey(
+          debugLabel: 'sidebar_category_context_surface_${category.id}',
+        );
+        contextMenuTargets.add(
+          _MacSidebarContextMenuTarget(
+            targetKey: contextTargetKey,
+            onSecondaryTapDown: (details) => _showCategoryMenu(
+              context: context,
+              ref: ref,
+              category: category,
+              details: details,
+            ),
+          ),
+        );
         selectableEntries.add(
           _MacSidebarSelectableEntry(
             key: 'category:${category.id}',
@@ -523,64 +647,62 @@ class _MatterSidebar extends ConsumerWidget {
         );
         sidebarItems.add(
           SidebarItem(
-            leading: MacosIcon(_matterIconDataForKey(category.icon), size: 14),
-            label: DragTarget<_MatterReassignPayload>(
-              key: ValueKey<String>(
-                'sidebar_category_drop_target_macos_${category.id}',
-              ),
-              onWillAcceptWithDetails: (details) =>
-                  details.data.categoryId != category.id,
-              onAcceptWithDetails: (details) {
-                unawaited(
-                  _moveDroppedMatterToCategory(
-                    context: context,
-                    ref: ref,
-                    payload: details.data,
-                    categoryId: category.id,
-                  ),
-                );
-              },
-              builder: (targetContext, candidateData, rejectedData) {
-                final highlight = candidateData.isNotEmpty;
-                return Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 100),
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: highlight
-                              ? MacosTheme.of(
-                                  context,
-                                ).primaryColor.withAlpha(64)
-                              : null,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          '${_displayCategoryName(context, category)} (${section.matters.length})',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+            label: _buildMacSidebarSecondaryClickSurface(
+              key: contextTargetKey,
+              child: DragTarget<_MatterReassignPayload>(
+                key: ValueKey<String>(
+                  'sidebar_category_drop_target_macos_${category.id}',
+                ),
+                onWillAcceptWithDetails: (details) =>
+                    details.data.categoryId != category.id,
+                onAcceptWithDetails: (details) {
+                  unawaited(
+                    _moveDroppedMatterToCategory(
+                      context: context,
+                      ref: ref,
+                      payload: details.data,
+                      categoryId: category.id,
                     ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      collapsed
-                          ? CupertinoIcons.chevron_right
-                          : CupertinoIcons.chevron_down,
-                      size: 12,
+                  );
+                },
+                builder: (targetContext, candidateData, rejectedData) {
+                  final highlight = candidateData.isNotEmpty;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 100),
+                    alignment: Alignment.centerLeft,
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: highlight
+                          ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                          : null,
+                      borderRadius: BorderRadius.circular(6),
                     ),
-                  ],
-                );
-              },
-            ),
-            trailing: ChronicleMacosCategoryActionMenu(
-              onEdit: () =>
-                  _editCategory(context: context, ref: ref, category: category),
-              onDelete: () => _deleteCategory(
-                context: context,
-                ref: ref,
-                category: category,
+                    child: Row(
+                      children: <Widget>[
+                        MacosIcon(
+                          _matterIconDataForKey(category.icon),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${_displayCategoryName(context, category)} (${section.matters.length})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          collapsed
+                              ? CupertinoIcons.chevron_right
+                              : CupertinoIcons.chevron_down,
+                          size: 12,
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ),
@@ -750,30 +872,30 @@ class _MatterSidebar extends ConsumerWidget {
           ),
         ),
         Expanded(
-          child: SidebarItems(
-            scrollController: scrollController,
-            items: sidebarItems,
-            currentIndex: selectedIndex,
-            onChanged: (index) => selectableEntries[index].onSelected(),
-            itemSize: SidebarItemSize.large,
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (event) {
+              if ((event.buttons & 2) == 0) {
+                return;
+              }
+              _handleMacSidebarSecondaryClick(
+                globalPosition: event.position,
+                contextMenuTargets: contextMenuTargets,
+              );
+            },
+            child: SidebarItems(
+              scrollController: scrollController,
+              items: sidebarItems,
+              currentIndex: selectedIndex,
+              onChanged: (index) => selectableEntries[index].onSelected(),
+              itemSize: SidebarItemSize.large,
+            ),
           ),
         ),
         const Divider(height: 1),
         const ChronicleSidebarSyncPanel(),
       ],
     );
-  }
-
-  _MatterAction _mapChronicleMatterAction(ChronicleMatterAction action) {
-    return switch (action) {
-      ChronicleMatterAction.edit => _MatterAction.edit,
-      ChronicleMatterAction.togglePinned => _MatterAction.togglePinned,
-      ChronicleMatterAction.setActive => _MatterAction.setActive,
-      ChronicleMatterAction.setPaused => _MatterAction.setPaused,
-      ChronicleMatterAction.setCompleted => _MatterAction.setCompleted,
-      ChronicleMatterAction.setArchived => _MatterAction.setArchived,
-      ChronicleMatterAction.delete => _MatterAction.delete,
-    };
   }
 
   Future<void> _moveDroppedNoteToMatter({
@@ -1716,6 +1838,16 @@ class _MacSidebarSelectableEntry {
   final VoidCallback onSelected;
 }
 
+class _MacSidebarContextMenuTarget {
+  const _MacSidebarContextMenuTarget({
+    required this.targetKey,
+    required this.onSecondaryTapDown,
+  });
+
+  final GlobalKey targetKey;
+  final Future<void> Function(TapDownDetails details) onSecondaryTapDown;
+}
+
 class _SidebarMessageView extends StatelessWidget {
   const _SidebarMessageView({
     required this.scrollController,
@@ -1997,42 +2129,48 @@ class _MaterialCategoryHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final iconData = _matterIconDataForKey(section.category.icon);
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.only(left: 8, right: 0),
-      onTap: onToggleCollapsed,
-      leading: Icon(iconData, color: _colorFromHex(section.category.color)),
-      title: Text(
-        '${_displayCategoryName(context, section.category)} (${section.matters.length})',
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(
-            collapsed ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_down,
-            size: 18,
-          ),
-          PopupMenuButton<_CategoryAction>(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onSecondaryTapDown: (details) {
+        unawaited(
+          _showSecondaryClickMenu<_CategoryAction>(
+            context: context,
+            details: details,
+            itemBuilder: (menuContext) => <PopupMenuEntry<_CategoryAction>>[
+              PopupMenuItem<_CategoryAction>(
+                value: _CategoryAction.edit,
+                child: Text(menuContext.l10n.editAction),
+              ),
+              PopupMenuItem<_CategoryAction>(
+                value: _CategoryAction.delete,
+                child: Text(menuContext.l10n.deleteAction),
+              ),
+            ],
             onSelected: (value) async {
               switch (value) {
                 case _CategoryAction.edit:
                   await onEdit();
+                  return;
                 case _CategoryAction.delete:
                   await onDelete();
+                  return;
               }
             },
-            itemBuilder: (_) => <PopupMenuEntry<_CategoryAction>>[
-              PopupMenuItem<_CategoryAction>(
-                value: _CategoryAction.edit,
-                child: Text(context.l10n.editAction),
-              ),
-              PopupMenuItem<_CategoryAction>(
-                value: _CategoryAction.delete,
-                child: Text(context.l10n.deleteAction),
-              ),
-            ],
           ),
-        ],
+        );
+      },
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.only(left: 8, right: 0),
+        onTap: onToggleCollapsed,
+        leading: Icon(iconData, color: _colorFromHex(section.category.color)),
+        title: Text(
+          '${_displayCategoryName(context, section.category)} (${section.matters.length})',
+        ),
+        trailing: Icon(
+          collapsed ? Icons.keyboard_arrow_right : Icons.keyboard_arrow_down,
+          size: 18,
+        ),
       ),
     );
   }
@@ -2068,84 +2206,93 @@ class _MatterList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     if (matters.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Column(
       children: matters.map((matter) {
-        final tile = ListTile(
-          dense: true,
-          selected: selectedMatterId == matter.id,
-          leading: _MatterLeadingIcon(
-            iconKey: matter.icon,
-            isPinned: matter.isPinned,
-            isMacOS: false,
-          ),
-          title: Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  matter.title,
-                  style: _materialSidebarItemLabelStyle(
-                    context,
-                    selected: selectedMatterId == matter.id,
+        final tile = GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onSecondaryTapDown: (details) {
+            unawaited(
+              _showSecondaryClickMenu<_MatterAction>(
+                context: context,
+                details: details,
+                itemBuilder: (menuContext) => <PopupMenuEntry<_MatterAction>>[
+                  PopupMenuItem<_MatterAction>(
+                    value: _MatterAction.edit,
+                    child: Text(menuContext.l10n.editAction),
+                  ),
+                  PopupMenuItem<_MatterAction>(
+                    value: _MatterAction.togglePinned,
+                    child: Text(
+                      matter.isPinned
+                          ? menuContext.l10n.unpinAction
+                          : menuContext.l10n.pinAction,
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem<_MatterAction>(
+                    value: _MatterAction.setActive,
+                    child: Text(menuContext.l10n.setActiveAction),
+                  ),
+                  PopupMenuItem<_MatterAction>(
+                    value: _MatterAction.setPaused,
+                    child: Text(menuContext.l10n.setPausedAction),
+                  ),
+                  PopupMenuItem<_MatterAction>(
+                    value: _MatterAction.setCompleted,
+                    child: Text(menuContext.l10n.setCompletedAction),
+                  ),
+                  PopupMenuItem<_MatterAction>(
+                    value: _MatterAction.setArchived,
+                    child: Text(menuContext.l10n.setArchivedAction),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem<_MatterAction>(
+                    value: _MatterAction.delete,
+                    child: Text(menuContext.l10n.deleteAction),
+                  ),
+                ],
+                onSelected: (value) async {
+                  await onAction(matter, value);
+                },
+              ),
+            );
+          },
+          child: ListTile(
+            dense: true,
+            selected: selectedMatterId == matter.id,
+            leading: _MatterLeadingIcon(
+              iconKey: matter.icon,
+              isPinned: matter.isPinned,
+              isMacOS: false,
+            ),
+            title: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    matter.title,
+                    style: _materialSidebarItemLabelStyle(
+                      context,
+                      selected: selectedMatterId == matter.id,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              _MatterStatusChip(status: matter.status),
-            ],
+                const SizedBox(width: 4),
+                _MatterStatusChip(status: matter.status),
+              ],
+            ),
+            subtitle: matter.description.isEmpty
+                ? null
+                : Text(
+                    matter.description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+            onTap: () => onSelect(matter),
           ),
-          subtitle: matter.description.isEmpty
-              ? null
-              : Text(
-                  matter.description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-          trailing: PopupMenuButton<_MatterAction>(
-            icon: const Icon(CupertinoIcons.ellipsis_circle),
-            onSelected: (value) async {
-              await onAction(matter, value);
-            },
-            itemBuilder: (_) => <PopupMenuEntry<_MatterAction>>[
-              PopupMenuItem<_MatterAction>(
-                value: _MatterAction.edit,
-                child: Text(l10n.editAction),
-              ),
-              PopupMenuItem<_MatterAction>(
-                value: _MatterAction.togglePinned,
-                child: Text(
-                  matter.isPinned ? l10n.unpinAction : l10n.pinAction,
-                ),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem<_MatterAction>(
-                value: _MatterAction.setActive,
-                child: Text(l10n.setActiveAction),
-              ),
-              PopupMenuItem<_MatterAction>(
-                value: _MatterAction.setPaused,
-                child: Text(l10n.setPausedAction),
-              ),
-              PopupMenuItem<_MatterAction>(
-                value: _MatterAction.setCompleted,
-                child: Text(l10n.setCompletedAction),
-              ),
-              PopupMenuItem<_MatterAction>(
-                value: _MatterAction.setArchived,
-                child: Text(l10n.setArchivedAction),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem<_MatterAction>(
-                value: _MatterAction.delete,
-                child: Text(l10n.deleteAction),
-              ),
-            ],
-          ),
-          onTap: () => onSelect(matter),
         );
 
         Widget content = tile;

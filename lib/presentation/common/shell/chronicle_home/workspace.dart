@@ -784,224 +784,180 @@ class _MatterTimelineWorkspace extends ConsumerWidget {
                 .replaceAll('\n', ' ')
                 .trim()
                 .replaceFirst(RegExp(r'^#+\s*'), '');
-            final card = Container(
-              decoration: isMacOSNativeUI
-                  ? _macosPanelDecoration(context)
-                  : BoxDecoration(
-                      border: Border.all(color: Theme.of(context).dividerColor),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          note.title.trim().isEmpty
-                              ? l10n.untitledLabel
-                              : note.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: isMacOSNativeUI
-                              ? MacosTheme.of(context).typography.headline
-                              : Theme.of(context).textTheme.titleMedium,
+            Future<void> handleTimelineMenuSelection(String value) async {
+              switch (value) {
+                case 'move_matter':
+                  final targetMatter = await _showMoveToMatterDialog(
+                    context: context,
+                    ref: ref,
+                    note: note,
+                  );
+                  if (!context.mounted || targetMatter == null) {
+                    return;
+                  }
+                  await _moveNoteToMatter(
+                    context: context,
+                    ref: ref,
+                    noteId: note.id,
+                    targetMatter: targetMatter,
+                  );
+                  return;
+                case 'move_phase':
+                  final matterId = note.matterId;
+                  if (matterId == null) {
+                    return;
+                  }
+                  final sourceMatter = ref
+                      .read(mattersControllerProvider.notifier)
+                      .findMatter(matterId);
+                  if (sourceMatter == null) {
+                    _showMoveMessage(
+                      context,
+                      context.l10n.moveSourceMatterMissingMessage,
+                    );
+                    return;
+                  }
+                  final phase = await _showMoveToPhaseDialog(
+                    context: context,
+                    matter: sourceMatter,
+                    note: note,
+                  );
+                  if (!context.mounted || phase == null) {
+                    return;
+                  }
+                  await _moveNoteToPhase(
+                    context: context,
+                    ref: ref,
+                    noteId: note.id,
+                    sourceMatterId: sourceMatter.id,
+                    phase: phase,
+                  );
+                  return;
+                case 'move_notebook':
+                  await _moveNoteToNotebookViaDialog(
+                    context: context,
+                    ref: ref,
+                    note: note,
+                  );
+                  return;
+              }
+            }
+
+            final card = GestureDetector(
+              key: ValueKey<String>('timeline_note_card_${note.id}'),
+              behavior: HitTestBehavior.opaque,
+              onSecondaryTapDown: (details) {
+                if (isMacOSNativeUI) {
+                  unawaited(
+                    _showMacosSecondaryClickMenu<String>(
+                      context: context,
+                      details: details,
+                      itemBuilder: (menuContext) => <MacosPulldownMenuEntry>[
+                        ChronicleMacosContextMenuItem<String>(
+                          value: 'move_matter',
+                          title: Text(menuContext.l10n.moveNoteToMatterAction),
                         ),
+                        ChronicleMacosContextMenuItem<String>(
+                          value: 'move_phase',
+                          enabled: note.matterId != null,
+                          title: Text(menuContext.l10n.moveNoteToPhaseAction),
+                        ),
+                        ChronicleMacosContextMenuItem<String>(
+                          value: 'move_notebook',
+                          title: Text(menuContext.l10n.moveToNotebookAction),
+                        ),
+                      ],
+                      onSelected: handleTimelineMenuSelection,
+                    ),
+                  );
+                  return;
+                }
+                unawaited(
+                  _showSecondaryClickMenu<String>(
+                    context: context,
+                    details: details,
+                    itemBuilder: (menuContext) => <PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(
+                        value: 'move_matter',
+                        child: Text(menuContext.l10n.moveNoteToMatterAction),
                       ),
-                      Text(
-                        dateLabel,
-                        style: isMacOSNativeUI
-                            ? MacosTheme.of(context).typography.caption1
-                            : Theme.of(context).textTheme.bodySmall,
+                      PopupMenuItem<String>(
+                        value: 'move_phase',
+                        enabled: note.matterId != null,
+                        child: Text(menuContext.l10n.moveNoteToPhaseAction),
+                      ),
+                      PopupMenuItem<String>(
+                        value: 'move_notebook',
+                        child: Text(menuContext.l10n.moveToNotebookAction),
                       ),
                     ],
+                    onSelected: handleTimelineMenuSelection,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    preview.isEmpty ? l10n.noSearchResultsMessage : preview,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: <Widget>[
-                      isMacOSNativeUI
-                          ? MacosPulldownButton(
-                              icon: CupertinoIcons.ellipsis_circle,
-                              items: <MacosPulldownMenuEntry>[
-                                MacosPulldownMenuItem(
-                                  title: Text(l10n.moveNoteToMatterAction),
-                                  onTap: () async {
-                                    final targetMatter =
-                                        await _showMoveToMatterDialog(
-                                          context: context,
-                                          ref: ref,
-                                          note: note,
-                                        );
-                                    if (!context.mounted ||
-                                        targetMatter == null) {
-                                      return;
-                                    }
-                                    await _moveNoteToMatter(
-                                      context: context,
-                                      ref: ref,
-                                      noteId: note.id,
-                                      targetMatter: targetMatter,
-                                    );
-                                  },
-                                ),
-                                MacosPulldownMenuItem(
-                                  title: Text(l10n.moveNoteToPhaseAction),
-                                  enabled: note.matterId != null,
-                                  onTap: () async {
-                                    final matterId = note.matterId;
-                                    if (matterId == null) {
-                                      return;
-                                    }
-                                    final sourceMatter = ref
-                                        .read(
-                                          mattersControllerProvider.notifier,
-                                        )
-                                        .findMatter(matterId);
-                                    if (sourceMatter == null) {
-                                      _showMoveMessage(
-                                        context,
-                                        context
-                                            .l10n
-                                            .moveSourceMatterMissingMessage,
-                                      );
-                                      return;
-                                    }
-                                    final phase = await _showMoveToPhaseDialog(
-                                      context: context,
-                                      matter: sourceMatter,
-                                      note: note,
-                                    );
-                                    if (!context.mounted || phase == null) {
-                                      return;
-                                    }
-                                    await _moveNoteToPhase(
-                                      context: context,
-                                      ref: ref,
-                                      noteId: note.id,
-                                      sourceMatterId: sourceMatter.id,
-                                      phase: phase,
-                                    );
-                                  },
-                                ),
-                                MacosPulldownMenuItem(
-                                  title: Text(l10n.moveToNotebookAction),
-                                  onTap: () async {
-                                    await _moveNoteToNotebookViaDialog(
-                                      context: context,
-                                      ref: ref,
-                                      note: note,
-                                    );
-                                  },
-                                ),
-                              ],
-                            )
-                          : PopupMenuButton<String>(
-                              itemBuilder: (_) => <PopupMenuEntry<String>>[
-                                PopupMenuItem<String>(
-                                  value: 'move_matter',
-                                  child: Text(l10n.moveNoteToMatterAction),
-                                ),
-                                PopupMenuItem<String>(
-                                  value: 'move_phase',
-                                  enabled: note.matterId != null,
-                                  child: Text(l10n.moveNoteToPhaseAction),
-                                ),
-                                PopupMenuItem<String>(
-                                  value: 'move_notebook',
-                                  child: Text(l10n.moveToNotebookAction),
-                                ),
-                              ],
-                              onSelected: (value) async {
-                                switch (value) {
-                                  case 'move_matter':
-                                    final targetMatter =
-                                        await _showMoveToMatterDialog(
-                                          context: context,
-                                          ref: ref,
-                                          note: note,
-                                        );
-                                    if (!context.mounted ||
-                                        targetMatter == null) {
-                                      return;
-                                    }
-                                    await _moveNoteToMatter(
-                                      context: context,
-                                      ref: ref,
-                                      noteId: note.id,
-                                      targetMatter: targetMatter,
-                                    );
-                                    return;
-                                  case 'move_phase':
-                                    final matterId = note.matterId;
-                                    if (matterId == null) {
-                                      return;
-                                    }
-                                    final sourceMatter = ref
-                                        .read(
-                                          mattersControllerProvider.notifier,
-                                        )
-                                        .findMatter(matterId);
-                                    if (sourceMatter == null) {
-                                      _showMoveMessage(
-                                        context,
-                                        context
-                                            .l10n
-                                            .moveSourceMatterMissingMessage,
-                                      );
-                                      return;
-                                    }
-                                    final phase = await _showMoveToPhaseDialog(
-                                      context: context,
-                                      matter: sourceMatter,
-                                      note: note,
-                                    );
-                                    if (!context.mounted || phase == null) {
-                                      return;
-                                    }
-                                    await _moveNoteToPhase(
-                                      context: context,
-                                      ref: ref,
-                                      noteId: note.id,
-                                      sourceMatterId: sourceMatter.id,
-                                      phase: phase,
-                                    );
-                                    return;
-                                  case 'move_notebook':
-                                    await _moveNoteToNotebookViaDialog(
-                                      context: context,
-                                      ref: ref,
-                                      note: note,
-                                    );
-                                    return;
-                                }
-                              },
-                            ),
-                      const SizedBox(width: 6),
-                      isMacOSNativeUI
-                          ? PushButton(
-                              controlSize: ControlSize.regular,
-                              onPressed: () async {
-                                await _openNoteInPhaseEditor(ref, note);
-                              },
-                              child: const Text('Edit in Phase'),
-                            )
-                          : OutlinedButton(
-                              onPressed: () async {
-                                await _openNoteInPhaseEditor(ref, note);
-                              },
-                              child: const Text('Edit in Phase'),
-                            ),
-                    ],
-                  ),
-                ],
+                );
+              },
+              child: Container(
+                decoration: isMacOSNativeUI
+                    ? _macosPanelDecoration(context)
+                    : BoxDecoration(
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            note.title.trim().isEmpty
+                                ? l10n.untitledLabel
+                                : note.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: isMacOSNativeUI
+                                ? MacosTheme.of(context).typography.headline
+                                : Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        Text(
+                          dateLabel,
+                          style: isMacOSNativeUI
+                              ? MacosTheme.of(context).typography.caption1
+                              : Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      preview.isEmpty ? l10n.noSearchResultsMessage : preview,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: <Widget>[
+                        isMacOSNativeUI
+                            ? PushButton(
+                                controlSize: ControlSize.regular,
+                                onPressed: () async {
+                                  await _openNoteInPhaseEditor(ref, note);
+                                },
+                                child: const Text('Edit in Phase'),
+                              )
+                            : OutlinedButton(
+                                onPressed: () async {
+                                  await _openNoteInPhaseEditor(ref, note);
+                                },
+                                child: const Text('Edit in Phase'),
+                              ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             );
 
@@ -1427,6 +1383,118 @@ class _NoteList extends ConsumerWidget {
       return Center(child: Text(l10n.noNotesYetMessage));
     }
 
+    Future<void> handleNoteMenuSelection(Note note, String value) async {
+      switch (value) {
+        case 'edit':
+          await onEdit(note);
+          return;
+        case 'toggle_pin':
+          await onTogglePinned(note);
+          return;
+        case 'link':
+          await onLink(note);
+          return;
+        case 'move_matter':
+          await onMoveToMatter(note);
+          return;
+        case 'move_phase':
+          await onMoveToPhase(note);
+          return;
+        case 'move_notebook':
+          await onMoveToNotebook(note);
+          return;
+        case 'delete':
+          await onDelete(note);
+          return;
+      }
+    }
+
+    List<PopupMenuEntry<String>> buildNoteMenuEntries(
+      BuildContext menuContext,
+      Note note,
+    ) {
+      return <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          value: 'edit',
+          child: Text(menuContext.l10n.editAction),
+        ),
+        PopupMenuItem<String>(
+          value: 'toggle_pin',
+          child: Text(
+            note.isPinned
+                ? menuContext.l10n.unpinAction
+                : menuContext.l10n.pinAction,
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'link',
+          child: Text(menuContext.l10n.linkNoteActionEllipsis),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'move_matter',
+          child: Text(menuContext.l10n.moveNoteToMatterAction),
+        ),
+        PopupMenuItem<String>(
+          value: 'move_phase',
+          enabled: note.matterId != null,
+          child: Text(menuContext.l10n.moveNoteToPhaseAction),
+        ),
+        PopupMenuItem<String>(
+          value: 'move_notebook',
+          child: Text(menuContext.l10n.moveToNotebookAction),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: Text(menuContext.l10n.deleteAction),
+        ),
+      ];
+    }
+
+    List<MacosPulldownMenuEntry> buildMacosNoteMenuEntries(
+      BuildContext menuContext,
+      Note note,
+    ) {
+      return <MacosPulldownMenuEntry>[
+        ChronicleMacosContextMenuItem<String>(
+          value: 'edit',
+          title: Text(menuContext.l10n.editAction),
+        ),
+        ChronicleMacosContextMenuItem<String>(
+          value: 'toggle_pin',
+          title: Text(
+            note.isPinned
+                ? menuContext.l10n.unpinAction
+                : menuContext.l10n.pinAction,
+          ),
+        ),
+        ChronicleMacosContextMenuItem<String>(
+          value: 'link',
+          title: Text(menuContext.l10n.linkNoteActionEllipsis),
+        ),
+        const MacosPulldownMenuDivider(),
+        ChronicleMacosContextMenuItem<String>(
+          value: 'move_matter',
+          title: Text(menuContext.l10n.moveNoteToMatterAction),
+        ),
+        ChronicleMacosContextMenuItem<String>(
+          value: 'move_phase',
+          enabled: note.matterId != null,
+          title: Text(menuContext.l10n.moveNoteToPhaseAction),
+        ),
+        ChronicleMacosContextMenuItem<String>(
+          value: 'move_notebook',
+          title: Text(menuContext.l10n.moveToNotebookAction),
+        ),
+        const MacosPulldownMenuDivider(),
+        ChronicleMacosContextMenuItem<String>(
+          value: 'delete',
+          title: Text(menuContext.l10n.deleteAction),
+        ),
+      ];
+    }
+
     if (isMacOSNativeUI) {
       return ListView.separated(
         padding: const EdgeInsets.all(8),
@@ -1435,6 +1503,7 @@ class _NoteList extends ConsumerWidget {
         itemBuilder: (_, index) {
           final note = notes[index];
           final row = ChronicleMacosSelectableRow(
+            key: ValueKey<String>('phase_note_row_${note.id}'),
             selected: note.id == selectedNoteId,
             leading: MacosIcon(
               note.isPinned ? CupertinoIcons.pin_fill : CupertinoIcons.doc_text,
@@ -1450,58 +1519,19 @@ class _NoteList extends ConsumerWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: MacosPulldownButton(
-              icon: CupertinoIcons.ellipsis_circle,
-              items: <MacosPulldownMenuEntry>[
-                MacosPulldownMenuItem(
-                  title: Text(l10n.editAction),
-                  onTap: () {
-                    unawaited(onEdit(note));
+            onSecondaryTapDown: (details) {
+              unawaited(
+                _showMacosSecondaryClickMenu<String>(
+                  context: context,
+                  details: details,
+                  itemBuilder: (menuContext) =>
+                      buildMacosNoteMenuEntries(menuContext, note),
+                  onSelected: (value) async {
+                    await handleNoteMenuSelection(note, value);
                   },
                 ),
-                MacosPulldownMenuItem(
-                  title: Text(
-                    note.isPinned ? l10n.unpinAction : l10n.pinAction,
-                  ),
-                  onTap: () {
-                    unawaited(onTogglePinned(note));
-                  },
-                ),
-                MacosPulldownMenuItem(
-                  title: Text(l10n.linkNoteActionEllipsis),
-                  onTap: () {
-                    unawaited(onLink(note));
-                  },
-                ),
-                const MacosPulldownMenuDivider(),
-                MacosPulldownMenuItem(
-                  title: Text(l10n.moveNoteToMatterAction),
-                  onTap: () {
-                    unawaited(onMoveToMatter(note));
-                  },
-                ),
-                MacosPulldownMenuItem(
-                  title: Text(l10n.moveNoteToPhaseAction),
-                  enabled: note.matterId != null,
-                  onTap: () {
-                    unawaited(onMoveToPhase(note));
-                  },
-                ),
-                MacosPulldownMenuItem(
-                  title: Text(l10n.moveToNotebookAction),
-                  onTap: () {
-                    unawaited(onMoveToNotebook(note));
-                  },
-                ),
-                const MacosPulldownMenuDivider(),
-                MacosPulldownMenuItem(
-                  title: Text(l10n.deleteAction),
-                  onTap: () {
-                    unawaited(onDelete(note));
-                  },
-                ),
-              ],
-            ),
+              );
+            },
             onTap: () async {
               await ref
                   .read(noteEditorControllerProvider.notifier)
@@ -1517,82 +1547,36 @@ class _NoteList extends ConsumerWidget {
       itemCount: notes.length,
       itemBuilder: (_, index) {
         final note = notes[index];
-        final tile = ListTile(
-          selected: note.id == selectedNoteId,
-          title: Text(note.title.isEmpty ? l10n.untitledLabel : note.title),
-          subtitle: Text(
-            note.content.replaceAll('\n', ' '),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: PopupMenuButton<String>(
-            onSelected: (value) async {
-              switch (value) {
-                case 'edit':
-                  await onEdit(note);
-                  return;
-                case 'toggle_pin':
-                  await onTogglePinned(note);
-                  return;
-                case 'link':
-                  await onLink(note);
-                  return;
-                case 'move_matter':
-                  await onMoveToMatter(note);
-                  return;
-                case 'move_phase':
-                  await onMoveToPhase(note);
-                  return;
-                case 'move_notebook':
-                  await onMoveToNotebook(note);
-                  return;
-                case 'delete':
-                  await onDelete(note);
-                  return;
-              }
-            },
-            itemBuilder: (_) => <PopupMenuEntry<String>>[
-              PopupMenuItem<String>(
-                value: 'edit',
-                child: Text(l10n.editAction),
+        final tile = GestureDetector(
+          key: ValueKey<String>('phase_note_row_${note.id}'),
+          behavior: HitTestBehavior.opaque,
+          onSecondaryTapDown: (details) {
+            unawaited(
+              _showSecondaryClickMenu<String>(
+                context: context,
+                details: details,
+                itemBuilder: (menuContext) =>
+                    buildNoteMenuEntries(menuContext, note),
+                onSelected: (value) async {
+                  await handleNoteMenuSelection(note, value);
+                },
               ),
-              PopupMenuItem<String>(
-                value: 'toggle_pin',
-                child: Text(note.isPinned ? l10n.unpinAction : l10n.pinAction),
-              ),
-              PopupMenuItem<String>(
-                value: 'link',
-                child: Text(l10n.linkNoteActionEllipsis),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem<String>(
-                value: 'move_matter',
-                child: Text(l10n.moveNoteToMatterAction),
-              ),
-              PopupMenuItem<String>(
-                value: 'move_phase',
-                enabled: note.matterId != null,
-                child: Text(l10n.moveNoteToPhaseAction),
-              ),
-              PopupMenuItem<String>(
-                value: 'move_notebook',
-                child: Text(l10n.moveToNotebookAction),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem<String>(
-                value: 'delete',
-                child: Text(l10n.deleteAction),
-              ),
-            ],
-            child: note.isPinned
-                ? const Icon(Icons.push_pin, size: 16)
-                : const Icon(Icons.more_horiz, size: 16),
-          ),
-          onTap: () async {
-            await ref
-                .read(noteEditorControllerProvider.notifier)
-                .selectNote(note.id);
+            );
           },
+          child: ListTile(
+            selected: note.id == selectedNoteId,
+            title: Text(note.title.isEmpty ? l10n.untitledLabel : note.title),
+            subtitle: Text(
+              note.content.replaceAll('\n', ' '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () async {
+              await ref
+                  .read(noteEditorControllerProvider.notifier)
+                  .selectNote(note.id);
+            },
+          ),
         );
         return buildDraggable(note: note, scope: 'list_material', child: tile);
       },
