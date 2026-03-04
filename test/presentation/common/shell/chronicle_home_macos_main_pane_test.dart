@@ -7,6 +7,7 @@ import 'package:chronicle/domain/entities/enums.dart';
 import 'package:chronicle/domain/entities/matter.dart';
 import 'package:chronicle/domain/entities/note.dart';
 import 'package:chronicle/domain/entities/note_link.dart';
+import 'package:chronicle/domain/entities/notebook_folder.dart';
 import 'package:chronicle/domain/entities/note_search_hit.dart';
 import 'package:chronicle/domain/entities/phase.dart';
 import 'package:chronicle/domain/entities/search_query.dart';
@@ -19,6 +20,7 @@ import 'package:chronicle/domain/repositories/link_repository.dart';
 import 'package:chronicle/domain/repositories/category_repository.dart';
 import 'package:chronicle/domain/repositories/matter_repository.dart';
 import 'package:chronicle/domain/repositories/note_repository.dart';
+import 'package:chronicle/domain/repositories/notebook_repository.dart';
 import 'package:chronicle/domain/repositories/search_repository.dart';
 import 'package:chronicle/domain/repositories/settings_repository.dart';
 import 'package:chronicle/domain/repositories/sync_repository.dart';
@@ -100,6 +102,13 @@ void main() {
     tags: const <String>['two'],
     isPinned: false,
     attachments: const <String>[],
+    createdAt: now,
+    updatedAt: now,
+  );
+  final notebookFolder = NotebookFolder(
+    id: 'folder-1',
+    name: 'Folder One',
+    parentId: null,
     createdAt: now,
     updatedAt: now,
   );
@@ -550,14 +559,11 @@ void main() {
       final buttons = tester
           .widgetList<MacosPulldownButton>(find.byType(MacosPulldownButton))
           .toList();
-      final rootNotebookMenus = buttons.where((button) {
+      final notebookMenus = buttons.where((button) {
         final titles = _macosPulldownTitles(button);
-        return titles.contains('New Folder') &&
-            !titles.contains('Rename Folder') &&
-            !titles.contains('Delete Folder');
+        return titles.contains('New Folder');
       }).toList();
-      expect(rootNotebookMenus, isNotEmpty);
-      expect(rootNotebookMenus.first.icon, CupertinoIcons.ellipsis_circle);
+      expect(notebookMenus, isEmpty);
 
       final matterActionMenus = buttons.where((button) {
         final titles = _macosPulldownTitles(button);
@@ -571,7 +577,7 @@ void main() {
   );
 
   testWidgets(
-    'material sidebar keeps Views then Notebooks and only keeps notebook ellipsis menus',
+    'material sidebar keeps Views then Notebooks and removes notebook ellipsis menus',
     (tester) async {
       _setDesktopViewport(tester);
       final repos = _TestRepos(
@@ -638,10 +644,10 @@ void main() {
       );
       expect(
         find.descendant(
-          of: sidebar,
+          of: find.byKey(const Key('sidebar_notebook_root_drop_target')),
           matching: find.byIcon(CupertinoIcons.ellipsis_circle),
         ),
-        findsWidgets,
+        findsNothing,
       );
     },
   );
@@ -1789,6 +1795,161 @@ void main() {
       expect(find.text('Set Active'), findsWidgets);
       await tester.tapAt(const Offset(20, 20));
       await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'material notebook sidebar root and folder open context menus on right click',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final notebookRepository = _MemoryNotebookRepository(<NotebookFolder>[
+        notebookFolder,
+      ]);
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            notebookRepositoryProvider.overrideWithValue(notebookRepository),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = find.byType(Scrollable).first;
+      final rootRow = find.byKey(
+        const Key('sidebar_notebook_root_drop_target'),
+      );
+      await tester.dragUntilVisible(rootRow, scrollable, const Offset(0, -180));
+      await tester.pumpAndSettle();
+
+      await _secondaryClick(tester, rootRow);
+      expect(find.text('New Folder'), findsOneWidget);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      final folderRow = find.byKey(
+        const ValueKey<String>('sidebar_notebook_folder_drop_target_folder-1'),
+      );
+      await tester.dragUntilVisible(
+        folderRow,
+        scrollable,
+        const Offset(0, -180),
+      );
+      await tester.pumpAndSettle();
+
+      await _secondaryClick(tester, folderRow);
+      expect(find.text('New Folder'), findsOneWidget);
+      expect(find.text('Rename Folder'), findsOneWidget);
+      expect(find.text('Delete Folder'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'macOS notebook sidebar root opens native context menu on right click',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(_buildApp(useMacOSNativeUI: true, repos: repos));
+      await tester.pumpAndSettle();
+
+      final scrollable = find.byType(Scrollable).first;
+      final rootRow = find.byKey(
+        const Key('sidebar_notebook_root_drop_target'),
+      );
+      await tester.dragUntilVisible(rootRow, scrollable, const Offset(0, -180));
+      await tester.pumpAndSettle();
+
+      await _secondaryClick(tester, rootRow);
+      expect(find.text('New Folder'), findsOneWidget);
+      expect(find.byType(MacosPulldownMenuDivider), findsNothing);
+      expect(find.byType(PopupMenuDivider), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'macOS notebook sidebar root and folder open menu from surrounding stripe area',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final notebookRepository = _MemoryNotebookRepository(<NotebookFolder>[
+        notebookFolder,
+      ]);
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            notebookRepositoryProvider.overrideWithValue(notebookRepository),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scrollable = find.byType(Scrollable).first;
+      final rootRow = find.byKey(
+        const Key('sidebar_notebook_root_drop_target'),
+      );
+      await tester.dragUntilVisible(rootRow, scrollable, const Offset(0, -180));
+      await tester.pumpAndSettle();
+
+      final rootRect = tester.getRect(rootRow);
+      await _secondaryClickAt(
+        tester,
+        Offset(rootRect.left - 4, rootRect.center.dy),
+      );
+      expect(find.text('New Folder'), findsOneWidget);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      await _secondaryClickAt(
+        tester,
+        Offset(rootRect.right + 4, rootRect.center.dy),
+      );
+      expect(find.text('New Folder'), findsOneWidget);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      final folderRow = find.byKey(
+        const ValueKey<String>('sidebar_notebook_folder_drop_target_folder-1'),
+      );
+      await tester.dragUntilVisible(
+        folderRow,
+        scrollable,
+        const Offset(0, -180),
+      );
+      await tester.pumpAndSettle();
+
+      final folderRect = tester.getRect(folderRow);
+      await _secondaryClickAt(
+        tester,
+        Offset(folderRect.left - 4, folderRect.center.dy),
+      );
+      expect(find.text('Rename Folder'), findsOneWidget);
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      await _secondaryClickAt(
+        tester,
+        Offset(folderRect.right + 4, folderRect.center.dy),
+      );
+      expect(find.text('Rename Folder'), findsOneWidget);
     },
   );
 
@@ -3947,6 +4108,65 @@ class _MemoryNoteRepository implements NoteRepository {
   Future<void> updateNote(Note note) async {
     updateCount += 1;
     _notes[note.id] = note;
+  }
+}
+
+class _MemoryNotebookRepository implements NotebookRepository {
+  _MemoryNotebookRepository(List<NotebookFolder> folders)
+    : _folders = <String, NotebookFolder>{
+        for (final folder in folders) folder.id: folder,
+      };
+
+  final Map<String, NotebookFolder> _folders;
+
+  @override
+  Future<NotebookFolder> createFolder({
+    required String name,
+    String? parentId,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final id = 'folder-${_folders.length + 1}';
+    final folder = NotebookFolder(
+      id: id,
+      name: name,
+      parentId: parentId,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _folders[id] = folder;
+    return folder;
+  }
+
+  @override
+  Future<void> deleteFolder(String folderId) async {
+    _folders.remove(folderId);
+  }
+
+  @override
+  Future<NotebookFolder?> getFolderById(String folderId) async {
+    return _folders[folderId];
+  }
+
+  @override
+  Future<List<NotebookFolder>> listFolders() async {
+    return _folders.values.toList(growable: false);
+  }
+
+  @override
+  Future<NotebookFolder> renameFolder({
+    required String folderId,
+    required String name,
+  }) async {
+    final existing = _folders[folderId];
+    if (existing == null) {
+      throw StateError('Notebook folder not found: $folderId');
+    }
+    final updated = existing.copyWith(
+      name: name,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    _folders[folderId] = updated;
+    return updated;
   }
 }
 

@@ -792,6 +792,7 @@ class _MatterSidebar extends ConsumerWidget {
         ref: ref,
         sidebarItems: sidebarItems,
         selectableEntries: selectableEntries,
+        contextMenuTargets: contextMenuTargets,
         showNotebook: showNotebook,
         selectedNotebookFolderId: selectedNotebookFolderId,
       );
@@ -800,6 +801,7 @@ class _MatterSidebar extends ConsumerWidget {
         ref: ref,
         sidebarItems: sidebarItems,
         selectableEntries: selectableEntries,
+        contextMenuTargets: contextMenuTargets,
         nodes: notebookTree,
         depth: 1,
         showNotebook: showNotebook,
@@ -1128,36 +1130,45 @@ class _MatterSidebar extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(8),
                 )
               : null,
-          child: ListTile(
-            selected: showNotebook && selectedNotebookFolderId == null,
-            title: Text(
-              l10n.notebookLabel,
-              style: _materialSidebarItemLabelStyle(
-                context,
-                selected: showNotebook && selectedNotebookFolderId == null,
-              ),
-            ),
-            trailing: PopupMenuButton<String>(
-              icon: const Icon(CupertinoIcons.ellipsis_circle),
-              onSelected: (value) async {
-                if (value == 'new_folder') {
-                  await _createNotebookFolder(
-                    context: context,
-                    ref: ref,
-                    parentId: null,
-                  );
-                }
-              },
-              itemBuilder: (_) => <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(
-                  value: 'new_folder',
-                  child: Text(l10n.newFolderAction),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onSecondaryTapDown: (details) {
+              unawaited(
+                _showSecondaryClickMenu<String>(
+                  context: context,
+                  details: details,
+                  itemBuilder: (menuContext) => <PopupMenuEntry<String>>[
+                    PopupMenuItem<String>(
+                      value: 'new_folder',
+                      child: Text(menuContext.l10n.newFolderAction),
+                    ),
+                  ],
+                  onSelected: (value) async {
+                    if (value != 'new_folder') {
+                      return;
+                    }
+                    await _createNotebookFolder(
+                      context: context,
+                      ref: ref,
+                      parentId: null,
+                    );
+                  },
                 ),
-              ],
-            ),
-            onTap: () {
-              _selectNotebookFolder(ref, null);
+              );
             },
+            child: ListTile(
+              selected: showNotebook && selectedNotebookFolderId == null,
+              title: Text(
+                l10n.notebookLabel,
+                style: _materialSidebarItemLabelStyle(
+                  context,
+                  selected: showNotebook && selectedNotebookFolderId == null,
+                ),
+              ),
+              onTap: () {
+                _selectNotebookFolder(ref, null);
+              },
+            ),
           ),
         );
       },
@@ -1172,7 +1183,6 @@ class _MatterSidebar extends ConsumerWidget {
     required bool showNotebook,
     required String? selectedNotebookFolderId,
   }) {
-    final l10n = context.l10n;
     final folder = node.folder;
     final tile = DragTarget<_NoteDragPayload>(
       key: ValueKey<String>('sidebar_notebook_folder_drop_target_${folder.id}'),
@@ -1196,61 +1206,73 @@ class _MatterSidebar extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(8),
                 )
               : null,
-          child: ListTile(
-            contentPadding: EdgeInsets.only(left: 12 + (depth * 16), right: 8),
-            selected: showNotebook && selectedNotebookFolderId == folder.id,
-            title: Text(
-              folder.name,
-              style: _materialSidebarItemLabelStyle(
-                context,
-                selected: showNotebook && selectedNotebookFolderId == folder.id,
-              ),
-            ),
-            trailing: PopupMenuButton<String>(
-              icon: const Icon(CupertinoIcons.ellipsis_circle),
-              onSelected: (value) async {
-                switch (value) {
-                  case 'new_folder':
-                    await _createNotebookFolder(
-                      context: context,
-                      ref: ref,
-                      parentId: folder.id,
-                    );
-                    return;
-                  case 'rename':
-                    await _renameNotebookFolder(
-                      context: context,
-                      ref: ref,
-                      folder: folder,
-                    );
-                    return;
-                  case 'delete':
-                    await _deleteNotebookFolder(
-                      context: context,
-                      ref: ref,
-                      folder: folder,
-                    );
-                    return;
-                }
-              },
-              itemBuilder: (_) => <PopupMenuEntry<String>>[
-                PopupMenuItem<String>(
-                  value: 'new_folder',
-                  child: Text(l10n.newFolderAction),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onSecondaryTapDown: (details) {
+              unawaited(
+                _showSecondaryClickMenu<String>(
+                  context: context,
+                  details: details,
+                  itemBuilder: (menuContext) => <PopupMenuEntry<String>>[
+                    PopupMenuItem<String>(
+                      value: 'new_folder',
+                      child: Text(menuContext.l10n.newFolderAction),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'rename',
+                      child: Text(menuContext.l10n.renameFolderAction),
+                    ),
+                    PopupMenuItem<String>(
+                      value: 'delete',
+                      child: Text(menuContext.l10n.deleteFolderAction),
+                    ),
+                  ],
+                  onSelected: (value) async {
+                    switch (value) {
+                      case 'new_folder':
+                        await _createNotebookFolder(
+                          context: context,
+                          ref: ref,
+                          parentId: folder.id,
+                        );
+                        return;
+                      case 'rename':
+                        await _renameNotebookFolder(
+                          context: context,
+                          ref: ref,
+                          folder: folder,
+                        );
+                        return;
+                      case 'delete':
+                        await _deleteNotebookFolder(
+                          context: context,
+                          ref: ref,
+                          folder: folder,
+                        );
+                        return;
+                    }
+                  },
                 ),
-                PopupMenuItem<String>(
-                  value: 'rename',
-                  child: Text(l10n.renameFolderAction),
-                ),
-                PopupMenuItem<String>(
-                  value: 'delete',
-                  child: Text(l10n.deleteFolderAction),
-                ),
-              ],
-            ),
-            onTap: () {
-              _selectNotebookFolder(ref, folder.id);
+              );
             },
+            child: ListTile(
+              contentPadding: EdgeInsets.only(
+                left: 12 + (depth * 16),
+                right: 8,
+              ),
+              selected: showNotebook && selectedNotebookFolderId == folder.id,
+              title: Text(
+                folder.name,
+                style: _materialSidebarItemLabelStyle(
+                  context,
+                  selected:
+                      showNotebook && selectedNotebookFolderId == folder.id,
+                ),
+              ),
+              onTap: () {
+                _selectNotebookFolder(ref, folder.id);
+              },
+            ),
           ),
         );
       },
@@ -1281,10 +1303,39 @@ class _MatterSidebar extends ConsumerWidget {
     required WidgetRef ref,
     required List<SidebarItem> sidebarItems,
     required List<_MacSidebarSelectableEntry> selectableEntries,
+    required List<_MacSidebarContextMenuTarget> contextMenuTargets,
     required bool showNotebook,
     required String? selectedNotebookFolderId,
   }) {
     final l10n = context.l10n;
+    final contextTargetKey = GlobalKey(
+      debugLabel: 'sidebar_notebook_root_context_surface',
+    );
+    contextMenuTargets.add(
+      _MacSidebarContextMenuTarget(
+        targetKey: contextTargetKey,
+        onSecondaryTapDown: (details) => _showMacosSecondaryClickMenu<String>(
+          context: context,
+          details: details,
+          itemBuilder: (menuContext) => <MacosPulldownMenuEntry>[
+            ChronicleMacosContextMenuItem<String>(
+              value: 'new_folder',
+              title: Text(menuContext.l10n.newFolderAction),
+            ),
+          ],
+          onSelected: (value) async {
+            if (value != 'new_folder') {
+              return;
+            }
+            await _createNotebookFolder(
+              context: context,
+              ref: ref,
+              parentId: null,
+            );
+          },
+        ),
+      ),
+    );
     selectableEntries.add(
       _MacSidebarSelectableEntry(
         key: 'notebook:root',
@@ -1295,56 +1346,42 @@ class _MatterSidebar extends ConsumerWidget {
     );
     sidebarItems.add(
       SidebarItem(
-        label: DragTarget<_NoteDragPayload>(
-          key: _kSidebarNotebookRootDropTargetKey,
-          onWillAcceptWithDetails: (details) => true,
-          onAcceptWithDetails: (details) {
-            unawaited(
-              _moveDroppedNoteToNotebook(
-                context: context,
-                ref: ref,
-                payload: details.data,
-                folderId: null,
-              ),
-            );
-          },
-          builder: (targetContext, candidateData, rejectedData) {
-            final highlight = candidateData.isNotEmpty;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              decoration: BoxDecoration(
-                color: highlight
-                    ? MacosTheme.of(context).primaryColor.withAlpha(64)
-                    : null,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                l10n.notebookLabel,
-                style: _macSidebarItemLabelStyle(
-                  context,
-                  selected: showNotebook && selectedNotebookFolderId == null,
+        label: _buildMacSidebarSecondaryClickSurface(
+          key: contextTargetKey,
+          child: DragTarget<_NoteDragPayload>(
+            key: _kSidebarNotebookRootDropTargetKey,
+            onWillAcceptWithDetails: (details) => true,
+            onAcceptWithDetails: (details) {
+              unawaited(
+                _moveDroppedNoteToNotebook(
+                  context: context,
+                  ref: ref,
+                  payload: details.data,
+                  folderId: null,
                 ),
-              ),
-            );
-          },
-        ),
-        trailing: MacosPulldownButton(
-          icon: CupertinoIcons.ellipsis_circle,
-          items: <MacosPulldownMenuEntry>[
-            MacosPulldownMenuItem(
-              title: Text(l10n.newFolderAction),
-              onTap: () {
-                unawaited(
-                  _createNotebookFolder(
-                    context: context,
-                    ref: ref,
-                    parentId: null,
+              );
+            },
+            builder: (targetContext, candidateData, rejectedData) {
+              final highlight = candidateData.isNotEmpty;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: highlight
+                      ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                      : null,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  l10n.notebookLabel,
+                  style: _macSidebarItemLabelStyle(
+                    context,
+                    selected: showNotebook && selectedNotebookFolderId == null,
                   ),
-                );
-              },
-            ),
-          ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1387,14 +1424,65 @@ class _MatterSidebar extends ConsumerWidget {
     required WidgetRef ref,
     required List<SidebarItem> sidebarItems,
     required List<_MacSidebarSelectableEntry> selectableEntries,
+    required List<_MacSidebarContextMenuTarget> contextMenuTargets,
     required List<NotebookFolderTreeNode> nodes,
     required int depth,
     required bool showNotebook,
     required String? selectedNotebookFolderId,
   }) {
-    final l10n = context.l10n;
     for (final node in nodes) {
       final folder = node.folder;
+      final contextTargetKey = GlobalKey(
+        debugLabel: 'sidebar_notebook_folder_context_surface_${folder.id}',
+      );
+      contextMenuTargets.add(
+        _MacSidebarContextMenuTarget(
+          targetKey: contextTargetKey,
+          onSecondaryTapDown: (details) => _showMacosSecondaryClickMenu<String>(
+            context: context,
+            details: details,
+            itemBuilder: (menuContext) => <MacosPulldownMenuEntry>[
+              ChronicleMacosContextMenuItem<String>(
+                value: 'new_folder',
+                title: Text(menuContext.l10n.newFolderAction),
+              ),
+              ChronicleMacosContextMenuItem<String>(
+                value: 'rename',
+                title: Text(menuContext.l10n.renameFolderAction),
+              ),
+              ChronicleMacosContextMenuItem<String>(
+                value: 'delete',
+                title: Text(menuContext.l10n.deleteFolderAction),
+              ),
+            ],
+            onSelected: (value) async {
+              switch (value) {
+                case 'new_folder':
+                  await _createNotebookFolder(
+                    context: context,
+                    ref: ref,
+                    parentId: folder.id,
+                  );
+                  return;
+                case 'rename':
+                  await _renameNotebookFolder(
+                    context: context,
+                    ref: ref,
+                    folder: folder,
+                  );
+                  return;
+                case 'delete':
+                  await _deleteNotebookFolder(
+                    context: context,
+                    ref: ref,
+                    folder: folder,
+                  );
+                  return;
+              }
+            },
+          ),
+        ),
+      );
       selectableEntries.add(
         _MacSidebarSelectableEntry(
           key: 'notebook:${folder.id}',
@@ -1405,90 +1493,52 @@ class _MatterSidebar extends ConsumerWidget {
       );
       sidebarItems.add(
         SidebarItem(
-          label: DragTarget<_NoteDragPayload>(
-            key: ValueKey<String>(
-              'sidebar_notebook_folder_drop_target_${folder.id}',
-            ),
-            onWillAcceptWithDetails: (details) => true,
-            onAcceptWithDetails: (details) {
-              unawaited(
-                _moveDroppedNoteToNotebook(
-                  context: context,
-                  ref: ref,
-                  payload: details.data,
-                  folderId: folder.id,
-                ),
-              );
-            },
-            builder: (targetContext, candidateData, rejectedData) {
-              final highlight = candidateData.isNotEmpty;
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 100),
-                padding: EdgeInsets.only(
-                  left: depth * 12,
-                  right: 4,
-                  top: 2,
-                  bottom: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: highlight
-                      ? MacosTheme.of(context).primaryColor.withAlpha(64)
-                      : null,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  folder.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _macSidebarItemLabelStyle(
-                    context,
-                    selected:
-                        showNotebook && selectedNotebookFolderId == folder.id,
+          label: _buildMacSidebarSecondaryClickSurface(
+            key: contextTargetKey,
+            child: DragTarget<_NoteDragPayload>(
+              key: ValueKey<String>(
+                'sidebar_notebook_folder_drop_target_${folder.id}',
+              ),
+              onWillAcceptWithDetails: (details) => true,
+              onAcceptWithDetails: (details) {
+                unawaited(
+                  _moveDroppedNoteToNotebook(
+                    context: context,
+                    ref: ref,
+                    payload: details.data,
+                    folderId: folder.id,
                   ),
-                ),
-              );
-            },
-          ),
-          trailing: MacosPulldownButton(
-            icon: CupertinoIcons.ellipsis_circle,
-            items: <MacosPulldownMenuEntry>[
-              MacosPulldownMenuItem(
-                title: Text(l10n.newFolderAction),
-                onTap: () {
-                  unawaited(
-                    _createNotebookFolder(
-                      context: context,
-                      ref: ref,
-                      parentId: folder.id,
+                );
+              },
+              builder: (targetContext, candidateData, rejectedData) {
+                final highlight = candidateData.isNotEmpty;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 100),
+                  padding: EdgeInsets.only(
+                    left: depth * 12,
+                    right: 4,
+                    top: 2,
+                    bottom: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: highlight
+                        ? MacosTheme.of(context).primaryColor.withAlpha(64)
+                        : null,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    folder.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: _macSidebarItemLabelStyle(
+                      context,
+                      selected:
+                          showNotebook && selectedNotebookFolderId == folder.id,
                     ),
-                  );
-                },
-              ),
-              MacosPulldownMenuItem(
-                title: Text(l10n.renameFolderAction),
-                onTap: () {
-                  unawaited(
-                    _renameNotebookFolder(
-                      context: context,
-                      ref: ref,
-                      folder: folder,
-                    ),
-                  );
-                },
-              ),
-              MacosPulldownMenuItem(
-                title: Text(l10n.deleteFolderAction),
-                onTap: () {
-                  unawaited(
-                    _deleteNotebookFolder(
-                      context: context,
-                      ref: ref,
-                      folder: folder,
-                    ),
-                  );
-                },
-              ),
-            ],
+                  ),
+                );
+              },
+            ),
           ),
         ),
       );
@@ -1497,6 +1547,7 @@ class _MatterSidebar extends ConsumerWidget {
         ref: ref,
         sidebarItems: sidebarItems,
         selectableEntries: selectableEntries,
+        contextMenuTargets: contextMenuTargets,
         nodes: node.children,
         depth: depth + 1,
         showNotebook: showNotebook,
