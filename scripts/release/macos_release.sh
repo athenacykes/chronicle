@@ -14,6 +14,8 @@ SKIP_NOTARIZATION="${SKIP_NOTARIZATION:-0}"
 RUN_QUALITY_GATES="${RUN_QUALITY_GATES:-1}"
 BUILD_NAME="${BUILD_NAME:-}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
+TIMESTAMP_MAX_RETRIES="${TIMESTAMP_MAX_RETRIES:-4}"
+TIMESTAMP_RETRY_DELAY_SECONDS="${TIMESTAMP_RETRY_DELAY_SECONDS:-20}"
 
 if [[ -z "$TEAM_ID" ]]; then
   echo "TEAM_ID (or APPLE_TEAM_ID) is required."
@@ -86,6 +88,35 @@ DMG_PATH="$ARTIFACTS_DIR/$DMG_NAME"
 rm -rf "$ARCHIVE_PATH" "$EXPORT_DIR"
 mkdir -p "$EXPORT_DIR"
 
+run_with_timestamp_retry() {
+  local label="$1"
+  shift
+
+  local attempt=1
+  while true; do
+    local log_file="$ARTIFACTS_DIR/${label// /_}.attempt_${attempt}.log"
+    if "$@" 2>&1 | tee "$log_file"; then
+      return 0
+    fi
+
+    if ! grep -Eqi "timestamp service is not available|failed to contact timestamp service|a timestamp was expected but was not found" "$log_file"; then
+      echo "${label} failed with a non-retryable error. See log: $log_file"
+      return 1
+    fi
+
+    if (( attempt >= TIMESTAMP_MAX_RETRIES )); then
+      echo "${label} failed after ${TIMESTAMP_MAX_RETRIES} attempts due to timestamp service availability."
+      echo "Last log: $log_file"
+      return 1
+    fi
+
+    echo "${label} failed because timestamp service is unavailable (attempt ${attempt}/${TIMESTAMP_MAX_RETRIES})."
+    echo "Retrying in ${TIMESTAMP_RETRY_DELAY_SECONDS}s..."
+    sleep "$TIMESTAMP_RETRY_DELAY_SECONDS"
+    attempt=$((attempt + 1))
+  done
+}
+
 echo "==> flutter pub get"
 flutter pub get
 
@@ -118,7 +149,8 @@ echo "==> prepare ExportOptions plist"
 sed "s/__TEAM_ID__/$TEAM_ID/g" "$EXPORT_TEMPLATE" > "$EXPORT_PLIST"
 
 echo "==> xcodebuild -exportArchive"
-xcodebuild -exportArchive \
+run_with_timestamp_retry "xcodebuild exportArchive" \
+  xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_DIR" \
   -exportOptionsPlist "$EXPORT_PLIST"
@@ -141,7 +173,8 @@ rm -f "$DMG_PATH"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
 
 echo "==> codesign DMG"
-codesign --force --sign "$DEVELOPER_ID_APPLICATION" --timestamp "$DMG_PATH"
+run_with_timestamp_retry "codesign dmg" \
+  codesign --force --sign "$DEVELOPER_ID_APPLICATION" --timestamp "$DMG_PATH"
 codesign --verify --verbose=2 "$DMG_PATH"
 
 if [[ "$SKIP_NOTARIZATION" == "1" ]]; then
