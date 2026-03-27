@@ -239,6 +239,12 @@ class MattersController extends AsyncNotifier<MatterSections> {
     if (!phaseExists) {
       return;
     }
+    if (matter.currentPhaseId == phaseId) {
+      if (ref.read(selectedMatterIdProvider) == matter.id) {
+        ref.read(selectedPhaseIdProvider.notifier).set(phaseId);
+      }
+      return;
+    }
     final updated = matter.copyWith(
       currentPhaseId: phaseId,
       updatedAt: DateTime.now().toUtc(),

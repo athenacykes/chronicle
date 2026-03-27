@@ -6,6 +6,58 @@ const String _kSidebarSectionUncategorizedId = 'uncategorized';
 const String _kSidebarSectionViewsId = 'views';
 const String _kSidebarSectionNotebooksId = 'notebooks';
 
+final selectedSidebarMatterRowKeyProvider =
+    NotifierProvider<ValueNotifierController<String?>, String?>(
+      () => ValueNotifierController<String?>(null),
+    );
+
+String _pinnedMatterRowKey(String matterId) => 'pinned|$matterId';
+
+String _categoryMatterRowKey({
+  required String categoryId,
+  required String matterId,
+}) => 'category|$categoryId|$matterId';
+
+String _uncategorizedMatterRowKey(String matterId) => 'uncategorized|$matterId';
+
+String _matterIdFromSidebarRowKey(String rowKey) => rowKey.split('|').last;
+
+String? _resolveSelectedMatterRowKey({
+  required MatterSections sections,
+  required String? selectedMatterId,
+  required String? preferredRowKey,
+}) {
+  if (selectedMatterId == null) {
+    return null;
+  }
+
+  final availableRowKeys = <String>[
+    for (final matter in sections.pinned) _pinnedMatterRowKey(matter.id),
+    for (final section in sections.categorySections)
+      for (final matter in section.matters)
+        _categoryMatterRowKey(
+          categoryId: section.category.id,
+          matterId: matter.id,
+        ),
+    for (final matter in sections.uncategorized)
+      _uncategorizedMatterRowKey(matter.id),
+  ];
+
+  if (preferredRowKey != null &&
+      availableRowKeys.contains(preferredRowKey) &&
+      _matterIdFromSidebarRowKey(preferredRowKey) == selectedMatterId) {
+    return preferredRowKey;
+  }
+
+  for (final rowKey in availableRowKeys) {
+    if (_matterIdFromSidebarRowKey(rowKey) == selectedMatterId) {
+      return rowKey;
+    }
+  }
+
+  return null;
+}
+
 class _MatterSidebar extends ConsumerWidget {
   const _MatterSidebar({required this.sections, this.scrollController});
 
@@ -87,6 +139,9 @@ class _MatterSidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
+    final preferredSelectedMatterRowKey = ref.watch(
+      selectedSidebarMatterRowKeyProvider,
+    );
     final selectedTimeView = ref.watch(selectedTimeViewProvider);
     final showNotebook = ref.watch(showNotebookProvider);
     final selectedNotebookFolderId = ref.watch(
@@ -99,12 +154,18 @@ class _MatterSidebar extends ConsumerWidget {
         settings?.collapsedCategoryIds.toSet() ?? <String>{};
     final collapsedSidebarSectionIds =
         settings?.collapsedSidebarSectionIds.toSet() ?? <String>{};
+    final selectedMatterRowKey = _resolveSelectedMatterRowKey(
+      sections: sections,
+      selectedMatterId: selectedMatterId,
+      preferredRowKey: preferredSelectedMatterRowKey,
+    );
 
     if (_isMacOSNativeUIContext(context)) {
       return _buildMacOSSidebar(
         context: context,
         ref: ref,
         selectedMatterId: selectedMatterId,
+        selectedMatterRowKey: selectedMatterRowKey,
         selectedTimeView: selectedTimeView,
         showNotebook: showNotebook,
         selectedNotebookFolderId: selectedNotebookFolderId,
@@ -119,6 +180,7 @@ class _MatterSidebar extends ConsumerWidget {
       context: context,
       ref: ref,
       selectedMatterId: selectedMatterId,
+      selectedMatterRowKey: selectedMatterRowKey,
       selectedTimeView: selectedTimeView,
       showNotebook: showNotebook,
       selectedNotebookFolderId: selectedNotebookFolderId,
@@ -133,6 +195,7 @@ class _MatterSidebar extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
     required String? selectedMatterId,
+    required String? selectedMatterRowKey,
     required ChronicleTimeView? selectedTimeView,
     required bool showNotebook,
     required String? selectedNotebookFolderId,
@@ -191,7 +254,10 @@ class _MatterSidebar extends ConsumerWidget {
                 _MatterList(
                   matters: sections.pinned,
                   selectedMatterId: selectedMatterId,
-                  onSelect: (matter) => _selectMatter(ref, matter),
+                  selectedMatterRowKey: selectedMatterRowKey,
+                  rowKeyOf: (matter) => _pinnedMatterRowKey(matter.id),
+                  onSelect: (matter, rowKey) =>
+                      _selectMatter(ref, matter, rowKey),
                   onAction: (matter, action) => _handleMatterAction(
                     context: context,
                     ref: ref,
@@ -227,6 +293,7 @@ class _MatterSidebar extends ConsumerWidget {
                       section.category.id,
                     ),
                     selectedMatterId: selectedMatterId,
+                    selectedMatterRowKey: selectedMatterRowKey,
                     noteDragPayload: noteDragPayload,
                     onToggleCollapsed: () => _toggleCategoryCollapsed(
                       ref,
@@ -239,7 +306,8 @@ class _MatterSidebar extends ConsumerWidget {
                       matter: matter,
                       action: action,
                     ),
-                    onSelect: (matter) => _selectMatter(ref, matter),
+                    onSelect: (matter, rowKey) =>
+                        _selectMatter(ref, matter, rowKey),
                     onDropNoteToMatter: (payload, matter) =>
                         _moveDroppedNoteToMatter(
                           context: context,
@@ -277,6 +345,7 @@ class _MatterSidebar extends ConsumerWidget {
                 ),
                 matters: sections.uncategorized,
                 selectedMatterId: selectedMatterId,
+                selectedMatterRowKey: selectedMatterRowKey,
                 noteDragPayload: noteDragPayload,
                 onAction: (matter, action) => _handleMatterAction(
                   context: context,
@@ -284,7 +353,8 @@ class _MatterSidebar extends ConsumerWidget {
                   matter: matter,
                   action: action,
                 ),
-                onSelect: (matter) => _selectMatter(ref, matter),
+                onSelect: (matter, rowKey) =>
+                    _selectMatter(ref, matter, rowKey),
                 onDropNoteToMatter: (payload, matter) =>
                     _moveDroppedNoteToMatter(
                       context: context,
@@ -376,6 +446,7 @@ class _MatterSidebar extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
     required String? selectedMatterId,
+    required String? selectedMatterRowKey,
     required ChronicleTimeView? selectedTimeView,
     required bool showNotebook,
     required String? selectedNotebookFolderId,
@@ -423,8 +494,12 @@ class _MatterSidebar extends ConsumerWidget {
       );
     }
 
-    void addMatterItems(List<Matter> matters) {
+    void addMatterItems(
+      List<Matter> matters, {
+      required String Function(Matter matter) rowKeyOf,
+    }) {
       for (final matter in matters) {
+        final matterRowKey = rowKeyOf(matter);
         Future<void> showMatterMenu(TapDownDetails details) async {
           await _showMacosSecondaryClickMenu<_MatterAction>(
             context: context,
@@ -488,8 +563,8 @@ class _MatterSidebar extends ConsumerWidget {
 
         selectableEntries.add(
           _MacSidebarSelectableEntry(
-            key: 'matter:${matter.id}',
-            onSelected: () => _selectMatter(ref, matter),
+            key: matterRowKey,
+            onSelected: () => _selectMatter(ref, matter, matterRowKey),
           ),
         );
         sidebarItems.add(
@@ -541,6 +616,7 @@ class _MatterSidebar extends ConsumerWidget {
                       ),
                     ),
                     child: AnimatedContainer(
+                      key: ValueKey<String>('sidebar_matter_row_$matterRowKey'),
                       duration: const Duration(milliseconds: 100),
                       alignment: Alignment.centerLeft,
                       width: double.infinity,
@@ -576,7 +652,7 @@ class _MatterSidebar extends ConsumerWidget {
                                 selected:
                                     selectedTimeView == null &&
                                     !showNotebook &&
-                                    selectedMatterId == matter.id,
+                                    selectedMatterRowKey == matterRowKey,
                               ),
                             ),
                           ),
@@ -607,7 +683,10 @@ class _MatterSidebar extends ConsumerWidget {
       ),
     );
     if (!pinnedCollapsed) {
-      addMatterItems(sections.pinned);
+      addMatterItems(
+        sections.pinned,
+        rowKeyOf: (matter) => _pinnedMatterRowKey(matter.id),
+      );
     }
 
     addSection(
@@ -708,7 +787,13 @@ class _MatterSidebar extends ConsumerWidget {
           ),
         );
         if (!collapsed) {
-          addMatterItems(section.matters);
+          addMatterItems(
+            section.matters,
+            rowKeyOf: (matter) => _categoryMatterRowKey(
+              categoryId: section.category.id,
+              matterId: matter.id,
+            ),
+          );
         }
       }
     }
@@ -753,7 +838,10 @@ class _MatterSidebar extends ConsumerWidget {
       ),
     );
     if (!uncategorizedCollapsed) {
-      addMatterItems(sections.uncategorized);
+      addMatterItems(
+        sections.uncategorized,
+        rowKeyOf: (matter) => _uncategorizedMatterRowKey(matter.id),
+      );
     }
 
     addSection(
@@ -825,9 +913,7 @@ class _MatterSidebar extends ConsumerWidget {
               : 'notebook:$selectedNotebookFolderId')
         : selectedTimeView != null
         ? 'view:${selectedTimeView.name}'
-        : selectedMatterId == null
-        ? selectableEntries.first.key
-        : 'matter:$selectedMatterId';
+        : selectedMatterRowKey ?? selectableEntries.first.key;
     var selectedIndex = selectableEntries.indexWhere(
       (entry) => entry.key == selectedKey,
     );
@@ -915,6 +1001,7 @@ class _MatterSidebar extends ConsumerWidget {
   }
 
   void _selectNotebookFolder(WidgetRef ref, String? folderId) {
+    ref.read(selectedSidebarMatterRowKeyProvider.notifier).set(null);
     unawaited(
       ref
           .read(noteEditorControllerProvider.notifier)
@@ -930,6 +1017,7 @@ class _MatterSidebar extends ConsumerWidget {
     );
     ref.read(showNotebookProvider.notifier).set(false);
     ref.read(showConflictsProvider.notifier).set(false);
+    ref.read(selectedSidebarMatterRowKeyProvider.notifier).set(null);
     ref.read(selectedMatterIdProvider.notifier).set(null);
     ref.read(selectedPhaseIdProvider.notifier).set(null);
     ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
@@ -1841,10 +1929,11 @@ class _MatterSidebar extends ConsumerWidget {
     }
   }
 
-  void _selectMatter(WidgetRef ref, Matter matter) {
+  void _selectMatter(WidgetRef ref, Matter matter, String rowKey) {
     final phaseId =
         matter.currentPhaseId ??
         (matter.phases.isEmpty ? null : matter.phases.first.id);
+    ref.read(selectedSidebarMatterRowKeyProvider.notifier).set(rowKey);
     unawaited(
       ref
           .read(noteEditorControllerProvider.notifier)
@@ -2020,6 +2109,7 @@ class _MaterialCategorySection extends StatelessWidget {
     required this.section,
     required this.collapsed,
     required this.selectedMatterId,
+    required this.selectedMatterRowKey,
     required this.noteDragPayload,
     required this.onToggleCollapsed,
     required this.onSelect,
@@ -2033,9 +2123,10 @@ class _MaterialCategorySection extends StatelessWidget {
   final MatterCategorySection section;
   final bool collapsed;
   final String? selectedMatterId;
+  final String? selectedMatterRowKey;
   final _NoteDragPayload? noteDragPayload;
   final VoidCallback onToggleCollapsed;
-  final void Function(Matter matter) onSelect;
+  final void Function(Matter matter, String rowKey) onSelect;
   final Future<void> Function(Matter matter, _MatterAction action) onAction;
   final Future<void> Function(_NoteDragPayload payload, Matter matter)
   onDropNoteToMatter;
@@ -2079,6 +2170,11 @@ class _MaterialCategorySection extends StatelessWidget {
                 _MatterList(
                   matters: section.matters,
                   selectedMatterId: selectedMatterId,
+                  selectedMatterRowKey: selectedMatterRowKey,
+                  rowKeyOf: (matter) => _categoryMatterRowKey(
+                    categoryId: section.category.id,
+                    matterId: matter.id,
+                  ),
                   onSelect: onSelect,
                   onAction: onAction,
                   noteDragPayload: noteDragPayload,
@@ -2099,6 +2195,7 @@ class _MaterialUncategorizedSection extends StatelessWidget {
     required this.onToggleCollapsed,
     required this.matters,
     required this.selectedMatterId,
+    required this.selectedMatterRowKey,
     required this.noteDragPayload,
     required this.onSelect,
     required this.onAction,
@@ -2111,8 +2208,9 @@ class _MaterialUncategorizedSection extends StatelessWidget {
   final VoidCallback onToggleCollapsed;
   final List<Matter> matters;
   final String? selectedMatterId;
+  final String? selectedMatterRowKey;
   final _NoteDragPayload? noteDragPayload;
-  final void Function(Matter matter) onSelect;
+  final void Function(Matter matter, String rowKey) onSelect;
   final Future<void> Function(Matter matter, _MatterAction action) onAction;
   final Future<void> Function(_NoteDragPayload payload, Matter matter)
   onDropNoteToMatter;
@@ -2152,6 +2250,8 @@ class _MaterialUncategorizedSection extends StatelessWidget {
                 _MatterList(
                   matters: matters,
                   selectedMatterId: selectedMatterId,
+                  selectedMatterRowKey: selectedMatterRowKey,
+                  rowKeyOf: (matter) => _uncategorizedMatterRowKey(matter.id),
                   onSelect: onSelect,
                   onAction: onAction,
                   noteDragPayload: noteDragPayload,
@@ -2244,6 +2344,8 @@ class _MatterList extends StatelessWidget {
   const _MatterList({
     required this.matters,
     required this.selectedMatterId,
+    required this.selectedMatterRowKey,
+    required this.rowKeyOf,
     required this.onSelect,
     required this.onAction,
     this.noteDragPayload,
@@ -2252,7 +2354,9 @@ class _MatterList extends StatelessWidget {
 
   final List<Matter> matters;
   final String? selectedMatterId;
-  final void Function(Matter matter) onSelect;
+  final String? selectedMatterRowKey;
+  final String Function(Matter matter) rowKeyOf;
+  final void Function(Matter matter, String rowKey) onSelect;
   final Future<void> Function(Matter matter, _MatterAction action) onAction;
   final _NoteDragPayload? noteDragPayload;
   final Future<void> Function(_NoteDragPayload payload, Matter matter)?
@@ -2266,6 +2370,7 @@ class _MatterList extends StatelessWidget {
 
     return Column(
       children: matters.map((matter) {
+        final matterRowKey = rowKeyOf(matter);
         final tile = GestureDetector(
           behavior: HitTestBehavior.opaque,
           onSecondaryTapDown: (details) {
@@ -2316,8 +2421,11 @@ class _MatterList extends StatelessWidget {
             );
           },
           child: ListTile(
+            key: ValueKey<String>('sidebar_matter_row_$matterRowKey'),
             dense: true,
-            selected: selectedMatterId == matter.id,
+            selected:
+                selectedMatterId == matter.id &&
+                selectedMatterRowKey == matterRowKey,
             leading: _MatterLeadingIcon(
               iconKey: matter.icon,
               isPinned: matter.isPinned,
@@ -2330,7 +2438,9 @@ class _MatterList extends StatelessWidget {
                     matter.title,
                     style: _materialSidebarItemLabelStyle(
                       context,
-                      selected: selectedMatterId == matter.id,
+                      selected:
+                          selectedMatterId == matter.id &&
+                          selectedMatterRowKey == matterRowKey,
                     ),
                   ),
                 ),
@@ -2345,7 +2455,7 @@ class _MatterList extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-            onTap: () => onSelect(matter),
+            onTap: () => onSelect(matter, matterRowKey),
           ),
         );
 

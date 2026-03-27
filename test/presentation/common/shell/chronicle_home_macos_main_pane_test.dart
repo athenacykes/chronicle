@@ -2022,6 +2022,284 @@ void main() {
     expect(moved?.categoryId, 'category-1');
   });
 
+  testWidgets(
+    'clicking a matter in a category keeps the category sort order stable',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final categoryRepository = _MemoryCategoryRepository(<Category>[
+        Category(
+          id: 'category-1',
+          name: 'Work',
+          color: '#4C956C',
+          icon: 'folder',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+      Matter buildCategoryMatter({
+        required String id,
+        required String title,
+        required DateTime updatedAt,
+      }) {
+        return Matter(
+          id: id,
+          categoryId: 'category-1',
+          title: title,
+          description: '',
+          status: MatterStatus.active,
+          color: '#4C956C',
+          icon: 'description',
+          isPinned: false,
+          createdAt: updatedAt.subtract(const Duration(minutes: 10)),
+          updatedAt: updatedAt,
+          startedAt: updatedAt.subtract(const Duration(minutes: 10)),
+          endedAt: null,
+          phases: <Phase>[
+            Phase(id: '$id-phase-start', matterId: id, name: 'Start', order: 0),
+          ],
+          currentPhaseId: '$id-phase-start',
+        );
+      }
+
+      final firstMatter = buildCategoryMatter(
+        id: 'matter-first',
+        title: 'Matter First',
+        updatedAt: now,
+      );
+      final secondMatter = buildCategoryMatter(
+        id: 'matter-second',
+        title: 'Matter Second',
+        updatedAt: now.subtract(const Duration(minutes: 1)),
+      );
+      final thirdMatter = buildCategoryMatter(
+        id: 'matter-third',
+        title: 'Matter Third',
+        updatedAt: now.subtract(const Duration(minutes: 2)),
+      );
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[
+          firstMatter,
+          secondMatter,
+          thirdMatter,
+        ]),
+        noteRepository: _MemoryNoteRepository(const <Note>[]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final before = await repos.matterRepository.getMatterById('matter-third');
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          categoryRepository: categoryRepository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final firstRow = find.byKey(
+        const ValueKey<String>('sidebar_matter_drop_target_matter-first'),
+      );
+      final secondRow = find.byKey(
+        const ValueKey<String>('sidebar_matter_drop_target_matter-second'),
+      );
+      final thirdRow = find.byKey(
+        const ValueKey<String>('sidebar_matter_drop_target_matter-third'),
+      );
+      final initialFirstY = tester.getTopLeft(firstRow).dy;
+      final initialSecondY = tester.getTopLeft(secondRow).dy;
+      final initialThirdY = tester.getTopLeft(thirdRow).dy;
+      expect(initialFirstY, lessThan(initialSecondY));
+      expect(initialSecondY, lessThan(initialThirdY));
+
+      await tester.tap(thirdRow);
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      expect(container.read(selectedMatterIdProvider), 'matter-third');
+
+      final finalFirstY = tester.getTopLeft(firstRow).dy;
+      final finalSecondY = tester.getTopLeft(secondRow).dy;
+      final finalThirdY = tester.getTopLeft(thirdRow).dy;
+      expect(finalFirstY, initialFirstY);
+      expect(finalSecondY, initialSecondY);
+      expect(finalThirdY, initialThirdY);
+
+      final after = await repos.matterRepository.getMatterById('matter-third');
+      expect(after?.updatedAt, before?.updatedAt);
+    },
+  );
+
+  testWidgets(
+    'material sidebar highlights the clicked duplicate matter occurrence',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final categoryRepository = _MemoryCategoryRepository(<Category>[
+        Category(
+          id: 'category-1',
+          name: 'Work',
+          color: '#4C956C',
+          icon: 'folder',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+      final pinnedMatter = Matter(
+        id: 'matter-123',
+        categoryId: 'category-1',
+        title: 'matter 123',
+        description: '',
+        status: MatterStatus.active,
+        color: '#4C956C',
+        icon: 'build',
+        isPinned: true,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        endedAt: null,
+        phases: const <Phase>[
+          Phase(
+            id: 'matter-123-phase-start',
+            matterId: 'matter-123',
+            name: 'Start',
+            order: 0,
+          ),
+        ],
+        currentPhaseId: 'matter-123-phase-start',
+      );
+      final otherMatter = matter.copyWith(
+        id: 'matter-456',
+        title: 'Test 1',
+        categoryId: 'category-1',
+        isPinned: false,
+      );
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[
+          pinnedMatter,
+          otherMatter,
+        ]),
+        noteRepository: _MemoryNoteRepository(const <Note>[]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          categoryRepository: categoryRepository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final pinnedRow = find.byKey(
+        const ValueKey<String>('sidebar_matter_row_pinned|matter-123'),
+      );
+      final categoryRow = find.byKey(
+        const ValueKey<String>(
+          'sidebar_matter_row_category|category-1|matter-123',
+        ),
+      );
+
+      await tester.tap(categoryRow);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<ListTile>(pinnedRow).selected, isFalse);
+      expect(tester.widget<ListTile>(categoryRow).selected, isTrue);
+      expect(
+        _containerForApp(tester).read(selectedMatterIdProvider),
+        'matter-123',
+      );
+    },
+  );
+
+  testWidgets(
+    'macOS sidebar highlights the clicked duplicate matter occurrence',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final categoryRepository = _MemoryCategoryRepository(<Category>[
+        Category(
+          id: 'category-1',
+          name: 'Work',
+          color: '#4C956C',
+          icon: 'folder',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ]);
+      final pinnedMatter = Matter(
+        id: 'matter-123',
+        categoryId: 'category-1',
+        title: 'matter 123',
+        description: '',
+        status: MatterStatus.active,
+        color: '#4C956C',
+        icon: 'build',
+        isPinned: true,
+        createdAt: now,
+        updatedAt: now,
+        startedAt: now,
+        endedAt: null,
+        phases: const <Phase>[
+          Phase(
+            id: 'matter-123-phase-start',
+            matterId: 'matter-123',
+            name: 'Start',
+            order: 0,
+          ),
+        ],
+        currentPhaseId: 'matter-123-phase-start',
+      );
+      final otherMatter = matter.copyWith(
+        id: 'matter-456',
+        title: 'Test 1',
+        categoryId: 'category-1',
+        isPinned: false,
+      );
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[
+          pinnedMatter,
+          otherMatter,
+        ]),
+        noteRepository: _MemoryNoteRepository(const <Note>[]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          categoryRepository: categoryRepository,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final pinnedRow = find.byKey(
+        const ValueKey<String>('sidebar_matter_row_pinned|matter-123'),
+      );
+      final categoryRow = find.byKey(
+        const ValueKey<String>(
+          'sidebar_matter_row_category|category-1|matter-123',
+        ),
+      );
+
+      await tester.tap(categoryRow);
+      await tester.pumpAndSettle();
+
+      final pinnedLabel = tester.widget<Text>(
+        find.descendant(of: pinnedRow, matching: find.text('matter 123')),
+      );
+      final categoryLabel = tester.widget<Text>(
+        find.descendant(of: categoryRow, matching: find.text('matter 123')),
+      );
+
+      expect(pinnedLabel.style?.fontWeight, FontWeight.w400);
+      expect(categoryLabel.style?.fontWeight, FontWeight.w700);
+      expect(
+        _containerForApp(tester).read(selectedMatterIdProvider),
+        'matter-123',
+      );
+    },
+  );
+
   testWidgets('material sidebar drag moves matter into uncategorized', (
     tester,
   ) async {
