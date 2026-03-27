@@ -16,6 +16,7 @@ import '../../domain/entities/notebook_folder.dart';
 import '../../domain/entities/notebook_import_result.dart';
 import '../../domain/repositories/notebook_import_repository.dart';
 import '../../domain/repositories/notebook_repository.dart';
+import '../sync_webdav/sync_local_metadata_tracker.dart';
 import 'chronicle_layout.dart';
 import 'chronicle_storage_initializer.dart';
 import 'note_file_codec.dart';
@@ -30,13 +31,15 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
     required NoteFileCodec noteFileCodec,
     required IdGenerator idGenerator,
     required Clock clock,
+    SyncLocalMetadataTracker? syncMetadataTracker,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
        _fileSystemUtils = fileSystemUtils,
        _notebookRepository = notebookRepository,
        _noteFileCodec = noteFileCodec,
        _idGenerator = idGenerator,
-       _clock = clock;
+       _clock = clock,
+       _syncMetadataTracker = syncMetadataTracker;
 
   final StorageRootLocator _storageRootLocator;
   final ChronicleStorageInitializer _storageInitializer;
@@ -45,6 +48,7 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
   final NoteFileCodec _noteFileCodec;
   final IdGenerator _idGenerator;
   final Clock _clock;
+  final SyncLocalMetadataTracker? _syncMetadataTracker;
 
   void _logInfo(String message) {
     developer.log(message, name: 'ChronicleImport');
@@ -121,6 +125,7 @@ class LocalNotebookImportRepository implements NotebookImportRepository {
     }
 
     final batch = NotebookImportBatchResult(files: results);
+    await _syncMetadataTracker?.rebuildFromDisk();
     _logInfo(
       'Notebook import batch finished: notes=${batch.importedNoteCount}, folders=${batch.importedFolderCount}, resources=${batch.importedResourceCount}, warnings=${batch.warningCount}',
     );

@@ -56,13 +56,7 @@ class ChronicleStorageInitializer {
       await _fileSystemUtils.atomicWriteString(layout.syncVersionFile, '1\n');
     }
 
-    final existingCreatedAt = await _existingCreatedAt(layout.infoFile);
-    final payload = <String, dynamic>{
-      'app': 'chronicle',
-      'formatVersion': _formatVersion,
-      'createdAt':
-          existingCreatedAt ?? DateTime.now().toUtc().toIso8601String(),
-    };
+    final payload = await _nextInfoPayload(layout.infoFile);
     await _fileSystemUtils.atomicWriteString(
       layout.infoFile,
       prettyJson(payload),
@@ -115,7 +109,40 @@ class ChronicleStorageInitializer {
     return null;
   }
 
-  Future<void> _migrateLegacyOrphansToNotebookRoot(ChronicleLayout layout) async {
+  Future<Map<String, dynamic>> _nextInfoPayload(File infoFile) async {
+    final payload = <String, dynamic>{
+      'app': 'chronicle',
+      'formatVersion': _formatVersion,
+      'createdAt':
+          await _existingCreatedAt(infoFile) ??
+          DateTime.now().toUtc().toIso8601String(),
+    };
+
+    if (!await infoFile.exists()) {
+      return payload;
+    }
+
+    try {
+      final raw = await infoFile.readAsString();
+      final map = json.decode(raw) as Map<String, dynamic>;
+      if (map['syncProtocolVersion'] is num) {
+        payload['syncProtocolVersion'] = (map['syncProtocolVersion'] as num)
+            .toInt();
+      }
+      final manifestRevision = map['syncManifestRevision'];
+      if (manifestRevision is String && manifestRevision.trim().isNotEmpty) {
+        payload['syncManifestRevision'] = manifestRevision.trim();
+      }
+    } catch (_) {
+      // Fall back to the minimum required info payload.
+    }
+
+    return payload;
+  }
+
+  Future<void> _migrateLegacyOrphansToNotebookRoot(
+    ChronicleLayout layout,
+  ) async {
     if (!await layout.orphansDirectory.exists()) {
       return;
     }
@@ -133,7 +160,9 @@ class ChronicleStorageInitializer {
         legacyFile.path,
         from: layout.orphansDirectory.path,
       );
-      final target = File(p.join(layout.notebookRootDirectory.path, relativePath));
+      final target = File(
+        p.join(layout.notebookRootDirectory.path, relativePath),
+      );
       await _fileSystemUtils.ensureDirectory(target.parent);
 
       if (await target.exists()) {
@@ -175,9 +204,7 @@ class ChronicleStorageInitializer {
     final basename = p.basenameWithoutExtension(originalTarget.path);
     var index = 1;
     while (true) {
-      final candidate = File(
-        p.join(parent, '$basename.legacy-$index$ext'),
-      );
+      final candidate = File(p.join(parent, '$basename.legacy-$index$ext'));
       if (!await candidate.exists()) {
         return candidate;
       }

@@ -19,7 +19,9 @@ import '../data/local_fs/matter_file_codec.dart';
 import '../data/local_fs/note_file_codec.dart';
 import '../data/local_fs/storage_root_locator.dart';
 import '../data/sync_webdav/local_sync_state_store.dart';
+import '../data/sync_webdav/local_sync_metadata_store.dart';
 import '../data/sync_webdav/local_conflict_history_store.dart';
+import '../data/sync_webdav/sync_local_metadata_tracker.dart';
 import '../data/sync_webdav/webdav_client_factory.dart';
 import '../data/sync_webdav/webdav_sync_engine.dart';
 import '../data/sync_webdav/webdav_sync_repository.dart';
@@ -65,6 +67,25 @@ final storageInitializerProvider = Provider<ChronicleStorageInitializer>((ref) {
   return ChronicleStorageInitializer(ref.watch(fileSystemUtilsProvider));
 });
 
+final localSyncMetadataStoreProvider = Provider<LocalSyncMetadataStore>((ref) {
+  return LocalSyncMetadataStore(
+    appDirectories: ref.watch(appDirectoriesProvider),
+    fileSystemUtils: ref.watch(fileSystemUtilsProvider),
+  );
+});
+
+final syncLocalMetadataTrackerProvider = Provider<SyncLocalMetadataTracker>((
+  ref,
+) {
+  return SyncLocalMetadataTracker(
+    storageRootLocator: ref.watch(storageRootLocatorProvider),
+    storageInitializer: ref.watch(storageInitializerProvider),
+    fileSystemUtils: ref.watch(fileSystemUtilsProvider),
+    clock: ref.watch(clockProvider),
+    metadataStore: ref.watch(localSyncMetadataStoreProvider),
+  );
+});
+
 final matterRepositoryProvider = Provider<MatterRepository>((ref) {
   return LocalMatterRepository(
     storageRootLocator: ref.watch(storageRootLocatorProvider),
@@ -73,6 +94,7 @@ final matterRepositoryProvider = Provider<MatterRepository>((ref) {
     fileSystemUtils: ref.watch(fileSystemUtilsProvider),
     clock: ref.watch(clockProvider),
     idGenerator: ref.watch(idGeneratorProvider),
+    syncMetadataTracker: ref.watch(syncLocalMetadataTrackerProvider),
   );
 });
 
@@ -83,6 +105,7 @@ final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
     fileSystemUtils: ref.watch(fileSystemUtilsProvider),
     clock: ref.watch(clockProvider),
     idGenerator: ref.watch(idGeneratorProvider),
+    syncMetadataTracker: ref.watch(syncLocalMetadataTrackerProvider),
   );
 });
 
@@ -96,6 +119,7 @@ final noteRepositoryProvider = Provider<NoteRepository>((ref) {
     idGenerator: ref.watch(idGeneratorProvider),
     matterRepository: ref.watch(matterRepositoryProvider),
     notebookRepository: ref.watch(notebookRepositoryProvider),
+    syncMetadataTracker: ref.watch(syncLocalMetadataTrackerProvider),
   );
 });
 
@@ -107,6 +131,7 @@ final notebookRepositoryProvider = Provider<NotebookRepository>((ref) {
     clock: ref.watch(clockProvider),
     idGenerator: ref.watch(idGeneratorProvider),
     noteCodec: const NoteFileCodec(),
+    syncMetadataTracker: ref.watch(syncLocalMetadataTrackerProvider),
   );
 });
 
@@ -121,6 +146,7 @@ final notebookImportRepositoryProvider = Provider<NotebookImportRepository>((
     noteFileCodec: const NoteFileCodec(),
     idGenerator: ref.watch(idGeneratorProvider),
     clock: ref.watch(clockProvider),
+    syncMetadataTracker: ref.watch(syncLocalMetadataTrackerProvider),
   );
 });
 
@@ -132,6 +158,7 @@ final linkRepositoryProvider = Provider<LinkRepository>((ref) {
     fileSystemUtils: ref.watch(fileSystemUtilsProvider),
     clock: ref.watch(clockProvider),
     idGenerator: ref.watch(idGeneratorProvider),
+    syncMetadataTracker: ref.watch(syncLocalMetadataTrackerProvider),
   );
 });
 
@@ -153,6 +180,7 @@ final syncRepositoryProvider = Provider<SyncRepository>((ref) {
       storageInitializer: ref.watch(storageInitializerProvider),
       fileSystemUtils: ref.watch(fileSystemUtilsProvider),
       clock: ref.watch(clockProvider),
+      localSyncMetadataStore: ref.watch(localSyncMetadataStoreProvider),
       syncStateStore: LocalSyncStateStore(
         appDirectories: ref.watch(appDirectoriesProvider),
         fileSystemUtils: ref.watch(fileSystemUtilsProvider),

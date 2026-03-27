@@ -5,6 +5,7 @@ import '../../core/file_system_utils.dart';
 import '../../core/id_generator.dart';
 import '../../domain/entities/notebook_folder.dart';
 import '../../domain/repositories/notebook_repository.dart';
+import '../sync_webdav/sync_local_metadata_tracker.dart';
 import 'chronicle_layout.dart';
 import 'chronicle_storage_initializer.dart';
 import 'note_file_codec.dart';
@@ -18,12 +19,14 @@ class LocalNotebookRepository implements NotebookRepository {
     required Clock clock,
     required IdGenerator idGenerator,
     required NoteFileCodec noteCodec,
+    SyncLocalMetadataTracker? syncMetadataTracker,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
        _fileSystemUtils = fileSystemUtils,
        _clock = clock,
        _idGenerator = idGenerator,
-       _noteCodec = noteCodec;
+       _noteCodec = noteCodec,
+       _syncMetadataTracker = syncMetadataTracker;
 
   final StorageRootLocator _storageRootLocator;
   final ChronicleStorageInitializer _storageInitializer;
@@ -31,6 +34,7 @@ class LocalNotebookRepository implements NotebookRepository {
   final Clock _clock;
   final IdGenerator _idGenerator;
   final NoteFileCodec _noteCodec;
+  final SyncLocalMetadataTracker? _syncMetadataTracker;
 
   @override
   Future<List<NotebookFolder>> listFolders() async {
@@ -65,11 +69,7 @@ class LocalNotebookRepository implements NotebookRepository {
     if (parentId != null && !folders.any((folder) => folder.id == parentId)) {
       throw AppException('Notebook parent folder does not exist: $parentId');
     }
-    _ensureUniqueName(
-      folders: folders,
-      parentId: parentId,
-      name: trimmed,
-    );
+    _ensureUniqueName(folders: folders, parentId: parentId, name: trimmed);
 
     final now = _clock.nowUtc();
     final folder = NotebookFolder(
@@ -111,7 +111,10 @@ class LocalNotebookRepository implements NotebookRepository {
       excludeFolderId: existing.id,
     );
 
-    final renamed = existing.copyWith(name: trimmed, updatedAt: _clock.nowUtc());
+    final renamed = existing.copyWith(
+      name: trimmed,
+      updatedAt: _clock.nowUtc(),
+    );
     folders[index] = renamed;
     await _saveFolders(folders);
     return renamed;
@@ -152,6 +155,7 @@ class LocalNotebookRepository implements NotebookRepository {
     if (await folderDir.exists()) {
       await folderDir.delete(recursive: true);
     }
+    await _syncMetadataTracker?.rebuildFromDisk();
   }
 
   Future<void> _reparentDirectFolderNotes({
@@ -180,11 +184,17 @@ class LocalNotebookRepository implements NotebookRepository {
       );
       final target = targetFolderId == null
           ? layout.notebookRootNoteFile(note.id)
-          : layout.notebookFolderNoteFile(folderId: targetFolderId, noteId: note.id);
+          : layout.notebookFolderNoteFile(
+              folderId: targetFolderId,
+              noteId: note.id,
+            );
       await _fileSystemUtils.ensureDirectory(target.parent);
-      await _fileSystemUtils.atomicWriteString(target, _noteCodec.encode(updated));
+      final encoded = _noteCodec.encode(updated);
+      await _fileSystemUtils.atomicWriteString(target, encoded);
+      await _syncMetadataTracker?.recordStringWrite(target, encoded);
       if (target.path != file.path) {
         await _fileSystemUtils.deleteIfExists(file);
+        await _syncMetadataTracker?.recordDelete(file);
       }
     }
   }
@@ -248,6 +258,10 @@ class LocalNotebookRepository implements NotebookRepository {
       'folders': folders.map((folder) => folder.toJson()).toList(),
     };
     await _fileSystemUtils.atomicWriteString(
+      layout.notebookFoldersIndexFile,
+      const JsonEncoder.withIndent('  ').convert(payload),
+    );
+    await _syncMetadataTracker?.recordStringWrite(
       layout.notebookFoldersIndexFile,
       const JsonEncoder.withIndent('  ').convert(payload),
     );

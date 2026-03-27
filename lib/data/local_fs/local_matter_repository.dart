@@ -8,6 +8,7 @@ import '../../core/id_generator.dart';
 import '../../domain/entities/enums.dart';
 import '../../domain/entities/matter.dart';
 import '../../domain/repositories/matter_repository.dart';
+import '../sync_webdav/sync_local_metadata_tracker.dart';
 import 'chronicle_layout.dart';
 import 'chronicle_storage_initializer.dart';
 import 'default_phase_factory.dart';
@@ -22,12 +23,14 @@ class LocalMatterRepository implements MatterRepository {
     required FileSystemUtils fileSystemUtils,
     required Clock clock,
     required IdGenerator idGenerator,
+    SyncLocalMetadataTracker? syncMetadataTracker,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
        _codec = codec,
        _fileSystemUtils = fileSystemUtils,
        _clock = clock,
-       _idGenerator = idGenerator;
+       _idGenerator = idGenerator,
+       _syncMetadataTracker = syncMetadataTracker;
 
   final StorageRootLocator _storageRootLocator;
   final ChronicleStorageInitializer _storageInitializer;
@@ -35,6 +38,7 @@ class LocalMatterRepository implements MatterRepository {
   final FileSystemUtils _fileSystemUtils;
   final Clock _clock;
   final IdGenerator _idGenerator;
+  final SyncLocalMetadataTracker? _syncMetadataTracker;
 
   @override
   Future<List<Matter>> listMatters() async {
@@ -171,6 +175,7 @@ class LocalMatterRepository implements MatterRepository {
     final directory = layout.matterDirectory(matterId);
     if (await directory.exists()) {
       await directory.delete(recursive: true);
+      await _syncMetadataTracker?.rebuildFromDisk();
     }
   }
 
@@ -198,6 +203,7 @@ class LocalMatterRepository implements MatterRepository {
     final file = layout.matterJsonFile(normalized.id);
     final raw = _codec.encode(normalized);
     await _fileSystemUtils.atomicWriteString(file, raw);
+    await _syncMetadataTracker?.recordStringWrite(file, raw);
   }
 
   Future<ChronicleLayout> _layout() async {

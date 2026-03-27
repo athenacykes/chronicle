@@ -11,7 +11,9 @@ import 'package:chronicle/data/local_fs/conflict_service.dart';
 import 'package:chronicle/data/local_fs/storage_root_locator.dart';
 import 'package:chronicle/data/sync_webdav/in_memory_webdav_client.dart';
 import 'package:chronicle/data/sync_webdav/local_conflict_history_store.dart';
+import 'package:chronicle/data/sync_webdav/local_sync_metadata_store.dart';
 import 'package:chronicle/data/sync_webdav/local_sync_state_store.dart';
+import 'package:chronicle/data/sync_webdav/sync_local_metadata_tracker.dart';
 import 'package:chronicle/data/sync_webdav/webdav_sync_engine.dart';
 import 'package:chronicle/data/sync_webdav/webdav_types.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
@@ -30,6 +32,8 @@ void main() {
   late WebDavSyncEngine syncEngine;
   late InMemoryWebDavClient webDavClient;
   late LocalSyncStateStore syncStateStore;
+  late LocalSyncMetadataStore localSyncMetadataStore;
+  late SyncLocalMetadataTracker metadataTracker;
   late LocalConflictHistoryStore conflictHistoryStore;
   late ConflictService conflictService;
   const syncTargetUrl = 'https://example.com/dav/Chronicle';
@@ -57,6 +61,21 @@ void main() {
       ),
       fileSystemUtils: fs,
     );
+    localSyncMetadataStore = LocalSyncMetadataStore(
+      appDirectories: FixedAppDirectories(
+        appSupport: Directory('${tempDir.path}/support'),
+        home: tempDir,
+      ),
+      fileSystemUtils: fs,
+    );
+    final fixedClock = _FixedClock(DateTime.utc(2026, 2, 17, 10, 0, 0));
+    metadataTracker = SyncLocalMetadataTracker(
+      storageRootLocator: StorageRootLocator(settingsRepository),
+      storageInitializer: initializer,
+      fileSystemUtils: fs,
+      clock: fixedClock,
+      metadataStore: localSyncMetadataStore,
+    );
     conflictHistoryStore = LocalConflictHistoryStore(fileSystemUtils: fs);
     conflictService = ConflictService(
       storageRootLocator: StorageRootLocator(settingsRepository),
@@ -68,7 +87,8 @@ void main() {
       storageRootLocator: StorageRootLocator(settingsRepository),
       storageInitializer: initializer,
       fileSystemUtils: fs,
-      clock: _FixedClock(DateTime.utc(2026, 2, 17, 10, 0, 0)),
+      clock: fixedClock,
+      localSyncMetadataStore: localSyncMetadataStore,
       syncStateStore: syncStateStore,
       conflictService: conflictService,
       conflictHistoryStore: conflictHistoryStore,
@@ -92,6 +112,10 @@ void main() {
       syncTargetUrl: syncTargetUrl,
       syncUsername: syncUsername,
     );
+  }
+
+  Future<void> rebuildLocalMetadata() {
+    return metadataTracker.rebuildFromDisk();
   }
 
   String currentNamespace() {
@@ -164,6 +188,7 @@ void main() {
     await runSync();
 
     await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
+    await rebuildLocalMetadata();
     await webDavClient.uploadFile(
       'notebook/root/conflict-note.md',
       utf8.encode('v2-remote'),
@@ -200,6 +225,7 @@ void main() {
       await runSync();
 
       await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
+      await rebuildLocalMetadata();
       await webDavClient.uploadFile(
         'notebook/root/duplicate-note.md',
         utf8.encode('v2-remote'),
@@ -257,6 +283,7 @@ v2-local
       await runSync();
 
       await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
+      await rebuildLocalMetadata();
       await webDavClient.uploadFile(
         'notebook/root/history-note.md',
         utf8.encode('v2-remote'),
@@ -295,6 +322,7 @@ v2-local
     final localVersion = <int>[137, 80, 78, 71, 1, 2, 3, 4];
     final remoteVersion = <int>[137, 80, 78, 71, 9, 8, 7, 6];
     await const FileSystemUtils().atomicWriteBytes(localFile, localVersion);
+    await rebuildLocalMetadata();
     await webDavClient.uploadFile('resources/photo.png', remoteVersion);
 
     final result = await runSync();
@@ -314,43 +342,38 @@ v2-local
   });
 
   test(
-    'records final sync state refresh failures without hiding created conflicts',
+    'uses fast path after bootstrap without full remote traversal',
     () async {
-      final flakyClient = _FlakyFinalListWebDavClient();
-      webDavClient = flakyClient;
+      final countingClient = _CountingWebDavClient();
+      webDavClient = countingClient;
       final layout = ChronicleLayout(rootDir);
-      final localFile = layout.notebookRootNoteFile('late-failure-conflict');
 
-      await const FileSystemUtils().atomicWriteString(localFile, 'v1');
-      await flakyClient.uploadFile(
-        'notebook/root/late-failure-conflict.md',
-        utf8.encode('v1'),
+      await const FileSystemUtils().atomicWriteString(
+        layout.notebookRootNoteFile('fast-path'),
+        'v1',
       );
 
       await runSync();
+      expect(countingClient.rootListCalls, greaterThan(0));
 
-      await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
-      await flakyClient.uploadFile(
-        'notebook/root/late-failure-conflict.md',
-        utf8.encode('v2-remote'),
+      countingClient.resetCounts();
+      await const FileSystemUtils().atomicWriteString(
+        layout.notebookRootNoteFile('fast-path'),
+        'v2',
       );
-      flakyClient.failOnNextFinalRefresh();
+      await rebuildLocalMetadata();
 
       final result = await runSync();
 
-      expect(result.conflictCount, 1);
-      expect(result.errors, hasLength(1));
+      expect(result.errors, isEmpty);
+      expect(countingClient.rootListCalls, 0);
+      expect(countingClient.lockListCalls, greaterThan(0));
       expect(
-        result.errors.single,
-        startsWith('Final sync state refresh failed:'),
+        utf8.decode(
+          await countingClient.downloadFile('notebook/root/fast-path.md'),
+        ),
+        'v2',
       );
-
-      final localContent = await localFile.readAsString();
-      expect(localContent, 'v2-remote');
-
-      final files = await const FileSystemUtils().listFilesRecursively(rootDir);
-      final conflictFiles = files.where((f) => f.path.contains('.conflict.'));
-      expect(conflictFiles.length, 1);
     },
   );
 
@@ -614,29 +637,24 @@ class _FixedClock implements Clock {
   DateTime nowUtc() => _now;
 }
 
-class _FlakyFinalListWebDavClient extends InMemoryWebDavClient {
-  bool _shouldFailAfterConflictUpload = false;
-  bool _sawConflictUpload = false;
-
-  void failOnNextFinalRefresh() {
-    _shouldFailAfterConflictUpload = true;
-  }
+class _CountingWebDavClient extends InMemoryWebDavClient {
+  int rootListCalls = 0;
+  int lockListCalls = 0;
 
   @override
   Future<List<WebDavFileMetadata>> listFilesRecursively(String rootPath) async {
-    if (_shouldFailAfterConflictUpload && _sawConflictUpload) {
-      _shouldFailAfterConflictUpload = false;
-      throw const HttpException('Connection closed before full header');
+    if (rootPath == '/') {
+      rootListCalls += 1;
+    }
+    if (rootPath == 'locks') {
+      lockListCalls += 1;
     }
     return super.listFilesRecursively(rootPath);
   }
 
-  @override
-  Future<void> uploadFile(String path, List<int> bytes) async {
-    if (path.contains('.conflict.')) {
-      _sawConflictUpload = true;
-    }
-    await super.uploadFile(path, bytes);
+  void resetCounts() {
+    rootListCalls = 0;
+    lockListCalls = 0;
   }
 }
 

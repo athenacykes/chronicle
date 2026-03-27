@@ -8,6 +8,7 @@ import '../../core/file_system_utils.dart';
 import '../../core/id_generator.dart';
 import '../../domain/entities/category.dart';
 import '../../domain/repositories/category_repository.dart';
+import '../sync_webdav/sync_local_metadata_tracker.dart';
 import 'chronicle_layout.dart';
 import 'chronicle_storage_initializer.dart';
 import 'storage_root_locator.dart';
@@ -19,17 +20,20 @@ class LocalCategoryRepository implements CategoryRepository {
     required FileSystemUtils fileSystemUtils,
     required Clock clock,
     required IdGenerator idGenerator,
+    SyncLocalMetadataTracker? syncMetadataTracker,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
        _fileSystemUtils = fileSystemUtils,
        _clock = clock,
-       _idGenerator = idGenerator;
+       _idGenerator = idGenerator,
+       _syncMetadataTracker = syncMetadataTracker;
 
   final StorageRootLocator _storageRootLocator;
   final ChronicleStorageInitializer _storageInitializer;
   final FileSystemUtils _fileSystemUtils;
   final Clock _clock;
   final IdGenerator _idGenerator;
+  final SyncLocalMetadataTracker? _syncMetadataTracker;
 
   @override
   Future<List<Category>> listCategories() async {
@@ -97,7 +101,9 @@ class LocalCategoryRepository implements CategoryRepository {
   @override
   Future<void> deleteCategory(String categoryId) async {
     final layout = await _layout();
-    await _fileSystemUtils.deleteIfExists(layout.categoryJsonFile(categoryId));
+    final file = layout.categoryJsonFile(categoryId);
+    await _fileSystemUtils.deleteIfExists(file);
+    await _syncMetadataTracker?.recordDelete(file);
   }
 
   Future<void> _writeCategory(Category category) async {
@@ -107,6 +113,7 @@ class LocalCategoryRepository implements CategoryRepository {
       '  ',
     ).convert(category.toJson());
     await _fileSystemUtils.atomicWriteString(file, encoded);
+    await _syncMetadataTracker?.recordStringWrite(file, encoded);
   }
 
   Future<ChronicleLayout> _layout() async {

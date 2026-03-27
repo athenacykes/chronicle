@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/clock.dart';
 import '../../core/file_hash.dart';
 import '../../core/file_system_utils.dart';
+import '../../core/json_utils.dart';
 import '../../domain/entities/sync_blocker.dart';
 import '../../domain/entities/sync_conflict.dart';
 import '../../domain/entities/sync_progress.dart';
@@ -17,6 +18,7 @@ import '../local_fs/chronicle_storage_initializer.dart';
 import '../local_fs/conflict_service.dart';
 import '../local_fs/storage_root_locator.dart';
 import 'local_conflict_history_store.dart';
+import 'local_sync_metadata_store.dart';
 import 'local_sync_state_store.dart';
 import 'webdav_client.dart';
 import 'webdav_types.dart';
@@ -27,6 +29,7 @@ class WebDavSyncEngine {
     required ChronicleStorageInitializer storageInitializer,
     required FileSystemUtils fileSystemUtils,
     required Clock clock,
+    required LocalSyncMetadataStore localSyncMetadataStore,
     required LocalSyncStateStore syncStateStore,
     required ConflictService conflictService,
     required LocalConflictHistoryStore conflictHistoryStore,
@@ -34,6 +37,7 @@ class WebDavSyncEngine {
        _storageInitializer = storageInitializer,
        _fileSystemUtils = fileSystemUtils,
        _clock = clock,
+       _localSyncMetadataStore = localSyncMetadataStore,
        _syncStateStore = syncStateStore,
        _conflictService = conflictService,
        _conflictHistoryStore = conflictHistoryStore;
@@ -42,12 +46,18 @@ class WebDavSyncEngine {
   final ChronicleStorageInitializer _storageInitializer;
   final FileSystemUtils _fileSystemUtils;
   final Clock _clock;
+  final LocalSyncMetadataStore _localSyncMetadataStore;
   final LocalSyncStateStore _syncStateStore;
   final ConflictService _conflictService;
   final LocalConflictHistoryStore _conflictHistoryStore;
 
   static const _activeLockTtlMs = 90000;
   static const _staleLockMs = 120000;
+  static const _syncProtocolVersion = 1;
+  static const _manifestPath = '.sync/manifest.json';
+  static const _pendingSyncPath = '.sync/pending_sync.json';
+  static const _auditMaxRuns = 20;
+  static final Duration _auditMaxAge = const Duration(hours: 24);
 
   Future<SyncResult> run({
     required WebDavClient client,
@@ -69,6 +79,13 @@ class WebDavSyncEngine {
     var conflictCount = 0;
     var deletedCount = 0;
     var progress = const SyncProgress(phase: SyncProgressPhase.preparing);
+    LocalSyncMetadataSnapshot metadataSnapshot =
+        LocalSyncMetadataSnapshot.empty;
+    String? metadataNamespace;
+    var metadataAuditedThisRun = false;
+    var metadataNeedsPersist = false;
+    final localAssets = <String, _LocalSyncAsset>{};
+    final remoteAssets = <String, _RemoteSyncAsset>{};
 
     void emitProgress(
       SyncProgressPhase phase, {
@@ -95,10 +112,9 @@ class WebDavSyncEngine {
 
     final lockPath = 'locks/sync_desktop_$clientId.json';
     Timer? heartbeat;
+    var pendingMarkerWritten = false;
     try {
-      emitProgress(SyncProgressPhase.preparing, clearTotal: true);
       await _ensureRemoteSkeleton(client);
-      _debugLog('Remote skeleton ensured.');
       emitProgress(SyncProgressPhase.acquiringLock, clearTotal: true);
       final lockAcquireResult = await _acquireLock(
         client,
@@ -118,17 +134,17 @@ class WebDavSyncEngine {
           blocker: lockAcquireResult.blocker,
         );
       }
-      _debugLog('Acquired sync lock: $lockPath');
+
       heartbeat = Timer.periodic(const Duration(seconds: 30), (_) async {
         await _writeLock(client, lockPath, clientId);
       });
 
-      final localFormatVersion = await _readLocalFormatVersion(layout);
-      final remoteFormatVersion = await _readRemoteFormatVersion(client);
+      final localInfo = await _readLocalInfoState(layout);
+      final remoteInfo = await _readRemoteInfoState(client);
       final versionBlocker = _buildVersionBlocker(
         mode: options.mode,
-        localFormatVersion: localFormatVersion,
-        remoteFormatVersion: remoteFormatVersion,
+        localFormatVersion: localInfo.formatVersion,
+        remoteFormatVersion: remoteInfo?.formatVersion,
       );
       if (versionBlocker != null) {
         return SyncResult(
@@ -147,7 +163,11 @@ class WebDavSyncEngine {
         syncTargetUrl: syncTargetUrl,
         username: syncUsername,
         storageRootPath: layout.rootDirectory.path,
-        localFormatVersion: localFormatVersion,
+        localFormatVersion: localInfo.formatVersion,
+      );
+      metadataNamespace = _localSyncMetadataStore.buildNamespace(
+        storageRootPath: layout.rootDirectory.path,
+        localFormatVersion: localInfo.formatVersion,
       );
 
       if (options.mode == SyncRunMode.recoverLocalWins ||
@@ -163,16 +183,41 @@ class WebDavSyncEngine {
         layout: layout,
         namespace: syncStateNamespace,
       );
-      final localFiles = await _listLocalFiles(layout);
-      final remoteFiles = await _listRemoteFiles(client);
+      metadataSnapshot = await _localSyncMetadataStore.load(
+        namespace: metadataNamespace,
+      );
+      final remoteManifestLoad = await _loadRemoteManifest(client);
+      final pendingMarkerState = await _readPendingSyncMarker(client);
+
+      final useSlowPath = _shouldUseSlowPath(
+        mode: options.mode,
+        metadataSnapshot: metadataSnapshot,
+        remoteInfo: remoteInfo,
+        remoteManifestLoad: remoteManifestLoad,
+        pendingMarkerState: pendingMarkerState,
+        now: startedAt,
+      );
+
+      if (useSlowPath) {
+        metadataAuditedThisRun = true;
+        localAssets.addAll(await _scanLocalAssets(layout));
+        remoteAssets.addAll(await _scanRemoteAssets(client));
+      } else {
+        localAssets.addAll(_localAssetsFromMetadata(metadataSnapshot));
+        remoteAssets.addAll(
+          _remoteAssetsFromManifest(remoteManifestLoad.manifest!),
+        );
+      }
+      metadataNeedsPersist = true;
       _debugLog(
-        'Scanned files: local=${localFiles.length}, remote=${remoteFiles.length}, '
-        'previousState=${previousState.length}',
+        'Prepared sync state using ${useSlowPath ? 'slow' : 'fast'} path: '
+        'local=${localAssets.length}, remote=${remoteAssets.length}, '
+        'previous=${previousState.length}',
       );
 
       final allPaths = <String>{
-        ...localFiles.keys,
-        ...remoteFiles.keys,
+        ...localAssets.keys,
+        ...remoteAssets.keys,
       }.where((path) => !layout.isIgnoredSyncPath(path)).toList();
 
       final uploads = <String>[];
@@ -187,108 +232,120 @@ class WebDavSyncEngine {
       );
 
       for (var index = 0; index < allPaths.length; index++) {
-        final path = allPaths.elementAt(index);
-        final local = localFiles[path]?.file;
-        final remote = remoteFiles[path]?.metadata;
+        final path = allPaths[index];
+        final local = localAssets[path];
+        final remote = remoteAssets[path];
         final previous = previousState[path];
 
         if (options.mode == SyncRunMode.recoverLocalWins) {
-          await _planRecoverLocalWins(
+          _planRecoverLocalWins(
             path: path,
             local: local,
             remote: remote,
             uploads: uploads,
             deleteRemotes: deleteRemotes,
           );
+          emitProgress(
+            SyncProgressPhase.planning,
+            completed: index + 1,
+            total: allPaths.length,
+          );
           continue;
         }
 
         if (options.mode == SyncRunMode.recoverRemoteWins) {
-          await _planRecoverRemoteWins(
+          _planRecoverRemoteWins(
             path: path,
             local: local,
             remote: remote,
             downloads: downloads,
             deleteLocals: deleteLocals,
           );
+          emitProgress(
+            SyncProgressPhase.planning,
+            completed: index + 1,
+            total: allPaths.length,
+          );
           continue;
         }
 
         if (local != null && remote == null) {
-          final localHash = await sha256ForFile(local);
           if (previous != null &&
               previous.remoteHash.isNotEmpty &&
-              previous.localHash == localHash) {
+              previous.localHash == local.contentHash) {
             deleteLocals.add(path);
           } else {
             uploads.add(path);
           }
+          emitProgress(
+            SyncProgressPhase.planning,
+            completed: index + 1,
+            total: allPaths.length,
+          );
           continue;
         }
 
         if (local == null && remote != null) {
-          final remoteHash = _remoteHash(remote);
           if (previous != null &&
               previous.localHash.isNotEmpty &&
-              previous.remoteHash == remoteHash) {
+              previous.remoteHash == remote.contentHash) {
             deleteRemotes.add(path);
           } else {
             downloads.add(path);
           }
+          emitProgress(
+            SyncProgressPhase.planning,
+            completed: index + 1,
+            total: allPaths.length,
+          );
           continue;
         }
 
         if (local == null || remote == null) {
+          emitProgress(
+            SyncProgressPhase.planning,
+            completed: index + 1,
+            total: allPaths.length,
+          );
           continue;
         }
 
-        final localHash = await sha256ForFile(local);
-        final remoteHash = _remoteHash(remote);
-
-        if (localHash == remoteHash) {
+        if (local.contentHash == remote.contentHash) {
+          emitProgress(
+            SyncProgressPhase.planning,
+            completed: index + 1,
+            total: allPaths.length,
+          );
           continue;
         }
 
         if (previous == null) {
-          final localStat = await local.stat();
-          final localModified = localStat.modified.toUtc();
-          if (localModified.isAfter(remote.updatedAt)) {
+          if (local.modifiedAt.isAfter(remote.updatedAt)) {
             uploads.add(path);
           } else {
             downloads.add(path);
           }
+          emitProgress(
+            SyncProgressPhase.planning,
+            completed: index + 1,
+            total: allPaths.length,
+          );
           continue;
         }
 
-        final localChanged = previous.localHash != localHash;
-        final remoteChanged = previous.remoteHash != remoteHash;
+        final localChanged = previous.localHash != local.contentHash;
+        final remoteChanged = previous.remoteHash != remote.contentHash;
 
         if (localChanged && !remoteChanged) {
           uploads.add(path);
-          continue;
-        }
-        if (!localChanged && remoteChanged) {
+        } else if (!localChanged && remoteChanged) {
           downloads.add(path);
-          continue;
+        } else if (localChanged && remoteChanged) {
+          conflicts.add(path);
         }
-        if (!localChanged && !remoteChanged) {
-          continue;
-        }
-
-        conflicts.add(path);
         emitProgress(
           SyncProgressPhase.planning,
           completed: index + 1,
-          total: allPaths.length,
-        );
-      }
-
-      if (allPaths.isEmpty) {
-        emitProgress(SyncProgressPhase.planning, completed: 0, total: 0);
-      } else {
-        emitProgress(
-          SyncProgressPhase.planning,
-          completed: allPaths.length,
           total: allPaths.length,
         );
       }
@@ -308,10 +365,6 @@ class WebDavSyncEngine {
       if (failSafe &&
           !allowMassDeletion &&
           candidateDeletionCount / trackedCount > 0.2) {
-        _debugLog(
-          'Fail-safe blocked deletions: candidate=$candidateDeletionCount '
-          'tracked=$trackedCount',
-        );
         return SyncResult(
           uploadedCount: 0,
           downloadedCount: 0,
@@ -324,13 +377,33 @@ class WebDavSyncEngine {
             type: SyncBlockerType.failSafeDeletionBlocked,
             candidateDeletionCount: candidateDeletionCount,
             trackedCount: trackedCount,
-            localFormatVersion: localFormatVersion,
-            remoteFormatVersion: remoteFormatVersion,
+            localFormatVersion: localInfo.formatVersion,
+            remoteFormatVersion: remoteInfo?.formatVersion,
             message:
                 'Sync fail-safe blocked $candidateDeletionCount deletions '
                 'out of $trackedCount tracked files',
           ),
         );
+      }
+
+      final shouldCommitRemoteMetadata =
+          useSlowPath ||
+          uploads.isNotEmpty ||
+          conflicts.isNotEmpty ||
+          deleteRemotes.any((path) {
+            final remote = remoteAssets[path];
+            return remote != null &&
+                !(options.mode == SyncRunMode.normal && remote.isLegacyOrphan);
+          });
+      String? nextManifestRevision;
+      if (shouldCommitRemoteMetadata) {
+        nextManifestRevision = _nextManifestRevision(startedAt);
+        await _writePendingSyncMarker(
+          client,
+          revision: nextManifestRevision,
+          startedAt: startedAt,
+        );
+        pendingMarkerWritten = true;
       }
 
       emitProgress(
@@ -341,8 +414,8 @@ class WebDavSyncEngine {
       for (var index = 0; index < uploads.length; index++) {
         final path = uploads[index];
         try {
-          final localEntry = localFiles[path];
-          if (localEntry == null) {
+          final local = localAssets[path];
+          if (local == null) {
             emitProgress(
               SyncProgressPhase.uploading,
               completed: index + 1,
@@ -350,13 +423,20 @@ class WebDavSyncEngine {
             );
             continue;
           }
-          final bytes = await localEntry.file.readAsBytes();
+          final file = layout.fromRelativePath(local.sourcePath);
+          final bytes = await file.readAsBytes();
           await client.uploadFile(path, bytes);
           uploadedCount++;
-          _debugLog('Uploaded: $path (${bytes.length} bytes)');
+          remoteAssets[path] = _RemoteSyncAsset(
+            canonicalPath: path,
+            sourcePath: path,
+            contentHash: local.contentHash,
+            size: bytes.length,
+            updatedAt: _clock.nowUtc(),
+            isLegacyOrphan: false,
+          );
         } catch (error) {
           errors.add('Upload failed for $path: $error');
-          _debugLog('Upload failed: $path error=$error');
         }
         emitProgress(
           SyncProgressPhase.uploading,
@@ -373,8 +453,8 @@ class WebDavSyncEngine {
       for (var index = 0; index < downloads.length; index++) {
         final path = downloads[index];
         try {
-          final remoteEntry = remoteFiles[path];
-          if (remoteEntry == null) {
+          final remote = remoteAssets[path];
+          if (remote == null) {
             emitProgress(
               SyncProgressPhase.downloading,
               completed: index + 1,
@@ -382,14 +462,25 @@ class WebDavSyncEngine {
             );
             continue;
           }
-          final bytes = await client.downloadFile(remoteEntry.sourcePath);
+          final bytes = await client.downloadFile(remote.sourcePath);
           final target = layout.fromRelativePath(path);
           await _fileSystemUtils.atomicWriteBytes(target, bytes);
+          final existingLocal = localAssets[path];
+          if (existingLocal != null && existingLocal.sourcePath != path) {
+            await _fileSystemUtils.deleteIfExists(
+              layout.fromRelativePath(existingLocal.sourcePath),
+            );
+          }
           downloadedCount++;
-          _debugLog('Downloaded: $path (${bytes.length} bytes)');
+          localAssets[path] = _LocalSyncAsset(
+            canonicalPath: path,
+            sourcePath: path,
+            contentHash: await sha256ForBytes(bytes),
+            size: bytes.length,
+            modifiedAt: _clock.nowUtc(),
+          );
         } catch (error) {
           errors.add('Download failed for $path: $error');
-          _debugLog('Download failed: $path error=$error');
         }
         emitProgress(
           SyncProgressPhase.downloading,
@@ -406,19 +497,16 @@ class WebDavSyncEngine {
       for (var index = 0; index < deleteLocals.length; index++) {
         final path = deleteLocals[index];
         try {
-          final localEntry = localFiles[path];
-          final file = layout.fromRelativePath(path);
-          await _fileSystemUtils.deleteIfExists(file);
-          if (localEntry != null && localEntry.sourcePath != path) {
+          final local = localAssets.remove(path);
+          await _fileSystemUtils.deleteIfExists(layout.fromRelativePath(path));
+          if (local != null && local.sourcePath != path) {
             await _fileSystemUtils.deleteIfExists(
-              layout.fromRelativePath(localEntry.sourcePath),
+              layout.fromRelativePath(local.sourcePath),
             );
           }
           deletedCount++;
-          _debugLog('Deleted local: $path');
         } catch (error) {
           errors.add('Local delete failed for $path: $error');
-          _debugLog('Local delete failed: $path error=$error');
         }
         emitProgress(
           SyncProgressPhase.deletingLocal,
@@ -435,8 +523,8 @@ class WebDavSyncEngine {
       for (var index = 0; index < deleteRemotes.length; index++) {
         final path = deleteRemotes[index];
         try {
-          final remoteEntry = remoteFiles[path];
-          if (remoteEntry == null) {
+          final remote = remoteAssets[path];
+          if (remote == null) {
             emitProgress(
               SyncProgressPhase.deletingRemote,
               completed: index + 1,
@@ -445,21 +533,14 @@ class WebDavSyncEngine {
             continue;
           }
           final skipLegacyDelete =
-              options.mode == SyncRunMode.normal && remoteEntry.isLegacyOrphan;
-          if (skipLegacyDelete) {
-            emitProgress(
-              SyncProgressPhase.deletingRemote,
-              completed: index + 1,
-              total: deleteRemotes.length,
-            );
-            continue;
+              options.mode == SyncRunMode.normal && remote.isLegacyOrphan;
+          if (!skipLegacyDelete) {
+            await client.deleteFile(remote.sourcePath);
+            remoteAssets.remove(path);
+            deletedCount++;
           }
-          await client.deleteFile(remoteEntry.sourcePath);
-          deletedCount++;
-          _debugLog('Deleted remote: $path');
         } catch (error) {
           errors.add('Remote delete failed for $path: $error');
-          _debugLog('Remote delete failed: $path error=$error');
         }
         emitProgress(
           SyncProgressPhase.deletingRemote,
@@ -476,9 +557,9 @@ class WebDavSyncEngine {
       for (var index = 0; index < conflicts.length; index++) {
         final path = conflicts[index];
         try {
-          final localEntry = localFiles[path];
-          final remoteEntry = remoteFiles[path];
-          if (localEntry == null || remoteEntry == null) {
+          final local = localAssets[path];
+          final remote = remoteAssets[path];
+          if (local == null || remote == null) {
             emitProgress(
               SyncProgressPhase.resolvingConflicts,
               completed: index + 1,
@@ -486,12 +567,28 @@ class WebDavSyncEngine {
             );
             continue;
           }
-          final localBytes = await localEntry.file.readAsBytes();
+
+          final localFile = layout.fromRelativePath(local.sourcePath);
+          final localBytes = await localFile.readAsBytes();
           final localHash = await sha256ForBytes(localBytes);
 
-          final remoteBytes = await client.downloadFile(remoteEntry.sourcePath);
+          final remoteBytes = await client.downloadFile(remote.sourcePath);
           final remoteHash = await sha256ForBytes(remoteBytes);
-          await _fileSystemUtils.atomicWriteBytes(localEntry.file, remoteBytes);
+          await _fileSystemUtils.atomicWriteBytes(localFile, remoteBytes);
+          localAssets[path] = _LocalSyncAsset(
+            canonicalPath: path,
+            sourcePath: local.sourcePath,
+            contentHash: remoteHash,
+            size: remoteBytes.length,
+            modifiedAt: _clock.nowUtc(),
+          );
+          remoteAssets[path] = remote.copyWith(
+            contentHash: remoteHash,
+            size: remoteBytes.length,
+            updatedAt: _clock.nowUtc(),
+            isLegacyOrphan: false,
+            sourcePath: path,
+          );
 
           final fingerprint = buildSyncConflictFingerprint(
             originalPath: path,
@@ -506,7 +603,6 @@ class WebDavSyncEngine {
                 remoteContentHash: remoteHash,
               );
           if (duplicateConflict) {
-            _debugLog('Skipped duplicate conflict artifact: $path');
             emitProgress(
               SyncProgressPhase.resolvingConflicts,
               completed: index + 1,
@@ -525,6 +621,7 @@ class WebDavSyncEngine {
             remoteContentHash: remoteHash,
             conflictFingerprint: fingerprint,
           );
+          final conflictHash = await sha256ForBytes(conflictBytes);
 
           await _fileSystemUtils.atomicWriteBytes(conflictFile, conflictBytes);
           await client.uploadFile(conflictPath, conflictBytes);
@@ -534,11 +631,24 @@ class WebDavSyncEngine {
             fingerprint: fingerprint,
           );
           conflictHistory.add(fingerprint);
+          localAssets[conflictPath] = _LocalSyncAsset(
+            canonicalPath: conflictPath,
+            sourcePath: conflictPath,
+            contentHash: conflictHash,
+            size: conflictBytes.length,
+            modifiedAt: _clock.nowUtc(),
+          );
+          remoteAssets[conflictPath] = _RemoteSyncAsset(
+            canonicalPath: conflictPath,
+            sourcePath: conflictPath,
+            contentHash: conflictHash,
+            size: conflictBytes.length,
+            updatedAt: _clock.nowUtc(),
+            isLegacyOrphan: false,
+          );
           conflictCount++;
-          _debugLog('Resolved conflict: $path -> $conflictPath');
         } catch (error) {
           errors.add('Conflict handling failed for $path: $error');
-          _debugLog('Conflict handling failed: $path error=$error');
         }
         emitProgress(
           SyncProgressPhase.resolvingConflicts,
@@ -548,22 +658,30 @@ class WebDavSyncEngine {
       }
 
       emitProgress(SyncProgressPhase.finalizing, clearTotal: true);
-      try {
-        final finalLocal = await _listLocalFiles(layout);
-        final finalRemote = await _listRemoteFiles(client);
-        final finalUnion = <String>{
-          ...finalLocal.keys,
-          ...finalRemote.keys,
-        }.where((path) => !layout.isIgnoredSyncPath(path));
 
+      if (errors.isEmpty && shouldCommitRemoteMetadata) {
+        await _commitRemoteMetadata(
+          client: client,
+          layout: layout,
+          localInfo: localInfo,
+          remoteAssets: remoteAssets,
+          localAssets: localAssets,
+          revision: nextManifestRevision!,
+        );
+        await _clearPendingSyncMarker(client);
+        pendingMarkerWritten = false;
+      }
+
+      if (errors.isEmpty) {
         final nextState = <String, SyncFileState>{};
+        final finalUnion = <String>{...localAssets.keys, ...remoteAssets.keys};
         for (final path in finalUnion) {
-          final local = finalLocal[path]?.file;
-          final remote = finalRemote[path]?.metadata;
+          final local = localAssets[path];
+          final remote = remoteAssets[path];
           nextState[path] = SyncFileState(
             path: path,
-            localHash: local == null ? '' : await sha256ForFile(local),
-            remoteHash: remote == null ? '' : _remoteHash(remote),
+            localHash: local?.contentHash ?? '',
+            remoteHash: remote?.contentHash ?? '',
             updatedAt: _clock.nowUtc(),
           );
         }
@@ -572,22 +690,28 @@ class WebDavSyncEngine {
           namespace: syncStateNamespace,
           states: nextState,
         );
-        _debugLog('Saved sync state for ${nextState.length} paths.');
-      } catch (error) {
-        errors.add('Final sync state refresh failed: $error');
-        _debugLog('Final sync state refresh failed: error=$error');
       }
     } finally {
       heartbeat?.cancel();
+      if (metadataNeedsPersist && metadataNamespace != null) {
+        final nextSnapshot = _buildMetadataSnapshot(
+          previous: metadataSnapshot,
+          currentEntries: localAssets,
+          dirty: errors.isNotEmpty,
+          auditedThisRun: metadataAuditedThisRun,
+        );
+        await _localSyncMetadataStore.save(
+          namespace: metadataNamespace,
+          snapshot: nextSnapshot,
+        );
+      }
       await _releaseLock(client, lockPath);
-      _debugLog('Released sync lock: $lockPath');
+      if (pendingMarkerWritten) {
+        _debugLog('Pending sync marker left in place for recovery.');
+      }
     }
 
     final endedAt = _clock.nowUtc();
-    _debugLog(
-      'Sync completed: uploaded=$uploadedCount downloaded=$downloadedCount '
-      'deleted=$deletedCount conflicts=$conflictCount errors=${errors.length}',
-    );
     return SyncResult(
       uploadedCount: uploadedCount,
       downloadedCount: downloadedCount,
@@ -633,7 +757,6 @@ class WebDavSyncEngine {
 
     for (final competingLock in competingLocks) {
       await client.deleteFile(competingLock.path);
-      _debugLog('Force-cleared competing sync lock: ${competingLock.path}');
     }
 
     locks = await _readActiveLocks(client);
@@ -663,31 +786,48 @@ class WebDavSyncEngine {
 
   Future<List<_SyncLock>> _readActiveLocks(WebDavClient client) async {
     final now = _clock.nowUtc().millisecondsSinceEpoch;
-    final files = await client.listFilesRecursively('/');
-
+    final files = await client.listFilesRecursively('locks');
     final locks = <_SyncLock>[];
+
     for (final file in files) {
       if (!file.path.startsWith('locks/sync_')) {
+        continue;
+      }
+
+      final updatedTime = file.updatedAt.millisecondsSinceEpoch;
+      final age = now - updatedTime;
+      if (age > _staleLockMs) {
+        await client.deleteFile(file.path);
+        continue;
+      }
+      if (age > _activeLockTtlMs) {
+        continue;
+      }
+
+      final filenameData = _parseLockFilename(file.path);
+      if (filenameData != null) {
+        locks.add(
+          _SyncLock(
+            path: file.path,
+            updatedTime: updatedTime,
+            clientId: filenameData.clientId,
+            clientType: filenameData.clientType,
+          ),
+        );
         continue;
       }
 
       try {
         final bytes = await client.downloadFile(file.path);
         final jsonMap = json.decode(utf8.decode(bytes)) as Map<String, dynamic>;
-        final updated = (jsonMap['updatedTime'] as num).toInt();
-        final age = now - updated;
-        if (age <= _activeLockTtlMs) {
-          locks.add(
-            _SyncLock(
-              path: file.path,
-              updatedTime: updated,
-              clientId: (jsonMap['clientId'] as String?)?.trim(),
-              clientType: (jsonMap['clientType'] as String?)?.trim(),
-            ),
-          );
-        } else if (age > _staleLockMs) {
-          await client.deleteFile(file.path);
-        }
+        locks.add(
+          _SyncLock(
+            path: file.path,
+            updatedTime: updatedTime,
+            clientId: (jsonMap['clientId'] as String?)?.trim(),
+            clientType: (jsonMap['clientType'] as String?)?.trim(),
+          ),
+        );
       } catch (_) {
         continue;
       }
@@ -700,24 +840,287 @@ class WebDavSyncEngine {
       }
       return a.path.compareTo(b.path);
     });
-
     return locks;
+  }
+
+  _ParsedLockFilename? _parseLockFilename(String path) {
+    final match = RegExp(r'^locks/sync_([^_]+)_(.+)\.json$').firstMatch(path);
+    if (match == null) {
+      return null;
+    }
+    return _ParsedLockFilename(
+      clientType: match.group(1)?.trim(),
+      clientId: match.group(2)?.trim(),
+    );
   }
 
   Future<void> _releaseLock(WebDavClient client, String lockPath) async {
     try {
       await client.deleteFile(lockPath);
     } catch (_) {
-      // Do not fail sync completion if lock cleanup fails.
+      // Ignore lock cleanup failures.
     }
   }
 
-  void _debugLog(String message) {
-    assert(() {
-      // ignore: avoid_print
-      print('[WebDAV][Sync] $message');
+  bool _shouldUseSlowPath({
+    required SyncRunMode mode,
+    required LocalSyncMetadataSnapshot metadataSnapshot,
+    required _SyncInfoState? remoteInfo,
+    required _RemoteManifestLoadResult remoteManifestLoad,
+    required _PendingSyncMarkerState pendingMarkerState,
+    required DateTime now,
+  }) {
+    if (mode != SyncRunMode.normal) {
       return true;
-    }());
+    }
+    if (metadataSnapshot.dirty || metadataSnapshot.entries.isEmpty) {
+      return true;
+    }
+    if (pendingMarkerState.exists || pendingMarkerState.corrupt) {
+      return true;
+    }
+    if (remoteInfo == null ||
+        remoteInfo.syncProtocolVersion != _syncProtocolVersion) {
+      return true;
+    }
+    if (remoteInfo.syncManifestRevision == null ||
+        remoteInfo.syncManifestRevision!.trim().isEmpty) {
+      return true;
+    }
+    if (remoteManifestLoad.missing || remoteManifestLoad.corrupt) {
+      return true;
+    }
+    final manifest = remoteManifestLoad.manifest;
+    if (manifest == null ||
+        manifest.revision != remoteInfo.syncManifestRevision) {
+      return true;
+    }
+    final lastAuditAt = metadataSnapshot.lastAuditAt;
+    if (lastAuditAt == null) {
+      return true;
+    }
+    if (now.difference(lastAuditAt) >= _auditMaxAge) {
+      return true;
+    }
+    if (metadataSnapshot.runsSinceAudit >= _auditMaxRuns) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<Map<String, _LocalSyncAsset>> _scanLocalAssets(
+    ChronicleLayout layout,
+  ) async {
+    final files = await _listLocalFiles(layout);
+    final out = <String, _LocalSyncAsset>{};
+    for (final entry in files.entries) {
+      final bytes = await entry.value.file.readAsBytes();
+      final stat = await entry.value.file.stat();
+      out[entry.key] = _LocalSyncAsset(
+        canonicalPath: entry.key,
+        sourcePath: entry.value.sourcePath,
+        contentHash: await sha256ForBytes(bytes),
+        size: bytes.length,
+        modifiedAt: stat.modified.toUtc(),
+      );
+    }
+    return out;
+  }
+
+  Future<Map<String, _RemoteSyncAsset>> _scanRemoteAssets(
+    WebDavClient client,
+  ) async {
+    final files = await _listRemoteFiles(client);
+    final out = <String, _RemoteSyncAsset>{};
+    for (final entry in files.entries) {
+      out[entry.key] = _RemoteSyncAsset(
+        canonicalPath: entry.key,
+        sourcePath: entry.value.sourcePath,
+        contentHash: _remoteHash(entry.value.metadata),
+        size: entry.value.metadata.size,
+        updatedAt: entry.value.metadata.updatedAt,
+        isLegacyOrphan: entry.value.isLegacyOrphan,
+      );
+    }
+    return out;
+  }
+
+  Map<String, _LocalSyncAsset> _localAssetsFromMetadata(
+    LocalSyncMetadataSnapshot snapshot,
+  ) {
+    return {
+      for (final entry in snapshot.entries.entries)
+        entry.key: _LocalSyncAsset(
+          canonicalPath: entry.value.canonicalPath,
+          sourcePath: entry.value.sourcePath,
+          contentHash: entry.value.contentHash,
+          size: entry.value.size,
+          modifiedAt: entry.value.modifiedAt,
+        ),
+    };
+  }
+
+  Map<String, _RemoteSyncAsset> _remoteAssetsFromManifest(
+    SyncManifest manifest,
+  ) {
+    return {
+      for (final entry in manifest.entries.entries)
+        entry.key: _RemoteSyncAsset(
+          canonicalPath: entry.value.canonicalPath,
+          sourcePath: entry.value.sourcePath,
+          contentHash: entry.value.contentHash,
+          size: entry.value.size,
+          updatedAt: entry.value.updatedAt,
+          isLegacyOrphan: entry.value.isLegacyOrphan,
+        ),
+    };
+  }
+
+  Future<_RemoteManifestLoadResult> _loadRemoteManifest(
+    WebDavClient client,
+  ) async {
+    try {
+      final bytes = await client.downloadFile(_manifestPath);
+      final raw = utf8.decode(bytes, allowMalformed: true);
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      return _RemoteManifestLoadResult.available(
+        SyncManifest.fromJson(decoded),
+      );
+    } catch (error) {
+      if (_isRemoteFileMissing(error)) {
+        return const _RemoteManifestLoadResult.missing();
+      }
+      if (error is FormatException || error is TypeError) {
+        return const _RemoteManifestLoadResult.corrupt();
+      }
+      final lower = error.toString().toLowerCase();
+      if (lower.contains('format') || lower.contains('invalid')) {
+        return const _RemoteManifestLoadResult.corrupt();
+      }
+      rethrow;
+    }
+  }
+
+  Future<_PendingSyncMarkerState> _readPendingSyncMarker(
+    WebDavClient client,
+  ) async {
+    try {
+      final bytes = await client.downloadFile(_pendingSyncPath);
+      final raw = utf8.decode(bytes, allowMalformed: true);
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      final revision = decoded['revision'] as String?;
+      final startedAt = decoded['startedAt'] as String?;
+      if (revision == null || revision.trim().isEmpty) {
+        return const _PendingSyncMarkerState(corrupt: true);
+      }
+      if (startedAt == null || startedAt.trim().isEmpty) {
+        return const _PendingSyncMarkerState(corrupt: true);
+      }
+      return const _PendingSyncMarkerState(exists: true);
+    } catch (error) {
+      if (_isRemoteFileMissing(error)) {
+        return const _PendingSyncMarkerState();
+      }
+      if (error is FormatException || error is TypeError) {
+        return const _PendingSyncMarkerState(corrupt: true);
+      }
+      final lower = error.toString().toLowerCase();
+      if (lower.contains('format') || lower.contains('invalid')) {
+        return const _PendingSyncMarkerState(corrupt: true);
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _writePendingSyncMarker(
+    WebDavClient client, {
+    required String revision,
+    required DateTime startedAt,
+  }) async {
+    final payload = prettyJson(<String, dynamic>{
+      'revision': revision,
+      'startedAt': startedAt.toIso8601String(),
+    });
+    await client.uploadFile(_pendingSyncPath, utf8.encode(payload));
+  }
+
+  Future<void> _clearPendingSyncMarker(WebDavClient client) async {
+    await client.deleteFile(_pendingSyncPath);
+  }
+
+  Future<void> _commitRemoteMetadata({
+    required WebDavClient client,
+    required ChronicleLayout layout,
+    required _SyncInfoState localInfo,
+    required Map<String, _RemoteSyncAsset> remoteAssets,
+    required Map<String, _LocalSyncAsset> localAssets,
+    required String revision,
+  }) async {
+    final manifest = SyncManifest(
+      revision: revision,
+      generatedAt: _clock.nowUtc(),
+      entries: {
+        for (final entry in remoteAssets.entries)
+          entry.key: SyncManifestEntry(
+            canonicalPath: entry.value.canonicalPath,
+            sourcePath: entry.value.sourcePath,
+            contentHash: entry.value.contentHash,
+            size: entry.value.size,
+            updatedAt: entry.value.updatedAt,
+            isLegacyOrphan: entry.value.isLegacyOrphan,
+          ),
+      },
+    );
+    final manifestBytes = utf8.encode(prettyJson(manifest.toJson()));
+    await client.uploadFile(_manifestPath, manifestBytes);
+
+    final nextInfo = localInfo.withProtocol(
+      syncProtocolVersion: _syncProtocolVersion,
+      syncManifestRevision: revision,
+    );
+    final infoBytes = utf8.encode(prettyJson(nextInfo.jsonMap));
+    final infoHash = await sha256ForBytes(infoBytes);
+    await client.uploadFile('info.json', infoBytes);
+    await _fileSystemUtils.atomicWriteBytes(layout.infoFile, infoBytes);
+
+    localAssets['info.json'] = _LocalSyncAsset(
+      canonicalPath: 'info.json',
+      sourcePath: 'info.json',
+      contentHash: infoHash,
+      size: infoBytes.length,
+      modifiedAt: _clock.nowUtc(),
+    );
+    remoteAssets['info.json'] = _RemoteSyncAsset(
+      canonicalPath: 'info.json',
+      sourcePath: 'info.json',
+      contentHash: infoHash,
+      size: infoBytes.length,
+      updatedAt: _clock.nowUtc(),
+      isLegacyOrphan: false,
+    );
+  }
+
+  LocalSyncMetadataSnapshot _buildMetadataSnapshot({
+    required LocalSyncMetadataSnapshot previous,
+    required Map<String, _LocalSyncAsset> currentEntries,
+    required bool dirty,
+    required bool auditedThisRun,
+  }) {
+    return LocalSyncMetadataSnapshot(
+      entries: {
+        for (final entry in currentEntries.entries)
+          entry.key: LocalSyncMetadataEntry(
+            canonicalPath: entry.value.canonicalPath,
+            sourcePath: entry.value.sourcePath,
+            contentHash: entry.value.contentHash,
+            size: entry.value.size,
+            modifiedAt: entry.value.modifiedAt,
+          ),
+      },
+      dirty: dirty,
+      runsSinceAudit: auditedThisRun ? 0 : previous.runsSinceAudit + 1,
+      lastAuditAt: auditedThisRun ? _clock.nowUtc() : previous.lastAuditAt,
+    );
   }
 
   Future<Map<String, _LocalSyncEntry>> _listLocalFiles(
@@ -750,6 +1153,9 @@ class WebDavSyncEngine {
     final files = await client.listFilesRecursively('/');
     final out = <String, _RemoteSyncEntry>{};
     for (final file in files) {
+      if (file.path.startsWith('.sync/') || file.path.startsWith('locks/')) {
+        continue;
+      }
       final canonicalPath = _canonicalSyncPath(file.path);
       final entry = _RemoteSyncEntry(
         metadata: file,
@@ -773,9 +1179,7 @@ class WebDavSyncEngine {
     return path;
   }
 
-  bool _isLegacyOrphanPath(String path) {
-    return path.startsWith('orphans/');
-  }
+  bool _isLegacyOrphanPath(String path) => path.startsWith('orphans/');
 
   String _remoteHash(WebDavFileMetadata metadata) {
     if (metadata.etag != null && metadata.etag!.isNotEmpty) {
@@ -836,34 +1240,40 @@ $body
     return ChronicleLayout(root);
   }
 
-  Future<int> _readLocalFormatVersion(ChronicleLayout layout) async {
+  Future<_SyncInfoState> _readLocalInfoState(ChronicleLayout layout) async {
     if (!await layout.infoFile.exists()) {
-      return 0;
+      return const _SyncInfoState(
+        jsonMap: <String, dynamic>{},
+        formatVersion: 0,
+      );
     }
     try {
       final raw = await layout.infoFile.readAsString();
       final decoded = json.decode(raw) as Map<String, dynamic>;
-      return (decoded['formatVersion'] as num?)?.toInt() ?? 0;
+      return _SyncInfoState.fromJson(decoded);
     } catch (_) {
-      return 0;
+      return const _SyncInfoState(
+        jsonMap: <String, dynamic>{},
+        formatVersion: 0,
+      );
     }
   }
 
-  Future<int?> _readRemoteFormatVersion(WebDavClient client) async {
+  Future<_SyncInfoState?> _readRemoteInfoState(WebDavClient client) async {
     try {
       final bytes = await client.downloadFile('info.json');
       final raw = utf8.decode(bytes, allowMalformed: true);
       final decoded = json.decode(raw) as Map<String, dynamic>;
-      return (decoded['formatVersion'] as num?)?.toInt();
+      return _SyncInfoState.fromJson(decoded);
     } catch (error) {
-      if (_isRemoteInfoMissing(error)) {
+      if (_isRemoteFileMissing(error)) {
         return null;
       }
       rethrow;
     }
   }
 
-  bool _isRemoteInfoMissing(Object error) {
+  bool _isRemoteFileMissing(Object error) {
     if (error is HttpException && error.message.contains('404')) {
       return true;
     }
@@ -871,11 +1281,12 @@ $body
         error.toString().toLowerCase().contains('file not found')) {
       return true;
     }
-    if (error is SocketException) {
-      return false;
-    }
     final lower = error.toString().toLowerCase();
     return lower.contains('404') || lower.contains('not found');
+  }
+
+  String _nextManifestRevision(DateTime startedAt) {
+    return '${startedAt.millisecondsSinceEpoch}';
   }
 
   SyncBlocker? _buildVersionBlocker({
@@ -931,13 +1342,13 @@ $body
     );
   }
 
-  Future<void> _planRecoverLocalWins({
+  void _planRecoverLocalWins({
     required String path,
-    required File? local,
-    required WebDavFileMetadata? remote,
+    required _LocalSyncAsset? local,
+    required _RemoteSyncAsset? remote,
     required List<String> uploads,
     required List<String> deleteRemotes,
-  }) async {
+  }) {
     if (local != null && remote == null) {
       uploads.add(path);
       return;
@@ -949,20 +1360,18 @@ $body
     if (local == null || remote == null) {
       return;
     }
-    final localHash = await sha256ForFile(local);
-    final remoteHash = _remoteHash(remote);
-    if (localHash != remoteHash) {
+    if (local.contentHash != remote.contentHash) {
       uploads.add(path);
     }
   }
 
-  Future<void> _planRecoverRemoteWins({
+  void _planRecoverRemoteWins({
     required String path,
-    required File? local,
-    required WebDavFileMetadata? remote,
+    required _LocalSyncAsset? local,
+    required _RemoteSyncAsset? remote,
     required List<String> downloads,
     required List<String> deleteLocals,
-  }) async {
+  }) {
     if (local != null && remote == null) {
       deleteLocals.add(path);
       return;
@@ -974,11 +1383,17 @@ $body
     if (local == null || remote == null) {
       return;
     }
-    final localHash = await sha256ForFile(local);
-    final remoteHash = _remoteHash(remote);
-    if (localHash != remoteHash) {
+    if (local.contentHash != remote.contentHash) {
       downloads.add(path);
     }
+  }
+
+  void _debugLog(String message) {
+    assert(() {
+      // ignore: avoid_print
+      print('[WebDAV][Sync] $message');
+      return true;
+    }());
   }
 }
 
@@ -994,6 +1409,13 @@ class _SyncLock {
   final int updatedTime;
   final String? clientId;
   final String? clientType;
+}
+
+class _ParsedLockFilename {
+  const _ParsedLockFilename({this.clientType, this.clientId});
+
+  final String? clientType;
+  final String? clientId;
 }
 
 class _LockAcquireResult {
@@ -1024,4 +1446,114 @@ class _RemoteSyncEntry {
   final WebDavFileMetadata metadata;
   final String sourcePath;
   final bool isLegacyOrphan;
+}
+
+class _LocalSyncAsset {
+  const _LocalSyncAsset({
+    required this.canonicalPath,
+    required this.sourcePath,
+    required this.contentHash,
+    required this.size,
+    required this.modifiedAt,
+  });
+
+  final String canonicalPath;
+  final String sourcePath;
+  final String contentHash;
+  final int size;
+  final DateTime modifiedAt;
+}
+
+class _RemoteSyncAsset {
+  const _RemoteSyncAsset({
+    required this.canonicalPath,
+    required this.sourcePath,
+    required this.contentHash,
+    required this.size,
+    required this.updatedAt,
+    required this.isLegacyOrphan,
+  });
+
+  final String canonicalPath;
+  final String sourcePath;
+  final String contentHash;
+  final int size;
+  final DateTime updatedAt;
+  final bool isLegacyOrphan;
+
+  _RemoteSyncAsset copyWith({
+    String? sourcePath,
+    String? contentHash,
+    int? size,
+    DateTime? updatedAt,
+    bool? isLegacyOrphan,
+  }) {
+    return _RemoteSyncAsset(
+      canonicalPath: canonicalPath,
+      sourcePath: sourcePath ?? this.sourcePath,
+      contentHash: contentHash ?? this.contentHash,
+      size: size ?? this.size,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isLegacyOrphan: isLegacyOrphan ?? this.isLegacyOrphan,
+    );
+  }
+}
+
+class _RemoteManifestLoadResult {
+  const _RemoteManifestLoadResult._({
+    this.manifest,
+    this.missing = false,
+    this.corrupt = false,
+  });
+
+  const _RemoteManifestLoadResult.available(SyncManifest manifest)
+    : this._(manifest: manifest);
+
+  const _RemoteManifestLoadResult.missing() : this._(missing: true);
+
+  const _RemoteManifestLoadResult.corrupt() : this._(corrupt: true);
+
+  final SyncManifest? manifest;
+  final bool missing;
+  final bool corrupt;
+}
+
+class _PendingSyncMarkerState {
+  const _PendingSyncMarkerState({this.exists = false, this.corrupt = false});
+
+  final bool exists;
+  final bool corrupt;
+}
+
+class _SyncInfoState {
+  const _SyncInfoState({
+    required this.jsonMap,
+    required this.formatVersion,
+    this.syncProtocolVersion,
+    this.syncManifestRevision,
+  });
+
+  final Map<String, dynamic> jsonMap;
+  final int formatVersion;
+  final int? syncProtocolVersion;
+  final String? syncManifestRevision;
+
+  _SyncInfoState withProtocol({
+    required int syncProtocolVersion,
+    required String syncManifestRevision,
+  }) {
+    final next = Map<String, dynamic>.from(jsonMap);
+    next['syncProtocolVersion'] = syncProtocolVersion;
+    next['syncManifestRevision'] = syncManifestRevision;
+    return _SyncInfoState.fromJson(next);
+  }
+
+  static _SyncInfoState fromJson(Map<String, dynamic> json) {
+    return _SyncInfoState(
+      jsonMap: Map<String, dynamic>.from(json),
+      formatVersion: (json['formatVersion'] as num?)?.toInt() ?? 0,
+      syncProtocolVersion: (json['syncProtocolVersion'] as num?)?.toInt(),
+      syncManifestRevision: (json['syncManifestRevision'] as String?)?.trim(),
+    );
+  }
 }

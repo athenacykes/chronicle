@@ -3,6 +3,7 @@ import '../../core/file_system_utils.dart';
 import '../../core/id_generator.dart';
 import '../../domain/entities/note_link.dart';
 import '../../domain/repositories/link_repository.dart';
+import '../sync_webdav/sync_local_metadata_tracker.dart';
 import 'chronicle_layout.dart';
 import 'chronicle_storage_initializer.dart';
 import 'link_file_codec.dart';
@@ -16,12 +17,14 @@ class LocalLinkRepository implements LinkRepository {
     required FileSystemUtils fileSystemUtils,
     required Clock clock,
     required IdGenerator idGenerator,
+    SyncLocalMetadataTracker? syncMetadataTracker,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
        _codec = codec,
        _fileSystemUtils = fileSystemUtils,
        _clock = clock,
-       _idGenerator = idGenerator;
+       _idGenerator = idGenerator,
+       _syncMetadataTracker = syncMetadataTracker;
 
   final StorageRootLocator _storageRootLocator;
   final ChronicleStorageInitializer _storageInitializer;
@@ -29,6 +32,7 @@ class LocalLinkRepository implements LinkRepository {
   final FileSystemUtils _fileSystemUtils;
   final Clock _clock;
   final IdGenerator _idGenerator;
+  final SyncLocalMetadataTracker? _syncMetadataTracker;
 
   @override
   Future<List<NoteLink>> listLinks() async {
@@ -74,14 +78,18 @@ class LocalLinkRepository implements LinkRepository {
 
     final layout = await _layout();
     final file = layout.linkFile(link.id);
-    await _fileSystemUtils.atomicWriteString(file, _codec.encode(link));
+    final encoded = _codec.encode(link);
+    await _fileSystemUtils.atomicWriteString(file, encoded);
+    await _syncMetadataTracker?.recordStringWrite(file, encoded);
     return link;
   }
 
   @override
   Future<void> deleteLink(String linkId) async {
     final layout = await _layout();
-    await _fileSystemUtils.deleteIfExists(layout.linkFile(linkId));
+    final file = layout.linkFile(linkId);
+    await _fileSystemUtils.deleteIfExists(file);
+    await _syncMetadataTracker?.recordDelete(file);
   }
 
   Future<ChronicleLayout> _layout() async {

@@ -10,6 +10,7 @@ import '../../domain/entities/note.dart';
 import '../../domain/repositories/matter_repository.dart';
 import '../../domain/repositories/note_repository.dart';
 import '../../domain/repositories/notebook_repository.dart';
+import '../sync_webdav/sync_local_metadata_tracker.dart';
 import 'chronicle_layout.dart';
 import 'chronicle_storage_initializer.dart';
 import 'note_file_codec.dart';
@@ -26,6 +27,7 @@ class LocalNoteRepository implements NoteRepository {
     required MatterRepository matterRepository,
     required NotebookRepository notebookRepository,
     int maxAttachmentBytes = defaultMaxAttachmentBytes,
+    SyncLocalMetadataTracker? syncMetadataTracker,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
        _codec = codec,
@@ -34,7 +36,8 @@ class LocalNoteRepository implements NoteRepository {
        _idGenerator = idGenerator,
        _matterRepository = matterRepository,
        _notebookRepository = notebookRepository,
-       _maxAttachmentBytes = maxAttachmentBytes;
+       _maxAttachmentBytes = maxAttachmentBytes,
+       _syncMetadataTracker = syncMetadataTracker;
 
   static const int defaultMaxAttachmentBytes = 50 * 1024 * 1024;
 
@@ -47,6 +50,7 @@ class LocalNoteRepository implements NoteRepository {
   final MatterRepository _matterRepository;
   final NotebookRepository _notebookRepository;
   final int _maxAttachmentBytes;
+  final SyncLocalMetadataTracker? _syncMetadataTracker;
 
   @override
   Future<List<Note>> listAllNotes() async {
@@ -127,6 +131,7 @@ class LocalNoteRepository implements NoteRepository {
     final file = await _findNoteFile(noteId);
     if (file != null) {
       await _fileSystemUtils.deleteIfExists(file);
+      await _syncMetadataTracker?.recordDelete(file);
     }
     if (existingNote != null) {
       await _cleanupUnreferencedAttachments(
@@ -201,6 +206,7 @@ class LocalNoteRepository implements NoteRepository {
         final target = layout.fromRelativePath(relativePath);
         final bytes = await source.file.readAsBytes();
         await _fileSystemUtils.atomicWriteBytes(target, bytes);
+        await _syncMetadataTracker?.recordBytesWrite(target, bytes);
 
         createdFiles.add(target);
         createdPaths.add(_normalizeAttachmentPath(relativePath));
@@ -218,6 +224,7 @@ class LocalNoteRepository implements NoteRepository {
     } catch (error) {
       for (final file in createdFiles.reversed) {
         await _fileSystemUtils.deleteIfExists(file);
+        await _syncMetadataTracker?.recordDelete(file);
       }
       if (error is AppException) {
         rethrow;
@@ -293,10 +300,13 @@ class LocalNoteRepository implements NoteRepository {
   Future<void> _persistNote(Note note) async {
     final target = await _targetFileFor(note);
     final existing = await _findNoteFile(note.id);
+    final encoded = _codec.encode(note);
 
-    await _fileSystemUtils.atomicWriteString(target, _codec.encode(note));
+    await _fileSystemUtils.atomicWriteString(target, encoded);
+    await _syncMetadataTracker?.recordStringWrite(target, encoded);
     if (existing != null && existing.path != target.path) {
       await _fileSystemUtils.deleteIfExists(existing);
+      await _syncMetadataTracker?.recordDelete(existing);
     }
   }
 
@@ -409,16 +419,16 @@ class LocalNoteRepository implements NoteRepository {
     final hasMatter = matterId != null || phaseId != null;
     if (hasMatter) {
       if (matterId == null || phaseId == null) {
-        throw AppException(
-          'Matter notes require both matterId and phaseId.',
-        );
+        throw AppException('Matter notes require both matterId and phaseId.');
       }
       if (notebookFolderId != null) {
-        throw AppException(
-          'A note cannot belong to both Matter and Notebook.',
-        );
+        throw AppException('A note cannot belong to both Matter and Notebook.');
       }
-      return _Ownership(matterId: matterId, phaseId: phaseId, notebookFolderId: null);
+      return _Ownership(
+        matterId: matterId,
+        phaseId: phaseId,
+        notebookFolderId: null,
+      );
     }
 
     if (notebookFolderId != null) {
@@ -480,7 +490,9 @@ class LocalNoteRepository implements NoteRepository {
       if (referenced.contains(path)) {
         continue;
       }
-      await _fileSystemUtils.deleteIfExists(layout.fromRelativePath(path));
+      final file = layout.fromRelativePath(path);
+      await _fileSystemUtils.deleteIfExists(file);
+      await _syncMetadataTracker?.recordDelete(file);
     }
   }
 
