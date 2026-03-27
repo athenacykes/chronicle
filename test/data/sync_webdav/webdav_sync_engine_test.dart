@@ -3,16 +3,21 @@ import 'dart:io';
 
 import 'package:chronicle/core/app_directories.dart';
 import 'package:chronicle/core/clock.dart';
+import 'package:chronicle/core/file_hash.dart';
 import 'package:chronicle/core/file_system_utils.dart';
 import 'package:chronicle/data/local_fs/chronicle_layout.dart';
 import 'package:chronicle/data/local_fs/chronicle_storage_initializer.dart';
+import 'package:chronicle/data/local_fs/conflict_service.dart';
 import 'package:chronicle/data/local_fs/storage_root_locator.dart';
 import 'package:chronicle/data/sync_webdav/in_memory_webdav_client.dart';
+import 'package:chronicle/data/sync_webdav/local_conflict_history_store.dart';
 import 'package:chronicle/data/sync_webdav/local_sync_state_store.dart';
 import 'package:chronicle/data/sync_webdav/webdav_sync_engine.dart';
+import 'package:chronicle/data/sync_webdav/webdav_types.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
 import 'package:chronicle/domain/entities/sync_blocker.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
+import 'package:chronicle/domain/entities/sync_conflict.dart';
 import 'package:chronicle/domain/entities/sync_run_options.dart';
 import 'package:chronicle/domain/entities/sync_result.dart';
 import 'package:chronicle/domain/repositories/settings_repository.dart';
@@ -24,6 +29,9 @@ void main() {
   late _InMemorySettingsRepository settingsRepository;
   late WebDavSyncEngine syncEngine;
   late InMemoryWebDavClient webDavClient;
+  late LocalSyncStateStore syncStateStore;
+  late LocalConflictHistoryStore conflictHistoryStore;
+  late ConflictService conflictService;
   const syncTargetUrl = 'https://example.com/dav/Chronicle';
   const syncUsername = 'tester';
 
@@ -42,19 +50,28 @@ void main() {
     final fs = const FileSystemUtils();
     final initializer = ChronicleStorageInitializer(fs);
     await initializer.ensureInitialized(rootDir);
+    syncStateStore = LocalSyncStateStore(
+      appDirectories: FixedAppDirectories(
+        appSupport: Directory('${tempDir.path}/support'),
+        home: tempDir,
+      ),
+      fileSystemUtils: fs,
+    );
+    conflictHistoryStore = LocalConflictHistoryStore(fileSystemUtils: fs);
+    conflictService = ConflictService(
+      storageRootLocator: StorageRootLocator(settingsRepository),
+      storageInitializer: initializer,
+      fileSystemUtils: fs,
+    );
 
     syncEngine = WebDavSyncEngine(
       storageRootLocator: StorageRootLocator(settingsRepository),
       storageInitializer: initializer,
       fileSystemUtils: fs,
       clock: _FixedClock(DateTime.utc(2026, 2, 17, 10, 0, 0)),
-      syncStateStore: LocalSyncStateStore(
-        appDirectories: FixedAppDirectories(
-          appSupport: Directory('${tempDir.path}/support'),
-          home: tempDir,
-        ),
-        fileSystemUtils: fs,
-      ),
+      syncStateStore: syncStateStore,
+      conflictService: conflictService,
+      conflictHistoryStore: conflictHistoryStore,
     );
 
     webDavClient = InMemoryWebDavClient();
@@ -77,6 +94,35 @@ void main() {
     );
   }
 
+  String currentNamespace() {
+    return syncStateStore.buildNamespace(
+      syncTargetUrl: syncTargetUrl,
+      username: syncUsername,
+      storageRootPath: rootDir.path,
+      localFormatVersion: 2,
+    );
+  }
+
+  Future<void> writeRemoteLock({
+    required InMemoryWebDavClient client,
+    required String path,
+    required int updatedTime,
+    String clientId = 'other-client',
+    String clientType = 'desktop',
+  }) {
+    return client.uploadFile(
+      path,
+      utf8.encode(
+        json.encode(<String, dynamic>{
+          'type': 'sync',
+          'clientType': clientType,
+          'clientId': clientId,
+          'updatedTime': updatedTime,
+        }),
+      ),
+    );
+  }
+
   test('classifies uploads and downloads', () async {
     final layout = ChronicleLayout(rootDir);
     await const FileSystemUtils().atomicWriteString(
@@ -94,10 +140,14 @@ void main() {
     expect(result.uploadedCount, greaterThanOrEqualTo(1));
     expect(result.downloadedCount, greaterThanOrEqualTo(1));
 
-    final remoteLocalCopy = layout.fromRelativePath('notebook/root/remote-note.md');
+    final remoteLocalCopy = layout.fromRelativePath(
+      'notebook/root/remote-note.md',
+    );
     expect(await remoteLocalCopy.exists(), isTrue);
 
-    final uploaded = await webDavClient.downloadFile('notebook/root/local-note.md');
+    final uploaded = await webDavClient.downloadFile(
+      'notebook/root/local-note.md',
+    );
     expect(utf8.decode(uploaded), 'local content');
   });
 
@@ -129,7 +179,108 @@ void main() {
     final files = await const FileSystemUtils().listFilesRecursively(rootDir);
     final conflictFiles = files.where((f) => f.path.contains('.conflict.'));
     expect(conflictFiles.length, 1);
+
+    final conflictRaw = await conflictFiles.single.readAsString();
+    expect(conflictRaw, contains('localContentHash:'));
+    expect(conflictRaw, contains('remoteContentHash:'));
+    expect(conflictRaw, contains('conflictFingerprint:'));
   });
+
+  test(
+    'does not create a duplicate artifact when matching conflict exists',
+    () async {
+      final layout = ChronicleLayout(rootDir);
+      final localFile = layout.notebookRootNoteFile('duplicate-note');
+
+      await const FileSystemUtils().atomicWriteString(localFile, 'v1');
+      await webDavClient.uploadFile(
+        'notebook/root/duplicate-note.md',
+        utf8.encode('v1'),
+      );
+      await runSync();
+
+      await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
+      await webDavClient.uploadFile(
+        'notebook/root/duplicate-note.md',
+        utf8.encode('v2-remote'),
+      );
+
+      final localHash = sha256ForString('v2-local');
+      final remoteHash = sha256ForString('v2-remote');
+      final fingerprint = buildSyncConflictFingerprint(
+        originalPath: 'notebook/root/duplicate-note.md',
+        localContentHash: localHash,
+        remoteContentHash: remoteHash,
+      );
+      final existingConflict = layout.fromRelativePath(
+        'notebook/root/duplicate-note.conflict.20260217100000.client-sync.md',
+      );
+      await const FileSystemUtils().atomicWriteString(existingConflict, '''---
+conflictType: "note"
+originalPath: "notebook/root/duplicate-note.md"
+conflictDetectedAt: "2026-02-17T10:00:00Z"
+localDevice: "desktop-client-sync"
+remoteDevice: "unknown"
+localContentHash: "$localHash"
+remoteContentHash: "$remoteHash"
+conflictFingerprint: "$fingerprint"
+---
+
+# [CONFLICT] notebook/root/duplicate-note.md
+
+This file contains local changes that conflicted with a remote update.
+
+v2-local
+''');
+
+      final result = await runSync();
+
+      expect(result.conflictCount, 0);
+      final files = await const FileSystemUtils().listFilesRecursively(rootDir);
+      final conflictFiles = files.where((f) => f.path.contains('.conflict.'));
+      expect(conflictFiles, hasLength(1));
+      expect(await localFile.readAsString(), 'v2-remote');
+    },
+  );
+
+  test(
+    'does not recreate a resolved conflict when fingerprint history exists',
+    () async {
+      final layout = ChronicleLayout(rootDir);
+      final localFile = layout.notebookRootNoteFile('history-note');
+
+      await const FileSystemUtils().atomicWriteString(localFile, 'v1');
+      await webDavClient.uploadFile(
+        'notebook/root/history-note.md',
+        utf8.encode('v1'),
+      );
+      await runSync();
+
+      await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
+      await webDavClient.uploadFile(
+        'notebook/root/history-note.md',
+        utf8.encode('v2-remote'),
+      );
+
+      final fingerprint = buildSyncConflictFingerprint(
+        originalPath: 'notebook/root/history-note.md',
+        localContentHash: sha256ForString('v2-local'),
+        remoteContentHash: sha256ForString('v2-remote'),
+      );
+      await conflictHistoryStore.record(
+        layout: layout,
+        namespace: currentNamespace(),
+        fingerprint: fingerprint,
+      );
+
+      final result = await runSync();
+
+      expect(result.conflictCount, 0);
+      final files = await const FileSystemUtils().listFilesRecursively(rootDir);
+      expect(files.where((f) => f.path.contains('.conflict.')), isEmpty);
+      expect(await localFile.readAsString(), 'v2-remote');
+    },
+  );
 
   test('handles binary resource conflicts without UTF-8 decoding', () async {
     final layout = ChronicleLayout(rootDir);
@@ -160,6 +311,119 @@ void main() {
     );
     final conflictBytes = await conflictFile.readAsBytes();
     expect(conflictBytes, localVersion);
+  });
+
+  test(
+    'records final sync state refresh failures without hiding created conflicts',
+    () async {
+      final flakyClient = _FlakyFinalListWebDavClient();
+      webDavClient = flakyClient;
+      final layout = ChronicleLayout(rootDir);
+      final localFile = layout.notebookRootNoteFile('late-failure-conflict');
+
+      await const FileSystemUtils().atomicWriteString(localFile, 'v1');
+      await flakyClient.uploadFile(
+        'notebook/root/late-failure-conflict.md',
+        utf8.encode('v1'),
+      );
+
+      await runSync();
+
+      await const FileSystemUtils().atomicWriteString(localFile, 'v2-local');
+      await flakyClient.uploadFile(
+        'notebook/root/late-failure-conflict.md',
+        utf8.encode('v2-remote'),
+      );
+      flakyClient.failOnNextFinalRefresh();
+
+      final result = await runSync();
+
+      expect(result.conflictCount, 1);
+      expect(result.errors, hasLength(1));
+      expect(
+        result.errors.single,
+        startsWith('Final sync state refresh failed:'),
+      );
+
+      final localContent = await localFile.readAsString();
+      expect(localContent, 'v2-remote');
+
+      final files = await const FileSystemUtils().listFilesRecursively(rootDir);
+      final conflictFiles = files.where((f) => f.path.contains('.conflict.'));
+      expect(conflictFiles.length, 1);
+    },
+  );
+
+  test('blocks sync when another active lock exists', () async {
+    await writeRemoteLock(
+      client: webDavClient,
+      path: 'locks/sync_desktop_other-client.json',
+      updatedTime: DateTime.utc(2026, 2, 17, 9, 59, 30).millisecondsSinceEpoch,
+    );
+
+    final result = await runSync();
+
+    expect(result.blocker, isNotNull);
+    expect(result.blocker!.type, SyncBlockerType.activeRemoteLock);
+    expect(result.blocker!.lockClientId, 'other-client');
+    expect(result.blocker!.lockClientType, 'desktop');
+    expect(result.blocker!.competingLockCount, 1);
+  });
+
+  test('prunes stale competing lock and continues sync', () async {
+    await writeRemoteLock(
+      client: webDavClient,
+      path: 'locks/sync_desktop_stale-client.json',
+      updatedTime: DateTime.utc(2026, 2, 17, 9, 57, 30).millisecondsSinceEpoch,
+      clientId: 'stale-client',
+    );
+
+    final result = await runSync();
+
+    expect(result.blocker, isNull);
+    expect(
+      () => webDavClient.downloadFile('locks/sync_desktop_stale-client.json'),
+      throwsException,
+    );
+  });
+
+  test('force break remote lock removes competing locks and syncs', () async {
+    final layout = ChronicleLayout(rootDir);
+    await const FileSystemUtils().atomicWriteString(
+      layout.notebookRootNoteFile('forced-lock-break'),
+      'local content',
+    );
+    await writeRemoteLock(
+      client: webDavClient,
+      path: 'locks/sync_desktop_other-client.json',
+      updatedTime: DateTime.utc(2026, 2, 17, 9, 59, 30).millisecondsSinceEpoch,
+    );
+
+    final result = await runSync(mode: SyncRunMode.forceBreakRemoteLockOnce);
+
+    expect(result.blocker, isNull);
+    expect(result.uploadedCount, greaterThanOrEqualTo(1));
+    expect(
+      () => webDavClient.downloadFile('locks/sync_desktop_other-client.json'),
+      throwsException,
+    );
+  });
+
+  test('force break remote lock aborts when lock deletion fails', () async {
+    final blockingClient = _DeleteFailingLockWebDavClient(
+      failingPath: 'locks/sync_desktop_other-client.json',
+    );
+    webDavClient = blockingClient;
+    await writeRemoteLock(
+      client: blockingClient,
+      path: 'locks/sync_desktop_other-client.json',
+      updatedTime: DateTime.utc(2026, 2, 17, 9, 59, 30).millisecondsSinceEpoch,
+    );
+
+    await expectLater(
+      runSync(mode: SyncRunMode.forceBreakRemoteLockOnce),
+      throwsA(isA<HttpException>()),
+    );
   });
 
   test('enforces deletion fail-safe threshold', () async {
@@ -243,40 +507,46 @@ void main() {
     },
   );
 
-  test('prefers canonical notebook path when legacy and canonical remote both exist', () async {
-    final layout = ChronicleLayout(rootDir);
-    await webDavClient.uploadFile('orphans/dup.md', utf8.encode('legacy'));
-    await webDavClient.uploadFile(
-      'notebook/root/dup.md',
-      utf8.encode('canonical'),
-    );
+  test(
+    'prefers canonical notebook path when legacy and canonical remote both exist',
+    () async {
+      final layout = ChronicleLayout(rootDir);
+      await webDavClient.uploadFile('orphans/dup.md', utf8.encode('legacy'));
+      await webDavClient.uploadFile(
+        'notebook/root/dup.md',
+        utf8.encode('canonical'),
+      );
 
-    final result = await runSync();
-    expect(result.downloadedCount, greaterThanOrEqualTo(1));
+      final result = await runSync();
+      expect(result.downloadedCount, greaterThanOrEqualTo(1));
 
-    final localFile = layout.notebookRootNoteFile('dup');
-    expect(await localFile.exists(), isTrue);
-    expect(await localFile.readAsString(), 'canonical');
-  });
+      final localFile = layout.notebookRootNoteFile('dup');
+      expect(await localFile.exists(), isTrue);
+      expect(await localFile.readAsString(), 'canonical');
+    },
+  );
 
-  test('legacy remote orphan coexistence does not trigger fail-safe deletion block', () async {
-    final layout = ChronicleLayout(rootDir);
-    await const FileSystemUtils().atomicWriteString(
-      layout.notebookRootNoteFile('steady'),
-      'stable',
-    );
+  test(
+    'legacy remote orphan coexistence does not trigger fail-safe deletion block',
+    () async {
+      final layout = ChronicleLayout(rootDir);
+      await const FileSystemUtils().atomicWriteString(
+        layout.notebookRootNoteFile('steady'),
+        'stable',
+      );
 
-    await runSync();
+      await runSync();
 
-    await webDavClient.uploadFile('orphans/steady.md', utf8.encode('stable'));
-    final result = await runSync();
+      await webDavClient.uploadFile('orphans/steady.md', utf8.encode('stable'));
+      final result = await runSync();
 
-    expect(result.blocker, isNull);
-    expect(
-      utf8.decode(await webDavClient.downloadFile('orphans/steady.md')),
-      'stable',
-    );
-  });
+      expect(result.blocker, isNull);
+      expect(
+        utf8.decode(await webDavClient.downloadFile('orphans/steady.md')),
+        'stable',
+      );
+    },
+  );
 
   test('recover remote wins is blocked when remote format is older', () async {
     await webDavClient.uploadFile(
@@ -308,12 +578,21 @@ class _InMemorySettingsRepository implements SettingsRepository {
   Future<String?> readSyncPassword() async => null;
 
   @override
+  Future<String?> readSyncProxyPassword() async => null;
+
+  @override
   Future<void> saveSettings(AppSettings settings) async {
     _settings = settings;
   }
 
   @override
   Future<void> saveSyncPassword(String password) async {}
+
+  @override
+  Future<void> saveSyncProxyPassword(String password) async {}
+
+  @override
+  Future<void> clearSyncProxyPassword() async {}
 
   @override
   Future<void> setLastSyncAt(DateTime value) async {
@@ -333,4 +612,44 @@ class _FixedClock implements Clock {
 
   @override
   DateTime nowUtc() => _now;
+}
+
+class _FlakyFinalListWebDavClient extends InMemoryWebDavClient {
+  bool _shouldFailAfterConflictUpload = false;
+  bool _sawConflictUpload = false;
+
+  void failOnNextFinalRefresh() {
+    _shouldFailAfterConflictUpload = true;
+  }
+
+  @override
+  Future<List<WebDavFileMetadata>> listFilesRecursively(String rootPath) async {
+    if (_shouldFailAfterConflictUpload && _sawConflictUpload) {
+      _shouldFailAfterConflictUpload = false;
+      throw const HttpException('Connection closed before full header');
+    }
+    return super.listFilesRecursively(rootPath);
+  }
+
+  @override
+  Future<void> uploadFile(String path, List<int> bytes) async {
+    if (path.contains('.conflict.')) {
+      _sawConflictUpload = true;
+    }
+    await super.uploadFile(path, bytes);
+  }
+}
+
+class _DeleteFailingLockWebDavClient extends InMemoryWebDavClient {
+  _DeleteFailingLockWebDavClient({required this.failingPath});
+
+  final String failingPath;
+
+  @override
+  Future<void> deleteFile(String path) async {
+    if (path == failingPath) {
+      throw const HttpException('failed to delete remote lock');
+    }
+    await super.deleteFile(path);
+  }
 }

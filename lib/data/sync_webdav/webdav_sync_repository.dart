@@ -5,19 +5,22 @@ import '../../domain/entities/sync_result.dart';
 import '../../domain/entities/sync_run_options.dart';
 import '../../domain/repositories/settings_repository.dart';
 import '../../domain/repositories/sync_repository.dart';
-import 'webdav_client.dart';
+import 'webdav_client_factory.dart';
 import 'webdav_sync_engine.dart';
 
 class WebDavSyncRepository implements SyncRepository {
   WebDavSyncRepository({
     required SettingsRepository settingsRepository,
+    required WebDavClientFactory clientFactory,
     required WebDavSyncEngine syncEngine,
     required Clock clock,
   }) : _settingsRepository = settingsRepository,
+       _clientFactory = clientFactory,
        _syncEngine = syncEngine,
        _clock = clock;
 
   final SettingsRepository _settingsRepository;
+  final WebDavClientFactory _clientFactory;
   final WebDavSyncEngine _syncEngine;
   final Clock _clock;
 
@@ -47,6 +50,7 @@ class WebDavSyncRepository implements SyncRepository {
   @override
   Future<SyncResult> syncNow({
     SyncRunOptions options = const SyncRunOptions(),
+    SyncProgressCallback? onProgress,
   }) async {
     final settings = await _settingsRepository.loadSettings();
     final config = settings.syncConfig;
@@ -70,10 +74,11 @@ class WebDavSyncRepository implements SyncRepository {
       );
     }
 
-    final client = DioWebDavClient(
-      baseUrl: config.url,
-      username: config.username,
+    final proxyPassword = await _settingsRepository.readSyncProxyPassword();
+    final client = _clientFactory.create(
+      config: config,
       password: password,
+      proxyPassword: proxyPassword,
     );
 
     final result = await _syncEngine.run(
@@ -83,6 +88,7 @@ class WebDavSyncRepository implements SyncRepository {
       options: options,
       syncTargetUrl: config.url.trim(),
       syncUsername: config.username.trim(),
+      onProgress: onProgress,
     );
 
     await _settingsRepository.setLastSyncAt(result.endedAt);

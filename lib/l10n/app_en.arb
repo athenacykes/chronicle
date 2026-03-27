@@ -82,6 +82,59 @@
       "lastSync": {}
     }
   },
+  "syncReadyHeadline": "Ready to sync",
+  "syncBlockedHeadline": "Sync blocked",
+  "syncFailedHeadline": "Sync failed",
+  "syncCompletedHeadline": "Sync complete",
+  "syncCompletedWithErrorsHeadline": "Sync complete with errors",
+  "syncStatusPreparing": "Preparing sync",
+  "syncStatusAcquiringLock": "Acquiring lock",
+  "syncStatusScanning": "Scanning files",
+  "syncStatusPlanning": "Planning changes",
+  "syncStatusUploading": "Uploading changes",
+  "syncStatusDownloading": "Downloading changes",
+  "syncStatusDeletingLocal": "Cleaning local files",
+  "syncStatusDeletingRemote": "Cleaning remote files",
+  "syncStatusResolvingConflicts": "Resolving conflicts",
+  "syncStatusFinalizing": "Finalizing sync",
+  "syncLiveCountsSummary": "Up {uploaded} • Down {downloaded} • Del {deleted} • Conflicts {conflicts} • Errors {errors}",
+  "@syncLiveCountsSummary": {
+    "placeholders": {
+      "uploaded": {
+        "type": "int"
+      },
+      "downloaded": {
+        "type": "int"
+      },
+      "deleted": {
+        "type": "int"
+      },
+      "conflicts": {
+        "type": "int"
+      },
+      "errors": {
+        "type": "int"
+      }
+    }
+  },
+  "syncProgressWithStep": "{completed}/{total} • {summary}",
+  "@syncProgressWithStep": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "summary": {}
+    }
+  },
+  "syncLastSyncCaption": "Last sync: {lastSync}",
+  "@syncLastSyncCaption": {
+    "placeholders": {
+      "lastSync": {}
+    }
+  },
   "neverLabel": "never",
   "newMatterAction": "New Matter",
   "newCategoryAction": "New Category",
@@ -274,6 +327,8 @@
   },
   "openMainNoteAction": "Open Main Note",
   "markResolvedAction": "Mark Resolved",
+  "acceptLeftAction": "Accept Left",
+  "acceptRightAction": "Accept Right",
   "failedToLoadConflict": "Failed to load conflict: {error}",
   "@failedToLoadConflict": {
     "placeholders": {
@@ -282,6 +337,11 @@
   },
   "binaryConflictNotPreviewable": "Binary conflict content is not previewable.",
   "conflictContentEmpty": "Conflict content is empty.",
+  "conflictReviewLocalCopyTitle": "Conflict Copy",
+  "conflictReviewMainFileTitle": "Main File",
+  "conflictOriginalFileMissingMessage": "The original file no longer exists.",
+  "conflictMainFileChangedSinceCaptureMessage": "The main file changed after this conflict was captured.",
+  "conflictReviewTextDiffUnavailableMessage": "A text diff is not available for this conflict.",
   "viewModePhase": "Phase",
   "viewModeTimeline": "Timeline",
   "viewModeList": "List",
@@ -499,16 +559,35 @@
   "webDavUrlLabel": "WebDAV URL",
   "webDavUsernameLabel": "WebDAV Username",
   "webDavPasswordLabel": "WebDAV Password",
+  "syncProxySectionTitle": "Proxy",
+  "syncProxyTypeLabel": "Proxy type",
+  "syncProxyTypeNone": "No proxy",
+  "syncProxyTypeHttp": "HTTP",
+  "syncProxyTypeSocks5": "SOCKS5",
+  "syncProxyHostLabel": "Proxy host",
+  "syncProxyPortLabel": "Proxy port",
+  "syncProxyUsernameLabel": "Proxy username",
+  "syncProxyPasswordLabel": "Proxy password",
+  "syncProxyHostRequiredError": "Proxy host is required.",
+  "syncProxyPortInvalidError": "Proxy port must be between 1 and 65535.",
   "autoSyncIntervalMinutesLabel": "Auto-sync interval (minutes)",
   "deletionFailSafeLabel": "Deletion fail-safe",
   "syncAdvancedActionsTooltip": "Advanced sync actions",
   "syncRecoverLocalWinsAction": "Re-upload local to remote",
   "syncRecoverRemoteWinsAction": "Re-download remote to local",
+  "syncOverrideRemoteLockAction": "Override lock and retry",
   "syncForceDeletionNextRunAction": "Force apply deletions (next run)",
   "syncRecoverLocalWinsTitle": "Local Wins Recovery",
   "syncRecoverLocalWinsWarning": "This will overwrite remote data with local data and may delete remote files that do not exist locally. Back up first if needed.",
   "syncRecoverRemoteWinsTitle": "Remote Wins Recovery",
   "syncRecoverRemoteWinsWarning": "This will overwrite local data with remote data and may delete local files that do not exist remotely. Back up first if needed.",
+  "syncOverrideRemoteLockTitle": "Override Remote Lock",
+  "syncOverrideRemoteLockWarning": "This will delete the active remote sync lock for {summary} and retry immediately. Proceed only if that sync is no longer running.",
+  "@syncOverrideRemoteLockWarning": {
+    "placeholders": {
+      "summary": {}
+    }
+  },
   "syncForceDeletionTitle": "Force Apply Deletions",
   "syncForceDeletionWarning": "This arms a one-time override for deletion fail-safe on the next sync run. {summary}\nProceed only if you have a backup.",
   "@syncForceDeletionWarning": {

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
 
 import '../../../domain/entities/enums.dart';
+import '../../../domain/entities/sync_proxy_config.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
 import '../../settings/settings_controller.dart';
@@ -31,11 +32,18 @@ class _ChronicleSettingsDialogState
   late final TextEditingController _urlController;
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
+  late final TextEditingController _proxyHostController;
+  late final TextEditingController _proxyPortController;
+  late final TextEditingController _proxyUsernameController;
+  late final TextEditingController _proxyPasswordController;
   late final TextEditingController _intervalController;
   bool _failSafe = true;
   SyncTargetType _type = SyncTargetType.none;
+  SyncProxyType _proxyType = SyncProxyType.none;
   String _localeTag = 'en';
   _SettingsSection _selectedSection = _SettingsSection.storage;
+  String? _proxyHostError;
+  String? _proxyPortError;
 
   @override
   void initState() {
@@ -51,11 +59,22 @@ class _ChronicleSettingsDialogState
       text: settings?.syncConfig.username ?? '',
     );
     _passwordController = TextEditingController();
+    _proxyHostController = TextEditingController(
+      text: settings?.syncConfig.proxy.host ?? '',
+    );
+    _proxyPortController = TextEditingController(
+      text: settings?.syncConfig.proxy.port?.toString() ?? '',
+    );
+    _proxyUsernameController = TextEditingController(
+      text: settings?.syncConfig.proxy.username ?? '',
+    );
+    _proxyPasswordController = TextEditingController();
     _intervalController = TextEditingController(
       text: (settings?.syncConfig.intervalMinutes ?? 5).toString(),
     );
     _type = settings?.syncConfig.type ?? SyncTargetType.none;
     _failSafe = settings?.syncConfig.failSafe ?? true;
+    _proxyType = settings?.syncConfig.proxy.type ?? SyncProxyType.none;
     _localeTag = appLocaleTag(resolveAppLocale(settings?.localeTag));
   }
 
@@ -65,6 +84,10 @@ class _ChronicleSettingsDialogState
     _urlController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _proxyHostController.dispose();
+    _proxyPortController.dispose();
+    _proxyUsernameController.dispose();
+    _proxyPasswordController.dispose();
     _intervalController.dispose();
     super.dispose();
   }
@@ -197,6 +220,28 @@ class _ChronicleSettingsDialogState
     }
 
     Widget buildSyncSection() {
+      final showProxySection = _type == SyncTargetType.webdav;
+      final proxyFieldsVisible =
+          showProxySection && _proxyType != SyncProxyType.none;
+
+      Widget buildMacosErrorText(String? error) {
+        if (error == null || error.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            error,
+            style: TextStyle(
+              color: MacosTheme.of(
+                context,
+              ).typography.caption1.color?.withAlpha(220),
+              fontSize: 11,
+            ),
+          ),
+        );
+      }
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -318,6 +363,140 @@ class _ChronicleSettingsDialogState
                   onChanged: (value) => setState(() => _failSafe = value),
                   title: Text(l10n.deletionFailSafeLabel),
                 ),
+          if (showProxySection) ...<Widget>[
+            const SizedBox(height: 16),
+            Text(
+              l10n.syncProxySectionTitle,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            useMacOSNativeUI
+                ? Row(
+                    children: <Widget>[
+                      Text(l10n.syncProxyTypeLabel),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: MacosPopupButton<SyncProxyType>(
+                          value: _proxyType,
+                          onChanged: (value) {
+                            if (value == null) {
+                              return;
+                            }
+                            setState(() {
+                              _proxyType = value;
+                              if (_proxyType == SyncProxyType.none) {
+                                _proxyHostError = null;
+                                _proxyPortError = null;
+                              }
+                            });
+                          },
+                          items: SyncProxyType.values
+                              .map(
+                                (value) => MacosPopupMenuItem<SyncProxyType>(
+                                  value: value,
+                                  child: Text(_syncProxyTypeLabel(value, l10n)),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                    ],
+                  )
+                : DropdownButtonFormField<SyncProxyType>(
+                    initialValue: _proxyType,
+                    items: SyncProxyType.values
+                        .map(
+                          (value) => DropdownMenuItem<SyncProxyType>(
+                            value: value,
+                            child: Text(_syncProxyTypeLabel(value, l10n)),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() {
+                        _proxyType = value;
+                        if (_proxyType == SyncProxyType.none) {
+                          _proxyHostError = null;
+                          _proxyPortError = null;
+                        }
+                      });
+                    },
+                    decoration: InputDecoration(
+                      labelText: l10n.syncProxyTypeLabel,
+                    ),
+                  ),
+            if (proxyFieldsVisible) ...<Widget>[
+              const SizedBox(height: 8),
+              useMacOSNativeUI
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        MacosTextField(
+                          controller: _proxyHostController,
+                          placeholder: l10n.syncProxyHostLabel,
+                        ),
+                        buildMacosErrorText(_proxyHostError),
+                      ],
+                    )
+                  : TextField(
+                      controller: _proxyHostController,
+                      decoration: InputDecoration(
+                        labelText: l10n.syncProxyHostLabel,
+                        errorText: _proxyHostError,
+                      ),
+                    ),
+              const SizedBox(height: 8),
+              useMacOSNativeUI
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        MacosTextField(
+                          controller: _proxyPortController,
+                          placeholder: l10n.syncProxyPortLabel,
+                          keyboardType: TextInputType.number,
+                        ),
+                        buildMacosErrorText(_proxyPortError),
+                      ],
+                    )
+                  : TextField(
+                      controller: _proxyPortController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: l10n.syncProxyPortLabel,
+                        errorText: _proxyPortError,
+                      ),
+                    ),
+              const SizedBox(height: 8),
+              useMacOSNativeUI
+                  ? MacosTextField(
+                      controller: _proxyUsernameController,
+                      placeholder: l10n.syncProxyUsernameLabel,
+                    )
+                  : TextField(
+                      controller: _proxyUsernameController,
+                      decoration: InputDecoration(
+                        labelText: l10n.syncProxyUsernameLabel,
+                      ),
+                    ),
+              const SizedBox(height: 8),
+              useMacOSNativeUI
+                  ? MacosTextField(
+                      controller: _proxyPasswordController,
+                      placeholder: l10n.syncProxyPasswordLabel,
+                      obscureText: true,
+                    )
+                  : TextField(
+                      controller: _proxyPasswordController,
+                      decoration: InputDecoration(
+                        labelText: l10n.syncProxyPasswordLabel,
+                      ),
+                      obscureText: true,
+                    ),
+            ],
+          ],
         ],
       );
     }
@@ -372,6 +551,33 @@ class _ChronicleSettingsDialogState
     );
 
     Future<void> saveSettings() async {
+      final proxyHost = _proxyHostController.text.trim();
+      final proxyPortRaw = _proxyPortController.text.trim();
+      final proxyPort = int.tryParse(proxyPortRaw);
+      final proxyEnabled =
+          _type == SyncTargetType.webdav && _proxyType != SyncProxyType.none;
+      String? proxyHostError;
+      String? proxyPortError;
+
+      if (proxyEnabled) {
+        if (proxyHost.isEmpty) {
+          proxyHostError = l10n.syncProxyHostRequiredError;
+        }
+        if (proxyPort == null || proxyPort < 1 || proxyPort > 65535) {
+          proxyPortError = l10n.syncProxyPortInvalidError;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _proxyHostError = proxyHostError;
+          _proxyPortError = proxyPortError;
+        });
+      }
+      if (proxyHostError != null || proxyPortError != null) {
+        return;
+      }
+
       await ref
           .read(settingsControllerProvider.notifier)
           .setStorageRootPath(_rootPathController.text.trim());
@@ -387,6 +593,14 @@ class _ChronicleSettingsDialogState
             username: _usernameController.text.trim(),
             intervalMinutes: int.tryParse(_intervalController.text.trim()) ?? 5,
             failSafe: _failSafe,
+            proxy: proxyEnabled
+                ? SyncProxyConfig(
+                    type: _proxyType,
+                    host: proxyHost,
+                    port: proxyPort,
+                    username: _proxyUsernameController.text.trim(),
+                  )
+                : SyncProxyConfig.initial(),
           );
 
       if (syncConfig != null) {
@@ -397,6 +611,12 @@ class _ChronicleSettingsDialogState
               password: _passwordController.text.trim().isEmpty
                   ? null
                   : _passwordController.text.trim(),
+              proxyPassword:
+                  proxyEnabled &&
+                      _proxyPasswordController.text.trim().isNotEmpty
+                  ? _proxyPasswordController.text.trim()
+                  : null,
+              clearProxyPassword: !proxyEnabled,
             );
 
         await ref
@@ -479,5 +699,13 @@ String _syncTargetTypeLabel(SyncTargetType type, AppLocalizations l10n) {
     SyncTargetType.none => l10n.syncTargetTypeNone,
     SyncTargetType.filesystem => l10n.syncTargetTypeFilesystem,
     SyncTargetType.webdav => l10n.syncTargetTypeWebdav,
+  };
+}
+
+String _syncProxyTypeLabel(SyncProxyType type, AppLocalizations l10n) {
+  return switch (type) {
+    SyncProxyType.none => l10n.syncProxyTypeNone,
+    SyncProxyType.http => l10n.syncProxyTypeHttp,
+    SyncProxyType.socks5 => l10n.syncProxyTypeSocks5,
   };
 }

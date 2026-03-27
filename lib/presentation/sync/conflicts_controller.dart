@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
 import '../../domain/entities/sync_conflict.dart';
+import '../../domain/entities/sync_conflict_detail.dart';
 import '../common/state/value_notifier_provider.dart';
 
 final showConflictsProvider =
@@ -49,6 +50,19 @@ final selectedConflictContentProvider = FutureProvider<String?>((ref) {
       .readConflictContent(selected.conflictPath);
 });
 
+final selectedConflictDetailProvider = FutureProvider<SyncConflictDetail?>((
+  ref,
+) {
+  final selected = ref.watch(selectedConflictProvider);
+  if (selected == null) {
+    return Future<SyncConflictDetail?>.value(null);
+  }
+
+  return ref
+      .read(conflictServiceProvider)
+      .readConflictDetail(selected.conflictPath);
+});
+
 class ConflictsController extends AsyncNotifier<List<SyncConflict>> {
   @override
   Future<List<SyncConflict>> build() async {
@@ -77,10 +91,16 @@ class ConflictsController extends AsyncNotifier<List<SyncConflict>> {
   void selectConflict(String? conflictPath) {
     ref.read(selectedConflictPathProvider.notifier).set(conflictPath);
     ref.invalidate(selectedConflictContentProvider);
+    ref.invalidate(selectedConflictDetailProvider);
   }
 
-  Future<void> resolveConflict(String conflictPath) async {
-    await ref.read(conflictServiceProvider).resolveConflict(conflictPath);
+  Future<void> resolveConflict(
+    String conflictPath, {
+    required SyncConflictResolutionChoice choice,
+  }) async {
+    await ref
+        .read(conflictServiceProvider)
+        .resolveConflict(conflictPath, choice: choice);
     await reload();
   }
 

@@ -1,6 +1,7 @@
 enum SyncRunMode {
   normal,
   forceApplyDeletionsOnce,
+  forceBreakRemoteLockOnce,
   recoverLocalWins,
   recoverRemoteWins,
 }

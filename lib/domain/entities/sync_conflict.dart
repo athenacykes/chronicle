@@ -1,6 +1,9 @@
+import '../../core/file_hash.dart';
 import 'package:path/path.dart' as p;
 
 enum SyncConflictType { note, link, unknown }
+
+enum SyncConflictResolutionChoice { acceptLeft, acceptRight }
 
 class SyncConflict {
   const SyncConflict({
@@ -33,4 +36,12 @@ class SyncConflict {
     final value = p.basenameWithoutExtension(originalPath);
     return value.isEmpty ? null : value;
   }
+}
+
+String buildSyncConflictFingerprint({
+  required String originalPath,
+  required String localContentHash,
+  required String remoteContentHash,
+}) {
+  return sha256ForString('$originalPath|$localContentHash|$remoteContentHash');
 }

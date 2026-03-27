@@ -52,11 +52,22 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     state = AsyncData(updated);
   }
 
-  Future<void> saveSyncConfig(SyncConfig config, {String? password}) async {
+  Future<void> saveSyncConfig(
+    SyncConfig config, {
+    String? password,
+    String? proxyPassword,
+    bool clearProxyPassword = false,
+  }) async {
     final syncRepository = ref.read(syncRepositoryProvider);
     await syncRepository.saveConfig(config, password: password);
+    final settingsRepository = ref.read(settingsRepositoryProvider);
+    if (clearProxyPassword) {
+      await settingsRepository.clearSyncProxyPassword();
+    } else if (proxyPassword != null) {
+      await settingsRepository.saveSyncProxyPassword(proxyPassword);
+    }
 
-    final settings = await ref.read(settingsRepositoryProvider).loadSettings();
+    final settings = await settingsRepository.loadSettings();
     state = AsyncData(settings);
   }
 

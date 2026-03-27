@@ -24,7 +24,10 @@ class LocalSettingsRepository implements SettingsRepository {
 
   static const _settingsFileName = 'chronicle_settings.json';
   static const _syncPasswordKey = 'chronicle.sync.password';
+  static const _syncProxyPasswordKey = 'chronicle.sync.proxy.password';
   static const _syncPasswordFallbackFileName = 'chronicle_sync_password.txt';
+  static const _syncProxyPasswordFallbackFileName =
+      'chronicle_sync_proxy_password.txt';
 
   final AppDirectories _appDirectories;
   final FileSystemUtils _fileSystemUtils;
@@ -73,32 +76,48 @@ class LocalSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> saveSyncPassword(String password) async {
-    try {
-      await _secureStorage.write(key: _syncPasswordKey, value: password);
-      await _deleteSyncPasswordFallbackIfExists();
-    } on PlatformException catch (error) {
-      if (!_isMissingKeychainEntitlement(error)) {
-        rethrow;
-      }
-      await _writeSyncPasswordFallback(password);
-    }
+    await _saveSecret(
+      key: _syncPasswordKey,
+      fallbackFileName: _syncPasswordFallbackFileName,
+      value: password,
+    );
   }
 
   @override
   Future<String?> readSyncPassword() async {
+    return _readSecret(
+      key: _syncPasswordKey,
+      fallbackFileName: _syncPasswordFallbackFileName,
+    );
+  }
+
+  @override
+  Future<void> saveSyncProxyPassword(String password) async {
+    await _saveSecret(
+      key: _syncProxyPasswordKey,
+      fallbackFileName: _syncProxyPasswordFallbackFileName,
+      value: password,
+    );
+  }
+
+  @override
+  Future<String?> readSyncProxyPassword() async {
+    return _readSecret(
+      key: _syncProxyPasswordKey,
+      fallbackFileName: _syncProxyPasswordFallbackFileName,
+    );
+  }
+
+  @override
+  Future<void> clearSyncProxyPassword() async {
     try {
-      final secureValue = await _secureStorage.read(key: _syncPasswordKey);
-      if (secureValue != null && secureValue.isNotEmpty) {
-        await _deleteSyncPasswordFallbackIfExists();
-        return secureValue;
-      }
+      await _secureStorage.delete(key: _syncProxyPasswordKey);
     } on PlatformException catch (error) {
       if (!_isMissingKeychainEntitlement(error)) {
         rethrow;
       }
     }
-
-    return _readSyncPasswordFallback();
+    await _deleteSecretFallbackIfExists(_syncProxyPasswordFallbackFileName);
   }
 
   Future<File> _settingsFile() async {
@@ -113,19 +132,54 @@ class LocalSettingsRepository implements SettingsRepository {
         message.toLowerCase().contains('required entitlement');
   }
 
-  Future<File> _syncPasswordFallbackFile() async {
+  Future<File> _secretFallbackFile(String fileName) async {
     final appSupport = await _appDirectories.appSupportDirectory();
     await _fileSystemUtils.ensureDirectory(appSupport);
-    return File(p.join(appSupport.path, _syncPasswordFallbackFileName));
+    return File(p.join(appSupport.path, fileName));
   }
 
-  Future<void> _writeSyncPasswordFallback(String password) async {
-    final file = await _syncPasswordFallbackFile();
-    await _fileSystemUtils.atomicWriteString(file, password);
+  Future<void> _saveSecret({
+    required String key,
+    required String fallbackFileName,
+    required String value,
+  }) async {
+    try {
+      await _secureStorage.write(key: key, value: value);
+      await _deleteSecretFallbackIfExists(fallbackFileName);
+    } on PlatformException catch (error) {
+      if (!_isMissingKeychainEntitlement(error)) {
+        rethrow;
+      }
+      await _writeSecretFallback(fallbackFileName, value);
+    }
   }
 
-  Future<String?> _readSyncPasswordFallback() async {
-    final file = await _syncPasswordFallbackFile();
+  Future<String?> _readSecret({
+    required String key,
+    required String fallbackFileName,
+  }) async {
+    try {
+      final secureValue = await _secureStorage.read(key: key);
+      if (secureValue != null && secureValue.isNotEmpty) {
+        await _deleteSecretFallbackIfExists(fallbackFileName);
+        return secureValue;
+      }
+    } on PlatformException catch (error) {
+      if (!_isMissingKeychainEntitlement(error)) {
+        rethrow;
+      }
+    }
+
+    return _readSecretFallback(fallbackFileName);
+  }
+
+  Future<void> _writeSecretFallback(String fileName, String value) async {
+    final file = await _secretFallbackFile(fileName);
+    await _fileSystemUtils.atomicWriteString(file, value);
+  }
+
+  Future<String?> _readSecretFallback(String fileName) async {
+    final file = await _secretFallbackFile(fileName);
     if (!await file.exists()) {
       return null;
     }
@@ -137,8 +191,8 @@ class LocalSettingsRepository implements SettingsRepository {
     return value;
   }
 
-  Future<void> _deleteSyncPasswordFallbackIfExists() async {
-    final file = await _syncPasswordFallbackFile();
+  Future<void> _deleteSecretFallbackIfExists(String fileName) async {
+    final file = await _secretFallbackFile(fileName);
     await _fileSystemUtils.deleteIfExists(file);
   }
 }

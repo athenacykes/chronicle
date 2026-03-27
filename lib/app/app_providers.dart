@@ -19,6 +19,8 @@ import '../data/local_fs/matter_file_codec.dart';
 import '../data/local_fs/note_file_codec.dart';
 import '../data/local_fs/storage_root_locator.dart';
 import '../data/sync_webdav/local_sync_state_store.dart';
+import '../data/sync_webdav/local_conflict_history_store.dart';
+import '../data/sync_webdav/webdav_client_factory.dart';
 import '../data/sync_webdav/webdav_sync_engine.dart';
 import '../data/sync_webdav/webdav_sync_repository.dart';
 import '../domain/repositories/category_repository.dart';
@@ -145,6 +147,7 @@ final searchRepositoryProvider = Provider<SearchRepository>((ref) {
 final syncRepositoryProvider = Provider<SyncRepository>((ref) {
   return WebDavSyncRepository(
     settingsRepository: ref.watch(settingsRepositoryProvider),
+    clientFactory: ref.watch(webDavClientFactoryProvider),
     syncEngine: WebDavSyncEngine(
       storageRootLocator: ref.watch(storageRootLocatorProvider),
       storageInitializer: ref.watch(storageInitializerProvider),
@@ -154,15 +157,27 @@ final syncRepositoryProvider = Provider<SyncRepository>((ref) {
         appDirectories: ref.watch(appDirectoriesProvider),
         fileSystemUtils: ref.watch(fileSystemUtilsProvider),
       ),
+      conflictService: ref.watch(conflictServiceProvider),
+      conflictHistoryStore: ref.watch(conflictHistoryStoreProvider),
     ),
     clock: ref.watch(clockProvider),
   );
+});
+
+final webDavClientFactoryProvider = Provider<WebDavClientFactory>((ref) {
+  return WebDavClientFactory();
 });
 
 final conflictServiceProvider = Provider<ConflictService>((ref) {
   return ConflictService(
     storageRootLocator: ref.watch(storageRootLocatorProvider),
     storageInitializer: ref.watch(storageInitializerProvider),
+    fileSystemUtils: ref.watch(fileSystemUtilsProvider),
+  );
+});
+
+final conflictHistoryStoreProvider = Provider<LocalConflictHistoryStore>((ref) {
+  return LocalConflictHistoryStore(
     fileSystemUtils: ref.watch(fileSystemUtilsProvider),
   );
 });

@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
 
 import '../../../domain/entities/sync_blocker.dart';
+import '../../../domain/entities/sync_progress.dart';
+import '../../../domain/entities/sync_status.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
 import '../../settings/settings_controller.dart';
 import '../../sync/sync_controller.dart';
@@ -14,6 +17,7 @@ enum ChronicleSyncAdvancedAction {
   recoverLocalWins,
   recoverRemoteWins,
   armForceDeletion,
+  overrideRemoteLock,
 }
 
 class ChronicleSidebarSyncPanel extends ConsumerWidget {
@@ -38,9 +42,12 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
     final syncState = ref.watch(syncControllerProvider);
     final syncData = syncState.asData?.value;
     final blocker = syncData?.blocker;
+    final isSyncRunning = syncData?.isRunning ?? false;
     final remoteRecoveryEnabled =
         blocker == null ||
         blocker.type == SyncBlockerType.failSafeDeletionBlocked;
+    final lockOverrideEnabled =
+        blocker?.type == SyncBlockerType.activeRemoteLock;
     final deletionSummary =
         blocker?.type == SyncBlockerType.failSafeDeletionBlocked
         ? l10n.syncForceDeletionSummary(
@@ -48,20 +55,23 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
             blocker?.trackedCount ?? 0,
           )
         : l10n.syncForceDeletionSummaryUnknown;
+    final lastSyncLabel = settings?.lastSyncAt == null
+        ? l10n.neverLabel
+        : settings!.lastSyncAt!.toLocal().toString();
 
-    var status = syncState.when(
-      loading: () => l10n.syncWorkingStatus,
-      error: (error, _) => l10n.syncErrorStatus(error.toString()),
-      data: (sync) {
-        final lastSyncLabel = settings?.lastSyncAt == null
-            ? l10n.neverLabel
-            : settings!.lastSyncAt!.toLocal().toString();
-        return l10n.syncSummaryStatus(sync.lastMessage, lastSyncLabel);
-      },
+    final display = syncState.when(
+      loading: () => _SyncStatusDisplay(
+        state: _SyncDisplayState.running,
+        title: l10n.syncWorkingStatus,
+        subtitle: l10n.syncStatusPreparing,
+      ),
+      error: (error, _) => _SyncStatusDisplay(
+        state: _SyncDisplayState.failed,
+        title: l10n.syncFailedHeadline,
+        subtitle: error.toString(),
+      ),
+      data: (sync) => _buildStatusDisplay(sync, l10n, lastSyncLabel),
     );
-    if (syncData?.forceDeletionArmed ?? false) {
-      status = '$status | ${l10n.syncForceDeletionArmedStatus}';
-    }
 
     Future<void> runSyncNow() async {
       await ref.read(syncControllerProvider.notifier).runSyncNow();
@@ -130,6 +140,25 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
       ref.read(syncControllerProvider.notifier).armForceApplyDeletionsOnce();
     }
 
+    Future<void> runOverrideRemoteLock() async {
+      if (!lockOverrideEnabled) {
+        return;
+      }
+      final confirmed = await confirmAction(
+        title: l10n.syncOverrideRemoteLockTitle,
+        message: l10n.syncOverrideRemoteLockWarning(
+          _lockOverrideSummary(blocker),
+        ),
+      );
+      if (!confirmed) {
+        return;
+      }
+      await ref
+          .read(syncControllerProvider.notifier)
+          .runForceBreakRemoteLockOnce();
+      await ref.read(settingsControllerProvider.notifier).refresh();
+    }
+
     Future<void> handleAdvancedAction(
       ChronicleSyncAdvancedAction action,
     ) async {
@@ -143,7 +172,18 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
         case ChronicleSyncAdvancedAction.armForceDeletion:
           await armForceDeletionOverride();
           return;
+        case ChronicleSyncAdvancedAction.overrideRemoteLock:
+          await runOverrideRemoteLock();
+          return;
       }
+    }
+
+    Widget statusView() {
+      return _ChronicleSyncStatusView(
+        key: syncStatusKey,
+        display: display,
+        isMacOSNativeUI: isMacOSNativeUI,
+      );
     }
 
     if (isMacOSNativeUI) {
@@ -159,9 +199,11 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
                     key: syncNowButtonKey,
                     controlSize: ControlSize.regular,
                     secondary: true,
-                    onPressed: () {
-                      unawaited(runSyncNow());
-                    },
+                    onPressed: isSyncRunning
+                        ? null
+                        : () {
+                            unawaited(runSyncNow());
+                          },
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
@@ -183,6 +225,7 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
                     items: <MacosPulldownMenuEntry>[
                       MacosPulldownMenuItem(
                         title: Text(l10n.syncRecoverLocalWinsAction),
+                        enabled: !isSyncRunning,
                         onTap: () {
                           unawaited(
                             handleAdvancedAction(
@@ -193,7 +236,7 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
                       ),
                       MacosPulldownMenuItem(
                         title: Text(l10n.syncRecoverRemoteWinsAction),
-                        enabled: remoteRecoveryEnabled,
+                        enabled: !isSyncRunning && remoteRecoveryEnabled,
                         onTap: () {
                           unawaited(
                             handleAdvancedAction(
@@ -203,8 +246,22 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
                         },
                       ),
                       const MacosPulldownMenuDivider(),
+                      if (lockOverrideEnabled)
+                        MacosPulldownMenuItem(
+                          title: Text(l10n.syncOverrideRemoteLockAction),
+                          enabled: !isSyncRunning,
+                          onTap: () {
+                            unawaited(
+                              handleAdvancedAction(
+                                ChronicleSyncAdvancedAction.overrideRemoteLock,
+                              ),
+                            );
+                          },
+                        ),
+                      if (lockOverrideEnabled) const MacosPulldownMenuDivider(),
                       MacosPulldownMenuItem(
                         title: Text(l10n.syncForceDeletionNextRunAction),
+                        enabled: !isSyncRunning,
                         onTap: () {
                           unawaited(
                             handleAdvancedAction(
@@ -219,13 +276,7 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 6),
-            Text(
-              status,
-              key: syncStatusKey,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: MacosTheme.of(context).typography.caption2,
-            ),
+            statusView(),
           ],
         ),
       );
@@ -241,9 +292,11 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
               Expanded(
                 child: FilledButton.tonalIcon(
                   key: syncNowButtonKey,
-                  onPressed: () async {
-                    await runSyncNow();
-                  },
+                  onPressed: isSyncRunning
+                      ? null
+                      : () async {
+                          await runSyncNow();
+                        },
                   icon: const Icon(Icons.sync),
                   label: Text(l10n.syncNowAction),
                 ),
@@ -251,6 +304,7 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
               if (enableAdvancedSyncRecovery)
                 PopupMenuButton<ChronicleSyncAdvancedAction>(
                   key: syncAdvancedButtonKey,
+                  enabled: !isSyncRunning,
                   tooltip: l10n.syncAdvancedActionsTooltip,
                   onSelected: (action) async {
                     await handleAdvancedAction(action);
@@ -267,6 +321,13 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
                           child: Text(l10n.syncRecoverRemoteWinsAction),
                         ),
                         const PopupMenuDivider(),
+                        if (lockOverrideEnabled)
+                          PopupMenuItem<ChronicleSyncAdvancedAction>(
+                            value:
+                                ChronicleSyncAdvancedAction.overrideRemoteLock,
+                            child: Text(l10n.syncOverrideRemoteLockAction),
+                          ),
+                        if (lockOverrideEnabled) const PopupMenuDivider(),
                         PopupMenuItem<ChronicleSyncAdvancedAction>(
                           value: ChronicleSyncAdvancedAction.armForceDeletion,
                           child: Text(l10n.syncForceDeletionNextRunAction),
@@ -276,15 +337,261 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            status,
-            key: syncStatusKey,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall,
+          statusView(),
+        ],
+      ),
+    );
+  }
+
+  _SyncStatusDisplay _buildStatusDisplay(
+    SyncStatus sync,
+    AppLocalizations l10n,
+    String lastSyncLabel,
+  ) {
+    if (sync.isRunning) {
+      final progress = sync.progress;
+      return _SyncStatusDisplay(
+        state: _SyncDisplayState.running,
+        title: _progressPhaseLabel(progress?.phase, l10n),
+        subtitle: _runningSubtitle(progress, l10n),
+      );
+    }
+
+    if (sync.forceDeletionArmed) {
+      return _SyncStatusDisplay(
+        state: _SyncDisplayState.warning,
+        title: l10n.syncForceDeletionArmedStatus,
+        subtitle: sync.lastMessage,
+      );
+    }
+
+    if (sync.blocker != null) {
+      return _SyncStatusDisplay(
+        state: _SyncDisplayState.blocked,
+        title: l10n.syncBlockedHeadline,
+        subtitle: sync.lastMessage,
+      );
+    }
+
+    if (sync.lastMessage.startsWith('Sync failed:')) {
+      return _SyncStatusDisplay(
+        state: _SyncDisplayState.failed,
+        title: l10n.syncFailedHeadline,
+        subtitle: sync.lastMessage.substring('Sync failed:'.length).trim(),
+      );
+    }
+
+    final progress = sync.progress;
+    final countsLine = _completedSubtitle(progress, l10n, lastSyncLabel);
+    if (sync.lastMessage.startsWith('Sync completed with')) {
+      return _SyncStatusDisplay(
+        state: _SyncDisplayState.warning,
+        title: l10n.syncCompletedWithErrorsHeadline,
+        subtitle: countsLine,
+      );
+    }
+
+    if (sync.lastMessage == 'Idle') {
+      return _SyncStatusDisplay(
+        state: _SyncDisplayState.idle,
+        title: l10n.syncReadyHeadline,
+        subtitle: l10n.syncLastSyncCaption(lastSyncLabel),
+      );
+    }
+
+    return _SyncStatusDisplay(
+      state: _SyncDisplayState.succeeded,
+      title: l10n.syncCompletedHeadline,
+      subtitle: countsLine,
+    );
+  }
+
+  String _progressPhaseLabel(SyncProgressPhase? phase, AppLocalizations l10n) {
+    return switch (phase ?? SyncProgressPhase.preparing) {
+      SyncProgressPhase.preparing => l10n.syncStatusPreparing,
+      SyncProgressPhase.acquiringLock => l10n.syncStatusAcquiringLock,
+      SyncProgressPhase.scanning => l10n.syncStatusScanning,
+      SyncProgressPhase.planning => l10n.syncStatusPlanning,
+      SyncProgressPhase.uploading => l10n.syncStatusUploading,
+      SyncProgressPhase.downloading => l10n.syncStatusDownloading,
+      SyncProgressPhase.deletingLocal => l10n.syncStatusDeletingLocal,
+      SyncProgressPhase.deletingRemote => l10n.syncStatusDeletingRemote,
+      SyncProgressPhase.resolvingConflicts => l10n.syncStatusResolvingConflicts,
+      SyncProgressPhase.finalizing => l10n.syncStatusFinalizing,
+    };
+  }
+
+  String _runningSubtitle(SyncProgress? progress, AppLocalizations l10n) {
+    final counts = _countsSummary(progress, l10n);
+    final total = progress?.total;
+    if (total == null) {
+      return counts;
+    }
+    return l10n.syncProgressWithStep(progress?.completed ?? 0, total, counts);
+  }
+
+  String _completedSubtitle(
+    SyncProgress? progress,
+    AppLocalizations l10n,
+    String lastSyncLabel,
+  ) {
+    return '${_countsSummary(progress, l10n)} • ${l10n.syncLastSyncCaption(lastSyncLabel)}';
+  }
+
+  String _countsSummary(SyncProgress? progress, AppLocalizations l10n) {
+    return l10n.syncLiveCountsSummary(
+      progress?.uploadedCount ?? 0,
+      progress?.downloadedCount ?? 0,
+      progress?.deletedCount ?? 0,
+      progress?.conflictCount ?? 0,
+      progress?.errorCount ?? 0,
+    );
+  }
+
+  String _lockOverrideSummary(SyncBlocker? blocker) {
+    if (blocker == null) {
+      return 'unknown lock';
+    }
+    final clientType = blocker.lockClientType?.trim();
+    final clientId = blocker.lockClientId?.trim();
+    if (clientType != null &&
+        clientType.isNotEmpty &&
+        clientId != null &&
+        clientId.isNotEmpty) {
+      return '$clientType:$clientId';
+    }
+    if (clientId != null && clientId.isNotEmpty) {
+      return clientId;
+    }
+    if (blocker.lockPath != null && blocker.lockPath!.isNotEmpty) {
+      return blocker.lockPath!;
+    }
+    return 'unknown lock';
+  }
+}
+
+enum _SyncDisplayState { idle, running, succeeded, warning, blocked, failed }
+
+class _SyncStatusDisplay {
+  const _SyncStatusDisplay({
+    required this.state,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final _SyncDisplayState state;
+  final String title;
+  final String subtitle;
+}
+
+class _ChronicleSyncStatusView extends StatelessWidget {
+  const _ChronicleSyncStatusView({
+    super.key,
+    required this.display,
+    required this.isMacOSNativeUI,
+  });
+
+  final _SyncStatusDisplay display;
+  final bool isMacOSNativeUI;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleStyle = isMacOSNativeUI
+        ? MacosTheme.of(
+            context,
+          ).typography.caption1.copyWith(fontWeight: FontWeight.w600)
+        : Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600);
+    final subtitleStyle = isMacOSNativeUI
+        ? MacosTheme.of(context).typography.caption2
+        : Theme.of(context).textTheme.bodySmall;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      child: Row(
+        key: ValueKey<String>(
+          '${display.state.name}:${display.title}:${display.subtitle}',
+        ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: _SyncStatusLeading(
+              state: display.state,
+              isMacOSNativeUI: isMacOSNativeUI,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  display.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: titleStyle,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  display.subtitle,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: subtitleStyle,
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+}
+
+class _SyncStatusLeading extends StatelessWidget {
+  const _SyncStatusLeading({
+    required this.state,
+    required this.isMacOSNativeUI,
+  });
+
+  final _SyncDisplayState state;
+  final bool isMacOSNativeUI;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state == _SyncDisplayState.running) {
+      if (isMacOSNativeUI) {
+        return const SizedBox(width: 14, height: 14, child: ProgressCircle());
+      }
+      return const SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final iconData = switch (state) {
+      _SyncDisplayState.idle => CupertinoIcons.clock,
+      _SyncDisplayState.succeeded => CupertinoIcons.check_mark_circled,
+      _SyncDisplayState.warning => CupertinoIcons.exclamationmark_triangle,
+      _SyncDisplayState.blocked => CupertinoIcons.lock_circle,
+      _SyncDisplayState.failed => CupertinoIcons.xmark_octagon,
+      _SyncDisplayState.running => CupertinoIcons.arrow_2_circlepath,
+    };
+    final color = switch (state) {
+      _SyncDisplayState.idle => colorScheme.outline,
+      _SyncDisplayState.succeeded => Colors.green,
+      _SyncDisplayState.warning => Colors.orange,
+      _SyncDisplayState.blocked => Colors.orange,
+      _SyncDisplayState.failed => colorScheme.error,
+      _SyncDisplayState.running => colorScheme.primary,
+    };
+
+    if (isMacOSNativeUI) {
+      return MacosIcon(iconData, size: 14, color: color);
+    }
+    return Icon(iconData, size: 14, color: color);
   }
 }

@@ -320,7 +320,7 @@ class _ConflictWorkspace extends ConsumerWidget {
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final conflictsState = ref.watch(conflictsControllerProvider);
     final selected = ref.watch(selectedConflictProvider);
-    final selectedContent = ref.watch(selectedConflictContentProvider);
+    final selectedDetail = ref.watch(selectedConflictDetailProvider);
 
     return conflictsState.when(
       loading: () => Center(child: _adaptiveLoadingIndicator(context)),
@@ -469,235 +469,74 @@ class _ConflictWorkspace extends ConsumerWidget {
                               )
                             : Padding(
                                 padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      selected.title,
-                                      style: isMacOSNativeUI
-                                          ? MacosTheme.of(
-                                              context,
-                                            ).typography.title3
-                                          : Theme.of(
-                                              context,
-                                            ).textTheme.titleMedium,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      l10n.conflictTypeRow(
-                                        _conflictTypeLabel(selected.type, l10n),
-                                      ),
-                                    ),
-                                    Text(
-                                      l10n.conflictFileRow(
-                                        selected.conflictPath,
-                                      ),
-                                    ),
-                                    Text(
-                                      l10n.conflictOriginalRow(
-                                        selected.originalPath,
-                                      ),
-                                    ),
-                                    Text(
-                                      l10n.conflictLocalRow(
-                                        selected.localDevice,
-                                      ),
-                                    ),
-                                    Text(
-                                      l10n.conflictRemoteRow(
-                                        selected.remoteDevice,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      spacing: 8,
-                                      runSpacing: 8,
-                                      children: <Widget>[
-                                        isMacOSNativeUI
-                                            ? PushButton(
-                                                controlSize:
-                                                    ControlSize.regular,
-                                                secondary: true,
-                                                onPressed:
-                                                    selected.originalNoteId ==
-                                                        null
-                                                    ? null
-                                                    : () async {
-                                                        await ref
-                                                            .read(
-                                                              noteEditorControllerProvider
-                                                                  .notifier,
-                                                            )
-                                                            .openNoteInWorkspace(
-                                                              selected
-                                                                  .originalNoteId!,
-                                                            );
-                                                        ref
-                                                            .read(
-                                                              showConflictsProvider
-                                                                  .notifier,
-                                                            )
-                                                            .set(false);
-                                                      },
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: <Widget>[
-                                                    const MacosIcon(
-                                                      CupertinoIcons
-                                                          .arrow_up_right_square,
-                                                      size: 13,
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      l10n.openMainNoteAction,
-                                                    ),
-                                                  ],
+                                child: ChronicleConflictReviewPane(
+                                  conflict: selected,
+                                  detail: selectedDetail,
+                                  useMacOSNativeUI: isMacOSNativeUI,
+                                  onOpenMainNote:
+                                      selected.originalNoteId == null
+                                      ? null
+                                      : () {
+                                          unawaited(
+                                            ref
+                                                .read(
+                                                  noteEditorControllerProvider
+                                                      .notifier,
+                                                )
+                                                .openNoteInWorkspace(
+                                                  selected.originalNoteId!,
                                                 ),
-                                              )
-                                            : OutlinedButton.icon(
-                                                onPressed:
-                                                    selected.originalNoteId ==
-                                                        null
-                                                    ? null
-                                                    : () async {
-                                                        await ref
-                                                            .read(
-                                                              noteEditorControllerProvider
-                                                                  .notifier,
-                                                            )
-                                                            .openNoteInWorkspace(
-                                                              selected
-                                                                  .originalNoteId!,
-                                                            );
-                                                        ref
-                                                            .read(
-                                                              showConflictsProvider
-                                                                  .notifier,
-                                                            )
-                                                            .set(false);
-                                                      },
-                                                icon: const Icon(
-                                                  Icons.open_in_new,
-                                                ),
-                                                label: Text(
-                                                  l10n.openMainNoteAction,
-                                                ),
-                                              ),
-                                        isMacOSNativeUI
-                                            ? PushButton(
-                                                controlSize:
-                                                    ControlSize.regular,
-                                                onPressed: () async {
-                                                  await ref
-                                                      .read(
-                                                        conflictsControllerProvider
-                                                            .notifier,
-                                                      )
-                                                      .resolveConflict(
-                                                        selected.conflictPath,
-                                                      );
-                                                  ref
-                                                      .read(
-                                                        conflictsControllerProvider
-                                                            .notifier,
-                                                      )
-                                                      .selectConflict(null);
-                                                },
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: <Widget>[
-                                                    const MacosIcon(
-                                                      CupertinoIcons.check_mark,
-                                                      size: 13,
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    Text(
-                                                      l10n.markResolvedAction,
-                                                    ),
-                                                  ],
-                                                ),
-                                              )
-                                            : FilledButton.icon(
-                                                onPressed: () async {
-                                                  await ref
-                                                      .read(
-                                                        conflictsControllerProvider
-                                                            .notifier,
-                                                      )
-                                                      .resolveConflict(
-                                                        selected.conflictPath,
-                                                      );
-                                                  ref
-                                                      .read(
-                                                        conflictsControllerProvider
-                                                            .notifier,
-                                                      )
-                                                      .selectConflict(null);
-                                                },
-                                                icon: const Icon(Icons.check),
-                                                label: Text(
-                                                  l10n.markResolvedAction,
-                                                ),
-                                              ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Expanded(
-                                      child: selectedContent.when(
-                                        loading: () => Center(
-                                          child: _adaptiveLoadingIndicator(
-                                            context,
-                                          ),
-                                        ),
-                                        error: (error, stackTrace) => Text(
-                                          l10n.failedToLoadConflict(
-                                            error.toString(),
-                                          ),
-                                        ),
-                                        data: (content) {
-                                          if (content == null ||
-                                              content.trim().isEmpty) {
-                                            if (selected.type ==
-                                                SyncConflictType.unknown) {
-                                              return Text(
-                                                l10n.binaryConflictNotPreviewable,
-                                              );
-                                            }
-                                            return Text(
-                                              l10n.conflictContentEmpty,
-                                            );
-                                          }
-                                          return Container(
-                                            decoration: isMacOSNativeUI
-                                                ? _macosPanelDecoration(context)
-                                                : BoxDecoration(
-                                                    border: Border.all(
-                                                      color: Theme.of(
-                                                        context,
-                                                      ).dividerColor,
-                                                    ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
-                                                  ),
-                                            padding: const EdgeInsets.all(8),
-                                            child: selected.isNote
-                                                ? ChronicleMarkdown(
-                                                    data: content,
-                                                  )
-                                                : SingleChildScrollView(
-                                                    child: SelectableText(
-                                                      content,
-                                                    ),
-                                                  ),
                                           );
+                                          ref
+                                              .read(
+                                                showConflictsProvider.notifier,
+                                              )
+                                              .set(false);
                                         },
-                                      ),
-                                    ),
-                                  ],
+                                  onAcceptLeft: () {
+                                    unawaited(
+                                      ref
+                                          .read(
+                                            conflictsControllerProvider
+                                                .notifier,
+                                          )
+                                          .resolveConflict(
+                                            selected.conflictPath,
+                                            choice: SyncConflictResolutionChoice
+                                                .acceptLeft,
+                                          )
+                                          .then((_) {
+                                            ref
+                                                .read(
+                                                  conflictsControllerProvider
+                                                      .notifier,
+                                                )
+                                                .selectConflict(null);
+                                          }),
+                                    );
+                                  },
+                                  onAcceptRight: () {
+                                    unawaited(
+                                      ref
+                                          .read(
+                                            conflictsControllerProvider
+                                                .notifier,
+                                          )
+                                          .resolveConflict(
+                                            selected.conflictPath,
+                                            choice: SyncConflictResolutionChoice
+                                                .acceptRight,
+                                          )
+                                          .then((_) {
+                                            ref
+                                                .read(
+                                                  conflictsControllerProvider
+                                                      .notifier,
+                                                )
+                                                .selectConflict(null);
+                                          }),
+                                    );
+                                  },
                                 ),
                               ),
                       ),

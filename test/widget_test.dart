@@ -165,12 +165,16 @@ class _FakeSettingsRepository implements SettingsRepository {
 
   AppSettings _settings;
   String? _password;
+  String? _proxyPassword;
 
   @override
   Future<AppSettings> loadSettings() async => _settings;
 
   @override
   Future<String?> readSyncPassword() async => _password;
+
+  @override
+  Future<String?> readSyncProxyPassword() async => _proxyPassword;
 
   @override
   Future<void> saveSettings(AppSettings settings) async {
@@ -180,6 +184,16 @@ class _FakeSettingsRepository implements SettingsRepository {
   @override
   Future<void> saveSyncPassword(String password) async {
     _password = password;
+  }
+
+  @override
+  Future<void> saveSyncProxyPassword(String password) async {
+    _proxyPassword = password;
+  }
+
+  @override
+  Future<void> clearSyncProxyPassword() async {
+    _proxyPassword = null;
   }
 
   @override

@@ -47,12 +47,21 @@ class _FakeSettingsRepository implements SettingsRepository {
   Future<String?> readSyncPassword() async => null;
 
   @override
+  Future<String?> readSyncProxyPassword() async => null;
+
+  @override
   Future<void> saveSettings(AppSettings settings) async {
     _settings = settings;
   }
 
   @override
   Future<void> saveSyncPassword(String password) async {}
+
+  @override
+  Future<void> saveSyncProxyPassword(String password) async {}
+
+  @override
+  Future<void> clearSyncProxyPassword() async {}
 
   @override
   Future<void> setLastSyncAt(DateTime value) async {

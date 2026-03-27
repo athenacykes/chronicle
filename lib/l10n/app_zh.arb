@@ -81,6 +81,59 @@
       "lastSync": {}
     }
   },
+  "syncReadyHeadline": "准备同步",
+  "syncBlockedHeadline": "同步已阻止",
+  "syncFailedHeadline": "同步失败",
+  "syncCompletedHeadline": "同步完成",
+  "syncCompletedWithErrorsHeadline": "同步完成但存在错误",
+  "syncStatusPreparing": "正在准备同步",
+  "syncStatusAcquiringLock": "正在获取锁",
+  "syncStatusScanning": "正在扫描文件",
+  "syncStatusPlanning": "正在规划变更",
+  "syncStatusUploading": "正在上传变更",
+  "syncStatusDownloading": "正在下载变更",
+  "syncStatusDeletingLocal": "正在清理本地文件",
+  "syncStatusDeletingRemote": "正在清理远端文件",
+  "syncStatusResolvingConflicts": "正在处理冲突",
+  "syncStatusFinalizing": "正在完成同步",
+  "syncLiveCountsSummary": "上传 {uploaded} • 下载 {downloaded} • 删除 {deleted} • 冲突 {conflicts} • 错误 {errors}",
+  "@syncLiveCountsSummary": {
+    "placeholders": {
+      "uploaded": {
+        "type": "int"
+      },
+      "downloaded": {
+        "type": "int"
+      },
+      "deleted": {
+        "type": "int"
+      },
+      "conflicts": {
+        "type": "int"
+      },
+      "errors": {
+        "type": "int"
+      }
+    }
+  },
+  "syncProgressWithStep": "{completed}/{total} • {summary}",
+  "@syncProgressWithStep": {
+    "placeholders": {
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "summary": {}
+    }
+  },
+  "syncLastSyncCaption": "上次同步：{lastSync}",
+  "@syncLastSyncCaption": {
+    "placeholders": {
+      "lastSync": {}
+    }
+  },
   "neverLabel": "从未",
   "newMatterAction": "新建 Matter",
   "newCategoryAction": "新建分类",
@@ -273,6 +326,8 @@
   },
   "openMainNoteAction": "打开主笔记",
   "markResolvedAction": "标记为已解决",
+  "acceptLeftAction": "接受左侧",
+  "acceptRightAction": "接受右侧",
   "failedToLoadConflict": "加载冲突内容失败：{error}",
   "@failedToLoadConflict": {
     "placeholders": {
@@ -281,6 +336,11 @@
   },
   "binaryConflictNotPreviewable": "二进制冲突内容无法预览。",
   "conflictContentEmpty": "冲突内容为空。",
+  "conflictReviewLocalCopyTitle": "冲突副本",
+  "conflictReviewMainFileTitle": "主文件",
+  "conflictOriginalFileMissingMessage": "原始文件已不存在。",
+  "conflictMainFileChangedSinceCaptureMessage": "此冲突捕获后，主文件已发生变化。",
+  "conflictReviewTextDiffUnavailableMessage": "此冲突当前无法提供文本差异视图。",
   "viewModePhase": "阶段",
   "viewModeTimeline": "时间线",
   "viewModeList": "列表",
@@ -498,16 +558,35 @@
   "webDavUrlLabel": "WebDAV URL",
   "webDavUsernameLabel": "WebDAV 用户名",
   "webDavPasswordLabel": "WebDAV 密码",
+  "syncProxySectionTitle": "代理",
+  "syncProxyTypeLabel": "代理类型",
+  "syncProxyTypeNone": "不使用代理",
+  "syncProxyTypeHttp": "HTTP",
+  "syncProxyTypeSocks5": "SOCKS5",
+  "syncProxyHostLabel": "代理主机",
+  "syncProxyPortLabel": "代理端口",
+  "syncProxyUsernameLabel": "代理用户名",
+  "syncProxyPasswordLabel": "代理密码",
+  "syncProxyHostRequiredError": "必须填写代理主机。",
+  "syncProxyPortInvalidError": "代理端口必须在 1 到 65535 之间。",
   "autoSyncIntervalMinutesLabel": "自动同步间隔（分钟）",
   "deletionFailSafeLabel": "删除保护",
   "syncAdvancedActionsTooltip": "高级同步操作",
   "syncRecoverLocalWinsAction": "将本地重新上传到远端",
   "syncRecoverRemoteWinsAction": "将远端重新下载到本地",
+  "syncOverrideRemoteLockAction": "覆盖锁并重试",
   "syncForceDeletionNextRunAction": "下次同步强制应用删除",
   "syncRecoverLocalWinsTitle": "本地优先恢复",
   "syncRecoverLocalWinsWarning": "此操作会用本地数据覆盖远端，并可能删除远端中本地不存在的文件。建议先备份。",
   "syncRecoverRemoteWinsTitle": "远端优先恢复",
   "syncRecoverRemoteWinsWarning": "此操作会用远端数据覆盖本地，并可能删除本地中远端不存在的文件。建议先备份。",
+  "syncOverrideRemoteLockTitle": "覆盖远端锁",
+  "syncOverrideRemoteLockWarning": "这会删除 {summary} 的活动远端同步锁并立即重试。仅在确认该同步已不再运行时继续。",
+  "@syncOverrideRemoteLockWarning": {
+    "placeholders": {
+      "summary": {}
+    }
+  },
   "syncForceDeletionTitle": "强制应用删除",
   "syncForceDeletionWarning": "这会为下一次同步启用一次性删除保护绕过。{summary}\n仅在已完成备份时继续。",
   "@syncForceDeletionWarning": {

@@ -8,11 +8,15 @@ import '../../core/clock.dart';
 import '../../core/file_hash.dart';
 import '../../core/file_system_utils.dart';
 import '../../domain/entities/sync_blocker.dart';
+import '../../domain/entities/sync_conflict.dart';
+import '../../domain/entities/sync_progress.dart';
 import '../../domain/entities/sync_result.dart';
 import '../../domain/entities/sync_run_options.dart';
 import '../local_fs/chronicle_layout.dart';
 import '../local_fs/chronicle_storage_initializer.dart';
+import '../local_fs/conflict_service.dart';
 import '../local_fs/storage_root_locator.dart';
+import 'local_conflict_history_store.dart';
 import 'local_sync_state_store.dart';
 import 'webdav_client.dart';
 import 'webdav_types.dart';
@@ -24,17 +28,23 @@ class WebDavSyncEngine {
     required FileSystemUtils fileSystemUtils,
     required Clock clock,
     required LocalSyncStateStore syncStateStore,
+    required ConflictService conflictService,
+    required LocalConflictHistoryStore conflictHistoryStore,
   }) : _storageRootLocator = storageRootLocator,
        _storageInitializer = storageInitializer,
        _fileSystemUtils = fileSystemUtils,
        _clock = clock,
-       _syncStateStore = syncStateStore;
+       _syncStateStore = syncStateStore,
+       _conflictService = conflictService,
+       _conflictHistoryStore = conflictHistoryStore;
 
   final StorageRootLocator _storageRootLocator;
   final ChronicleStorageInitializer _storageInitializer;
   final FileSystemUtils _fileSystemUtils;
   final Clock _clock;
   final LocalSyncStateStore _syncStateStore;
+  final ConflictService _conflictService;
+  final LocalConflictHistoryStore _conflictHistoryStore;
 
   static const _activeLockTtlMs = 90000;
   static const _staleLockMs = 120000;
@@ -46,6 +56,7 @@ class WebDavSyncEngine {
     required SyncRunOptions options,
     required String syncTargetUrl,
     required String syncUsername,
+    void Function(SyncProgress progress)? onProgress,
   }) async {
     final startedAt = _clock.nowUtc();
     _debugLog(
@@ -57,15 +68,56 @@ class WebDavSyncEngine {
     var downloadedCount = 0;
     var conflictCount = 0;
     var deletedCount = 0;
+    var progress = const SyncProgress(phase: SyncProgressPhase.preparing);
+
+    void emitProgress(
+      SyncProgressPhase phase, {
+      int completed = 0,
+      int? total,
+      bool clearTotal = false,
+    }) {
+      progress = progress.copyWith(
+        phase: phase,
+        completed: completed,
+        total: total,
+        clearTotal: clearTotal,
+        uploadedCount: uploadedCount,
+        downloadedCount: downloadedCount,
+        deletedCount: deletedCount,
+        conflictCount: conflictCount,
+        errorCount: errors.length,
+      );
+      onProgress?.call(progress);
+    }
 
     final layout = await _layout();
+    emitProgress(SyncProgressPhase.preparing, clearTotal: true);
 
     final lockPath = 'locks/sync_desktop_$clientId.json';
     Timer? heartbeat;
     try {
+      emitProgress(SyncProgressPhase.preparing, clearTotal: true);
       await _ensureRemoteSkeleton(client);
       _debugLog('Remote skeleton ensured.');
-      await _acquireLock(client, lockPath, clientId);
+      emitProgress(SyncProgressPhase.acquiringLock, clearTotal: true);
+      final lockAcquireResult = await _acquireLock(
+        client,
+        lockPath,
+        clientId,
+        mode: options.mode,
+      );
+      if (lockAcquireResult.blocker != null) {
+        return SyncResult(
+          uploadedCount: 0,
+          downloadedCount: 0,
+          conflictCount: 0,
+          deletedCount: 0,
+          startedAt: startedAt,
+          endedAt: _clock.nowUtc(),
+          errors: const <String>[],
+          blocker: lockAcquireResult.blocker,
+        );
+      }
       _debugLog('Acquired sync lock: $lockPath');
       heartbeat = Timer.periodic(const Duration(seconds: 30), (_) async {
         await _writeLock(client, lockPath, clientId);
@@ -103,7 +155,12 @@ class WebDavSyncEngine {
         await _syncStateStore.clear(namespace: syncStateNamespace);
       }
 
+      emitProgress(SyncProgressPhase.scanning, clearTotal: true);
       final previousState = await _syncStateStore.load(
+        namespace: syncStateNamespace,
+      );
+      final conflictHistory = await _conflictHistoryStore.load(
+        layout: layout,
         namespace: syncStateNamespace,
       );
       final localFiles = await _listLocalFiles(layout);
@@ -123,8 +180,14 @@ class WebDavSyncEngine {
       final deleteLocals = <String>[];
       final deleteRemotes = <String>[];
       final conflicts = <String>[];
+      emitProgress(
+        SyncProgressPhase.planning,
+        completed: 0,
+        total: allPaths.length,
+      );
 
-      for (final path in allPaths) {
+      for (var index = 0; index < allPaths.length; index++) {
+        final path = allPaths.elementAt(index);
         final local = localFiles[path]?.file;
         final remote = remoteFiles[path]?.metadata;
         final previous = previousState[path];
@@ -213,6 +276,21 @@ class WebDavSyncEngine {
         }
 
         conflicts.add(path);
+        emitProgress(
+          SyncProgressPhase.planning,
+          completed: index + 1,
+          total: allPaths.length,
+        );
+      }
+
+      if (allPaths.isEmpty) {
+        emitProgress(SyncProgressPhase.planning, completed: 0, total: 0);
+      } else {
+        emitProgress(
+          SyncProgressPhase.planning,
+          completed: allPaths.length,
+          total: allPaths.length,
+        );
       }
 
       _debugLog(
@@ -255,10 +333,21 @@ class WebDavSyncEngine {
         );
       }
 
-      for (final path in uploads) {
+      emitProgress(
+        SyncProgressPhase.uploading,
+        completed: 0,
+        total: uploads.length,
+      );
+      for (var index = 0; index < uploads.length; index++) {
+        final path = uploads[index];
         try {
           final localEntry = localFiles[path];
           if (localEntry == null) {
+            emitProgress(
+              SyncProgressPhase.uploading,
+              completed: index + 1,
+              total: uploads.length,
+            );
             continue;
           }
           final bytes = await localEntry.file.readAsBytes();
@@ -269,12 +358,28 @@ class WebDavSyncEngine {
           errors.add('Upload failed for $path: $error');
           _debugLog('Upload failed: $path error=$error');
         }
+        emitProgress(
+          SyncProgressPhase.uploading,
+          completed: index + 1,
+          total: uploads.length,
+        );
       }
 
-      for (final path in downloads) {
+      emitProgress(
+        SyncProgressPhase.downloading,
+        completed: 0,
+        total: downloads.length,
+      );
+      for (var index = 0; index < downloads.length; index++) {
+        final path = downloads[index];
         try {
           final remoteEntry = remoteFiles[path];
           if (remoteEntry == null) {
+            emitProgress(
+              SyncProgressPhase.downloading,
+              completed: index + 1,
+              total: downloads.length,
+            );
             continue;
           }
           final bytes = await client.downloadFile(remoteEntry.sourcePath);
@@ -286,9 +391,20 @@ class WebDavSyncEngine {
           errors.add('Download failed for $path: $error');
           _debugLog('Download failed: $path error=$error');
         }
+        emitProgress(
+          SyncProgressPhase.downloading,
+          completed: index + 1,
+          total: downloads.length,
+        );
       }
 
-      for (final path in deleteLocals) {
+      emitProgress(
+        SyncProgressPhase.deletingLocal,
+        completed: 0,
+        total: deleteLocals.length,
+      );
+      for (var index = 0; index < deleteLocals.length; index++) {
+        final path = deleteLocals[index];
         try {
           final localEntry = localFiles[path];
           final file = layout.fromRelativePath(path);
@@ -304,17 +420,38 @@ class WebDavSyncEngine {
           errors.add('Local delete failed for $path: $error');
           _debugLog('Local delete failed: $path error=$error');
         }
+        emitProgress(
+          SyncProgressPhase.deletingLocal,
+          completed: index + 1,
+          total: deleteLocals.length,
+        );
       }
 
-      for (final path in deleteRemotes) {
+      emitProgress(
+        SyncProgressPhase.deletingRemote,
+        completed: 0,
+        total: deleteRemotes.length,
+      );
+      for (var index = 0; index < deleteRemotes.length; index++) {
+        final path = deleteRemotes[index];
         try {
           final remoteEntry = remoteFiles[path];
           if (remoteEntry == null) {
+            emitProgress(
+              SyncProgressPhase.deletingRemote,
+              completed: index + 1,
+              total: deleteRemotes.length,
+            );
             continue;
           }
           final skipLegacyDelete =
               options.mode == SyncRunMode.normal && remoteEntry.isLegacyOrphan;
           if (skipLegacyDelete) {
+            emitProgress(
+              SyncProgressPhase.deletingRemote,
+              completed: index + 1,
+              total: deleteRemotes.length,
+            );
             continue;
           }
           await client.deleteFile(remoteEntry.sourcePath);
@@ -324,19 +461,59 @@ class WebDavSyncEngine {
           errors.add('Remote delete failed for $path: $error');
           _debugLog('Remote delete failed: $path error=$error');
         }
+        emitProgress(
+          SyncProgressPhase.deletingRemote,
+          completed: index + 1,
+          total: deleteRemotes.length,
+        );
       }
 
-      for (final path in conflicts) {
+      emitProgress(
+        SyncProgressPhase.resolvingConflicts,
+        completed: 0,
+        total: conflicts.length,
+      );
+      for (var index = 0; index < conflicts.length; index++) {
+        final path = conflicts[index];
         try {
           final localEntry = localFiles[path];
           final remoteEntry = remoteFiles[path];
           if (localEntry == null || remoteEntry == null) {
+            emitProgress(
+              SyncProgressPhase.resolvingConflicts,
+              completed: index + 1,
+              total: conflicts.length,
+            );
             continue;
           }
           final localBytes = await localEntry.file.readAsBytes();
+          final localHash = await sha256ForBytes(localBytes);
 
           final remoteBytes = await client.downloadFile(remoteEntry.sourcePath);
+          final remoteHash = await sha256ForBytes(remoteBytes);
           await _fileSystemUtils.atomicWriteBytes(localEntry.file, remoteBytes);
+
+          final fingerprint = buildSyncConflictFingerprint(
+            originalPath: path,
+            localContentHash: localHash,
+            remoteContentHash: remoteHash,
+          );
+          final duplicateConflict =
+              conflictHistory.contains(fingerprint) ||
+              await _conflictService.hasMatchingConflict(
+                originalPath: path,
+                localContentHash: localHash,
+                remoteContentHash: remoteHash,
+              );
+          if (duplicateConflict) {
+            _debugLog('Skipped duplicate conflict artifact: $path');
+            emitProgress(
+              SyncProgressPhase.resolvingConflicts,
+              completed: index + 1,
+              total: conflicts.length,
+            );
+            continue;
+          }
 
           final conflictPath = _buildConflictPath(path, clientId);
           final conflictFile = layout.fromRelativePath(conflictPath);
@@ -344,42 +521,62 @@ class WebDavSyncEngine {
             originalPath: path,
             localDevice: 'desktop-$clientId',
             localBytes: localBytes,
+            localContentHash: localHash,
+            remoteContentHash: remoteHash,
+            conflictFingerprint: fingerprint,
           );
 
           await _fileSystemUtils.atomicWriteBytes(conflictFile, conflictBytes);
           await client.uploadFile(conflictPath, conflictBytes);
+          await _conflictHistoryStore.record(
+            layout: layout,
+            namespace: syncStateNamespace,
+            fingerprint: fingerprint,
+          );
+          conflictHistory.add(fingerprint);
           conflictCount++;
           _debugLog('Resolved conflict: $path -> $conflictPath');
         } catch (error) {
           errors.add('Conflict handling failed for $path: $error');
           _debugLog('Conflict handling failed: $path error=$error');
         }
-      }
-
-      final finalLocal = await _listLocalFiles(layout);
-      final finalRemote = await _listRemoteFiles(client);
-      final finalUnion = <String>{
-        ...finalLocal.keys,
-        ...finalRemote.keys,
-      }.where((path) => !layout.isIgnoredSyncPath(path));
-
-      final nextState = <String, SyncFileState>{};
-      for (final path in finalUnion) {
-        final local = finalLocal[path]?.file;
-        final remote = finalRemote[path]?.metadata;
-        nextState[path] = SyncFileState(
-          path: path,
-          localHash: local == null ? '' : await sha256ForFile(local),
-          remoteHash: remote == null ? '' : _remoteHash(remote),
-          updatedAt: _clock.nowUtc(),
+        emitProgress(
+          SyncProgressPhase.resolvingConflicts,
+          completed: index + 1,
+          total: conflicts.length,
         );
       }
 
-      await _syncStateStore.save(
-        namespace: syncStateNamespace,
-        states: nextState,
-      );
-      _debugLog('Saved sync state for ${nextState.length} paths.');
+      emitProgress(SyncProgressPhase.finalizing, clearTotal: true);
+      try {
+        final finalLocal = await _listLocalFiles(layout);
+        final finalRemote = await _listRemoteFiles(client);
+        final finalUnion = <String>{
+          ...finalLocal.keys,
+          ...finalRemote.keys,
+        }.where((path) => !layout.isIgnoredSyncPath(path));
+
+        final nextState = <String, SyncFileState>{};
+        for (final path in finalUnion) {
+          final local = finalLocal[path]?.file;
+          final remote = finalRemote[path]?.metadata;
+          nextState[path] = SyncFileState(
+            path: path,
+            localHash: local == null ? '' : await sha256ForFile(local),
+            remoteHash: remote == null ? '' : _remoteHash(remote),
+            updatedAt: _clock.nowUtc(),
+          );
+        }
+
+        await _syncStateStore.save(
+          namespace: syncStateNamespace,
+          states: nextState,
+        );
+        _debugLog('Saved sync state for ${nextState.length} paths.');
+      } catch (error) {
+        errors.add('Final sync state refresh failed: $error');
+        _debugLog('Final sync state refresh failed: error=$error');
+      }
     } finally {
       heartbeat?.cancel();
       await _releaseLock(client, lockPath);
@@ -415,24 +612,37 @@ class WebDavSyncEngine {
     await client.ensureDirectory('resources');
   }
 
-  Future<void> _acquireLock(
+  Future<_LockAcquireResult> _acquireLock(
     WebDavClient client,
     String lockPath,
-    String clientId,
-  ) async {
-    var delay = 2;
-    for (var attempt = 0; attempt < 20; attempt++) {
-      await _writeLock(client, lockPath, clientId);
-      final locks = await _readActiveLocks(client);
-      if (locks.isEmpty || locks.first.path == lockPath) {
-        return;
-      }
-
-      await Future<void>.delayed(Duration(seconds: delay));
-      delay = (delay * 2).clamp(2, 30);
+    String clientId, {
+    required SyncRunMode mode,
+  }) async {
+    await _writeLock(client, lockPath, clientId);
+    var locks = await _readActiveLocks(client);
+    if (locks.isEmpty || locks.first.path == lockPath) {
+      return const _LockAcquireResult.acquired();
     }
 
-    throw Exception('Failed to acquire sync lock after multiple retries');
+    var competingLocks = _competingLocks(locks, lockPath);
+    if (mode != SyncRunMode.forceBreakRemoteLockOnce) {
+      return _LockAcquireResult.blocked(
+        _buildActiveLockBlocker(competingLocks),
+      );
+    }
+
+    for (final competingLock in competingLocks) {
+      await client.deleteFile(competingLock.path);
+      _debugLog('Force-cleared competing sync lock: ${competingLock.path}');
+    }
+
+    locks = await _readActiveLocks(client);
+    if (locks.isEmpty || locks.first.path == lockPath) {
+      return const _LockAcquireResult.acquired();
+    }
+
+    competingLocks = _competingLocks(locks, lockPath);
+    return _LockAcquireResult.blocked(_buildActiveLockBlocker(competingLocks));
   }
 
   Future<void> _writeLock(
@@ -467,7 +677,14 @@ class WebDavSyncEngine {
         final updated = (jsonMap['updatedTime'] as num).toInt();
         final age = now - updated;
         if (age <= _activeLockTtlMs) {
-          locks.add(_SyncLock(path: file.path, updatedTime: updated));
+          locks.add(
+            _SyncLock(
+              path: file.path,
+              updatedTime: updated,
+              clientId: (jsonMap['clientId'] as String?)?.trim(),
+              clientType: (jsonMap['clientType'] as String?)?.trim(),
+            ),
+          );
         } else if (age > _staleLockMs) {
           await client.deleteFile(file.path);
         }
@@ -582,6 +799,9 @@ class WebDavSyncEngine {
     required String originalPath,
     required String localDevice,
     required List<int> localBytes,
+    required String localContentHash,
+    required String remoteContentHash,
+    required String conflictFingerprint,
   }) {
     if (!originalPath.endsWith('.md')) {
       return localBytes;
@@ -596,6 +816,9 @@ originalPath: "$originalPath"
 conflictDetectedAt: "${now.toIso8601String()}"
 localDevice: "$localDevice"
 remoteDevice: "unknown"
+localContentHash: "$localContentHash"
+remoteContentHash: "$remoteContentHash"
+conflictFingerprint: "$conflictFingerprint"
 ---
 
 # [CONFLICT] $originalPath
@@ -687,6 +910,27 @@ $body
     return null;
   }
 
+  List<_SyncLock> _competingLocks(List<_SyncLock> locks, String lockPath) {
+    return locks.where((lock) => lock.path != lockPath).toList();
+  }
+
+  SyncBlocker _buildActiveLockBlocker(List<_SyncLock> competingLocks) {
+    final blockingLock = competingLocks.first;
+    return SyncBlocker(
+      type: SyncBlockerType.activeRemoteLock,
+      lockPath: blockingLock.path,
+      lockClientId: blockingLock.clientId,
+      lockClientType: blockingLock.clientType,
+      lockUpdatedAt: DateTime.fromMillisecondsSinceEpoch(
+        blockingLock.updatedTime,
+        isUtc: true,
+      ),
+      competingLockCount: competingLocks.length,
+      message:
+          'Sync is blocked by an active remote lock at ${blockingLock.path}.',
+    );
+  }
+
   Future<void> _planRecoverLocalWins({
     required String path,
     required File? local,
@@ -739,10 +983,28 @@ $body
 }
 
 class _SyncLock {
-  const _SyncLock({required this.path, required this.updatedTime});
+  const _SyncLock({
+    required this.path,
+    required this.updatedTime,
+    this.clientId,
+    this.clientType,
+  });
 
   final String path;
   final int updatedTime;
+  final String? clientId;
+  final String? clientType;
+}
+
+class _LockAcquireResult {
+  const _LockAcquireResult._({this.blocker});
+
+  const _LockAcquireResult.acquired() : this._();
+
+  const _LockAcquireResult.blocked(SyncBlocker blocker)
+    : this._(blocker: blocker);
+
+  final SyncBlocker? blocker;
 }
 
 class _LocalSyncEntry {

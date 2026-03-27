@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:chronicle/app/app.dart';
 import 'package:chronicle/app/app_providers.dart';
 import 'package:chronicle/core/clock.dart';
@@ -13,7 +15,9 @@ import 'package:chronicle/domain/entities/phase.dart';
 import 'package:chronicle/domain/entities/search_query.dart';
 import 'package:chronicle/domain/entities/sync_blocker.dart';
 import 'package:chronicle/domain/entities/sync_conflict.dart';
+import 'package:chronicle/domain/entities/sync_conflict_detail.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
+import 'package:chronicle/domain/entities/sync_progress.dart';
 import 'package:chronicle/domain/entities/sync_run_options.dart';
 import 'package:chronicle/domain/entities/sync_result.dart';
 import 'package:chronicle/domain/repositories/link_repository.dart';
@@ -2840,6 +2844,29 @@ void main() {
               ),
             ]),
           ),
+          selectedConflictDetailProvider.overrideWith(
+            (ref) async => SyncConflictDetail(
+              conflict: SyncConflict(
+                type: SyncConflictType.note,
+                conflictPath: 'conflict-note-1',
+                originalPath: 'notes/note-1.md',
+                detectedAt: now,
+                localDevice: 'local',
+                remoteDevice: 'remote',
+                title: 'Conflict Note',
+                preview: 'preview',
+              ),
+              localContent: 'Title: Conflict Note\n\nlocal line',
+              mainFileContent: 'Title: Conflict Note\n\nremote line',
+              localContentHash: 'local-hash',
+              mainFileContentHash: 'main-hash',
+              remoteContentHashAtCapture: 'remote-hash',
+              conflictFingerprint: 'fingerprint',
+              originalFileMissing: false,
+              mainFileChangedSinceCapture: false,
+              hasActualDiff: true,
+            ),
+          ),
         ],
       ),
     );
@@ -2849,7 +2876,7 @@ void main() {
     expect(find.text('Conflict Note'), findsWidgets);
   });
 
-  testWidgets('conflict note markdown preview renders table and math', (
+  testWidgets('conflict note detail renders side-by-side diff review', (
     tester,
   ) async {
     _setDesktopViewport(tester);
@@ -2858,14 +2885,8 @@ void main() {
       noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
       linkRepository: _MemoryLinkRepository(),
     );
-    const conflictMarkdown = '''
-| key | value |
-| --- | --- |
-| a | 1 |
-
-Inline \$x^2\$ and:
-\$\$x^2 + y^2 = z^2\$\$
-''';
+    const localContent = 'Title: Conflict Note\n\nlocal line\nshared line';
+    const mainFileContent = 'Title: Conflict Note\n\nremote line\nshared line';
 
     await tester.pumpWidget(
       _buildApp(
@@ -2890,16 +2911,45 @@ Inline \$x^2\$ and:
               ),
             ]),
           ),
-          selectedConflictContentProvider.overrideWith(
-            (ref) async => conflictMarkdown,
+          selectedConflictDetailProvider.overrideWith(
+            (ref) async => SyncConflictDetail(
+              conflict: SyncConflict(
+                type: SyncConflictType.note,
+                conflictPath: 'conflict-note-1',
+                originalPath: 'notes/note-1.md',
+                detectedAt: now,
+                localDevice: 'local',
+                remoteDevice: 'remote',
+                title: 'Conflict Note',
+                preview: 'preview',
+              ),
+              localContent: localContent,
+              mainFileContent: mainFileContent,
+              localContentHash: 'local-hash',
+              mainFileContentHash: 'main-file-hash',
+              remoteContentHashAtCapture: 'remote-hash',
+              conflictFingerprint: 'fingerprint',
+              originalFileMissing: false,
+              mainFileChangedSinceCapture: true,
+              hasActualDiff: true,
+            ),
           ),
         ],
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(Table), findsOneWidget);
-    expect(find.byType(Math), findsNWidgets(2));
+    expect(find.byKey(const Key('conflict_diff_side_by_side')), findsOneWidget);
+    expect(find.text('Conflict Copy'), findsOneWidget);
+    expect(find.text('Main File'), findsOneWidget);
+    expect(find.text('Accept Left'), findsOneWidget);
+    expect(find.text('Accept Right'), findsOneWidget);
+    expect(find.text('local line'), findsOneWidget);
+    expect(find.text('remote line'), findsOneWidget);
+    expect(
+      find.byKey(const Key('conflict_notice_stale_main_file')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('macOS search results tap opens note in workspace flow', (
@@ -4736,6 +4786,215 @@ Inline \$x^2\$ and:
     );
   });
 
+  testWidgets('live sync progress is shown in sidebar status area', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    final syncRepository = _NoopSyncRepository(
+      onSyncCall: (options, onProgress) async {
+        onProgress?.call(
+          const SyncProgress(
+            phase: SyncProgressPhase.uploading,
+            completed: 1,
+            total: 4,
+            uploadedCount: 1,
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        return SyncResult(
+          uploadedCount: 1,
+          downloadedCount: 0,
+          conflictCount: 0,
+          deletedCount: 0,
+          startedAt: DateTime.utc(2026, 2, 21, 11, 0),
+          endedAt: DateTime.utc(2026, 2, 21, 11, 0, 1),
+          errors: const <String>[],
+          blocker: null,
+        );
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          syncRepositoryProvider.overrideWithValue(syncRepository),
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_now_button')));
+    await tester.pump();
+
+    expect(find.text('Uploading changes'), findsOneWidget);
+    expect(find.textContaining('1/4'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(find.text('Sync complete'), findsOneWidget);
+  });
+
+  testWidgets('active remote lock exposes override action and retries sync', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    final syncRepository = _NoopSyncRepository(
+      onSyncCall: (options, onProgress) async {
+        if (options.mode == SyncRunMode.forceBreakRemoteLockOnce) {
+          return SyncResult(
+            uploadedCount: 1,
+            downloadedCount: 0,
+            conflictCount: 0,
+            deletedCount: 0,
+            startedAt: DateTime.utc(2026, 2, 21, 11, 0),
+            endedAt: DateTime.utc(2026, 2, 21, 11, 0, 1),
+            errors: const <String>[],
+            blocker: null,
+          );
+        }
+        return SyncResult(
+          uploadedCount: 0,
+          downloadedCount: 0,
+          conflictCount: 0,
+          deletedCount: 0,
+          startedAt: DateTime.utc(2026, 2, 21, 11, 0),
+          endedAt: DateTime.utc(2026, 2, 21, 11, 0, 1),
+          errors: const <String>[],
+          blocker: SyncBlocker(
+            type: SyncBlockerType.activeRemoteLock,
+            lockPath: 'locks/sync_desktop_other-client.json',
+            lockClientId: 'other-client',
+            lockClientType: 'desktop',
+            lockUpdatedAt: DateTime.utc(2026, 2, 21, 10, 59, 50),
+            competingLockCount: 1,
+          ),
+        );
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          syncRepositoryProvider.overrideWithValue(syncRepository),
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_now_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('active remote lock'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_advanced_button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Override lock and retry'), findsOneWidget);
+
+    await tester.tap(find.text('Override lock and retry').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Override Remote Lock'), findsOneWidget);
+
+    await tester.tap(find.text('Continue').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      syncRepository.callOptions.map((options) => options.mode),
+      contains(SyncRunMode.forceBreakRemoteLockOnce),
+    );
+    expect(find.text('Sync complete'), findsOneWidget);
+  });
+
+  testWidgets('sync now button is disabled while sync is running', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    final completer = Completer<SyncResult>();
+    final syncRepository = _NoopSyncRepository(
+      onSyncCall: (options, onProgress) async {
+        onProgress?.call(
+          const SyncProgress(
+            phase: SyncProgressPhase.scanning,
+            uploadedCount: 0,
+          ),
+        );
+        return completer.future;
+      },
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          syncRepositoryProvider.overrideWithValue(syncRepository),
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_now_button')));
+    await tester.pump();
+
+    final button = tester.widget<FilledButton>(
+      find.byKey(const Key('sidebar_sync_now_button')),
+    );
+    expect(button.onPressed, isNull);
+    expect(syncRepository.callCount, 1);
+
+    completer.complete(
+      SyncResult(
+        uploadedCount: 0,
+        downloadedCount: 0,
+        conflictCount: 0,
+        deletedCount: 0,
+        startedAt: DateTime.utc(2026, 2, 21, 11, 0),
+        endedAt: DateTime.utc(2026, 2, 21, 11, 0, 1),
+        errors: const <String>[],
+        blocker: null,
+      ),
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('non-macOS keeps material main-pane controls', (tester) async {
     _setDesktopViewport(tester);
     final repos = _TestRepos(
@@ -5322,10 +5581,18 @@ class _MemorySearchRepository implements SearchRepository {
 }
 
 class _NoopSyncRepository implements SyncRepository {
-  _NoopSyncRepository({SyncResult? nextResult}) : _nextResult = nextResult;
+  _NoopSyncRepository({SyncResult? nextResult, this.onSyncCall})
+    : _nextResult = nextResult;
 
   SyncConfig _config = SyncConfig.initial();
   final SyncResult? _nextResult;
+  final Future<SyncResult> Function(
+    SyncRunOptions options,
+    SyncProgressCallback? onProgress,
+  )?
+  onSyncCall;
+  final List<SyncRunOptions> callOptions = <SyncRunOptions>[];
+  int callCount = 0;
   SyncRunOptions? lastOptions;
 
   @override
@@ -5342,8 +5609,14 @@ class _NoopSyncRepository implements SyncRepository {
   @override
   Future<SyncResult> syncNow({
     SyncRunOptions options = const SyncRunOptions(),
+    SyncProgressCallback? onProgress,
   }) async {
+    callCount += 1;
+    callOptions.add(options);
     lastOptions = options;
+    if (onSyncCall != null) {
+      return onSyncCall!(options, onProgress);
+    }
     return _nextResult ?? SyncResult.empty(DateTime.now().toUtc());
   }
 }
@@ -5362,12 +5635,16 @@ class _FakeSettingsRepository implements SettingsRepository {
 
   AppSettings _settings;
   String? _password;
+  String? _proxyPassword;
 
   @override
   Future<AppSettings> loadSettings() async => _settings;
 
   @override
   Future<String?> readSyncPassword() async => _password;
+
+  @override
+  Future<String?> readSyncProxyPassword() async => _proxyPassword;
 
   @override
   Future<void> saveSettings(AppSettings settings) async {
@@ -5377,6 +5654,16 @@ class _FakeSettingsRepository implements SettingsRepository {
   @override
   Future<void> saveSyncPassword(String password) async {
     _password = password;
+  }
+
+  @override
+  Future<void> saveSyncProxyPassword(String password) async {
+    _proxyPassword = password;
+  }
+
+  @override
+  Future<void> clearSyncProxyPassword() async {
+    _proxyPassword = null;
   }
 
   @override

@@ -1,4 +1,5 @@
 import 'enums.dart';
+import 'sync_proxy_config.dart';
 
 class SyncConfig {
   const SyncConfig({
@@ -7,6 +8,7 @@ class SyncConfig {
     required this.username,
     required this.intervalMinutes,
     required this.failSafe,
+    required this.proxy,
   });
 
   final SyncTargetType type;
@@ -14,6 +16,7 @@ class SyncConfig {
   final String username;
   final int intervalMinutes;
   final bool failSafe;
+  final SyncProxyConfig proxy;
 
   SyncConfig copyWith({
     SyncTargetType? type,
@@ -21,6 +24,7 @@ class SyncConfig {
     String? username,
     int? intervalMinutes,
     bool? failSafe,
+    SyncProxyConfig? proxy,
   }) {
     return SyncConfig(
       type: type ?? this.type,
@@ -28,6 +32,7 @@ class SyncConfig {
       username: username ?? this.username,
       intervalMinutes: intervalMinutes ?? this.intervalMinutes,
       failSafe: failSafe ?? this.failSafe,
+      proxy: proxy ?? this.proxy,
     );
   }
 
@@ -38,6 +43,7 @@ class SyncConfig {
       'username': username,
       'intervalMinutes': intervalMinutes,
       'failSafe': failSafe,
+      'proxy': proxy.toJson(),
     };
   }
 
@@ -51,16 +57,20 @@ class SyncConfig {
       username: (json['username'] as String?) ?? '',
       intervalMinutes: (json['intervalMinutes'] as num?)?.toInt() ?? 5,
       failSafe: (json['failSafe'] as bool?) ?? true,
+      proxy: json['proxy'] is Map<String, dynamic>
+          ? SyncProxyConfig.fromJson(json['proxy'] as Map<String, dynamic>)
+          : SyncProxyConfig.initial(),
     );
   }
 
   static SyncConfig initial() {
-    return const SyncConfig(
+    return SyncConfig(
       type: SyncTargetType.none,
       url: '',
       username: '',
       intervalMinutes: 5,
       failSafe: true,
+      proxy: SyncProxyConfig.initial(),
     );
   }
 }

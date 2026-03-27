@@ -104,6 +104,39 @@ void main() {
       throwsA(isA<PlatformException>()),
     );
   });
+
+  test('stores sync proxy password in secure storage when available', () async {
+    await repository.saveSyncProxyPassword('proxy-secret');
+
+    expect(await repository.readSyncProxyPassword(), 'proxy-secret');
+
+    final fallbackFile = File(
+      '${appSupportDir.path}/chronicle_sync_proxy_password.txt',
+    );
+    expect(await fallbackFile.exists(), isFalse);
+  });
+
+  test('clears sync proxy password from secure and fallback storage', () async {
+    final entitlementError = PlatformException(
+      code: 'Unexpected security result code',
+      message: "Code: -34018, Message: A required entitlement isn't present.",
+    );
+    secureStorage.writeError = entitlementError;
+    secureStorage.readError = entitlementError;
+    await repository.saveSyncProxyPassword('proxy-fallback-secret');
+
+    final fallbackFile = File(
+      '${appSupportDir.path}/chronicle_sync_proxy_password.txt',
+    );
+    expect(await fallbackFile.exists(), isTrue);
+
+    secureStorage.writeError = null;
+    secureStorage.readError = null;
+    await repository.clearSyncProxyPassword();
+
+    expect(await repository.readSyncProxyPassword(), isNull);
+    expect(await fallbackFile.exists(), isFalse);
+  });
 }
 
 class _FixedIdGenerator implements IdGenerator {
@@ -153,5 +186,18 @@ class _FakeSecureStorage extends FlutterSecureStorage {
       throw readError!;
     }
     return _values[key];
+  }
+
+  @override
+  Future<void> delete({
+    required String key,
+    AppleOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    AppleOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    _values.remove(key);
   }
 }
