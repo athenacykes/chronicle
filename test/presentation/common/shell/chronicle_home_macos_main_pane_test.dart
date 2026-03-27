@@ -524,6 +524,212 @@ void main() {
     },
   );
 
+  testWidgets(
+    'selecting notebook folder with notes opens first notebook note',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final notebookNoteOne = Note(
+        id: 'note-2',
+        matterId: null,
+        phaseId: null,
+        notebookFolderId: 'folder-1',
+        title: 'Folder Note A',
+        content: '# Folder A\nfirst',
+        tags: const <String>['a'],
+        isPinned: false,
+        attachments: const <String>[],
+        createdAt: now,
+        updatedAt: now,
+      );
+      final notebookNoteTwo = Note(
+        id: 'note-3',
+        matterId: null,
+        phaseId: null,
+        notebookFolderId: 'folder-1',
+        title: 'Folder Note B',
+        content: '# Folder B\nsecond',
+        tags: const <String>['b'],
+        isPinned: false,
+        attachments: const <String>[],
+        createdAt: now,
+        updatedAt: now,
+      );
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[
+          noteOne,
+          notebookNoteOne,
+          notebookNoteTwo,
+        ]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final notebookRepository = _MemoryNotebookRepository(<NotebookFolder>[
+        notebookFolder,
+      ]);
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            notebookRepositoryProvider.overrideWithValue(notebookRepository),
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapSidebarNotebookFolder(tester, 'folder-1');
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      expect(container.read(showOrphansProvider), isTrue);
+      expect(container.read(selectedNotebookFolderIdProvider), 'folder-1');
+      expect(container.read(selectedNoteIdProvider), 'note-2');
+      expect(find.text('Folder Note A'), findsWidgets);
+
+      final contentField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(contentField.controller.text, '# Folder A\nfirst');
+    },
+  );
+
+  testWidgets(
+    'selecting empty notebook folder clears stale note title and shows draft',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final notebookRepository = _MemoryNotebookRepository(<NotebookFolder>[
+        notebookFolder,
+      ]);
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            notebookRepositoryProvider.overrideWithValue(notebookRepository),
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('note_header_title_display')),
+        findsOneWidget,
+      );
+      await _tapSidebarNotebookFolder(tester, 'folder-1');
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      expect(container.read(showOrphansProvider), isTrue);
+      expect(container.read(selectedNotebookFolderIdProvider), 'folder-1');
+      expect(container.read(selectedNoteIdProvider), isNull);
+      expect(container.read(notebookDraftSessionProvider), isNotNull);
+      expect(find.byKey(const Key('note_header_title_display')), findsNothing);
+      expect(
+        find.byKey(const Key('notebook_draft_title_field')),
+        findsOneWidget,
+      );
+      expect(noteRepository.noteById('note-2'), isNull);
+    },
+  );
+
+  testWidgets(
+    'empty notebook draft persists on input and notebook autosave keeps updating',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final notebookRepository = _MemoryNotebookRepository(<NotebookFolder>[
+        notebookFolder,
+      ]);
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            notebookRepositoryProvider.overrideWithValue(notebookRepository),
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapSidebarNotebookFolder(tester, 'folder-1');
+      await tester.pumpAndSettle();
+      expect(noteRepository.noteById('note-2'), isNull);
+
+      await tester.enterText(
+        find.byKey(const Key('notebook_draft_title_field')),
+        'Draft Notebook Note',
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('macos_note_editor_content')),
+        'First notebook draft body',
+      );
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+
+      final created = noteRepository.noteById('note-2');
+      expect(created, isNotNull);
+      expect(created?.title, 'Draft Notebook Note');
+      expect(created?.content, 'First notebook draft body');
+      expect(created?.notebookFolderId, 'folder-1');
+
+      final container = _containerForApp(tester);
+      expect(container.read(selectedNoteIdProvider), 'note-2');
+      expect(container.read(notebookDraftSessionProvider), isNull);
+
+      await tester.enterText(
+        find.byKey(const Key('macos_note_editor_content')),
+        'First notebook draft body\nautosave update',
+      );
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pumpAndSettle();
+
+      final updated = noteRepository.noteById('note-2');
+      expect(updated?.content, 'First notebook draft body\nautosave update');
+    },
+  );
+
   testWidgets('macOS sidebar renders descender-heavy labels without clipping', (
     tester,
   ) async {
@@ -3042,12 +3248,13 @@ Inline \$x^2\$ and:
   });
 
   testWidgets(
-    'empty selected phase does not fallback and keeps select-note prompt',
+    'empty selected phase shows lazy matter draft instead of select-note prompt',
     (tester) async {
       _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
       final repos = _TestRepos(
         matterRepository: _MemoryMatterRepository(<Matter>[matter]),
-        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        noteRepository: noteRepository,
         linkRepository: _MemoryLinkRepository(),
       );
 
@@ -3069,7 +3276,80 @@ Inline \$x^2\$ and:
 
       final container = _containerForApp(tester);
       expect(container.read(selectedNoteIdProvider), isNull);
-      expect(find.text('Select a note to edit.'), findsWidgets);
+      final draft = container.read(notebookDraftSessionProvider);
+      expect(draft, isNotNull);
+      expect(draft?.matterId, 'matter-1');
+      expect(draft?.phaseId, 'phase-end');
+      expect(
+        find.byKey(const Key('notebook_draft_title_field')),
+        findsOneWidget,
+      );
+      expect(find.text('Select a note to edit.'), findsNothing);
+      expect(noteRepository.noteById('note-3'), isNull);
+    },
+  );
+
+  testWidgets(
+    'all-phases matter draft uses current phase and autosaves after input',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteTwo]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      final draft = container.read(notebookDraftSessionProvider);
+      expect(draft, isNotNull);
+      expect(draft?.matterId, 'matter-1');
+      expect(draft?.phaseId, 'phase-progress');
+      expect(noteRepository.noteById('note-2')?.matterId, isNull);
+
+      await tester.enterText(
+        find.byKey(const Key('notebook_draft_title_field')),
+        'Matter Draft',
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('macos_note_editor_content')),
+        'Draft content body',
+      );
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+
+      final created = noteRepository.noteById('note-2');
+      expect(created, isNotNull);
+      expect(created?.matterId, 'matter-1');
+      expect(created?.phaseId, 'phase-progress');
+      expect(created?.title, 'Matter Draft');
+      expect(created?.content, 'Draft content body');
+      expect(container.read(selectedNoteIdProvider), 'note-2');
+      expect(container.read(notebookDraftSessionProvider), isNull);
+
+      await tester.enterText(
+        find.byKey(const Key('macos_note_editor_content')),
+        'Draft content body\nautosave update',
+      );
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pumpAndSettle();
+
+      final updated = noteRepository.noteById('note-2');
+      expect(updated?.content, 'Draft content body\nautosave update');
     },
   );
 
@@ -3854,6 +4134,19 @@ Future<void> _longPressDragTo(
 
 Future<void> _secondaryClick(WidgetTester tester, Finder target) async {
   await _secondaryClickAt(tester, tester.getCenter(target));
+}
+
+Future<void> _tapSidebarNotebookFolder(
+  WidgetTester tester,
+  String folderId,
+) async {
+  final folderRow = find.byKey(
+    ValueKey<String>('sidebar_notebook_folder_drop_target_$folderId'),
+  );
+  final scrollable = find.byType(Scrollable).first;
+  await tester.dragUntilVisible(folderRow, scrollable, const Offset(0, -180));
+  await tester.pumpAndSettle();
+  await tester.tap(folderRow);
 }
 
 Future<void> _secondaryClickAt(WidgetTester tester, Offset position) async {

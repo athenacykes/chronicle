@@ -69,14 +69,13 @@ class ChronicleMatterTopControls extends ConsumerWidget {
     }
 
     Future<void> selectPhase(String? phaseId) async {
-      ref.read(matterViewModeProvider.notifier).set(MatterViewMode.phase);
-      ref.read(selectedPhaseIdProvider.notifier).set(phaseId);
-      if (phaseId != null && phaseId.isNotEmpty) {
-        await ref
-            .read(mattersControllerProvider.notifier)
-            .setMatterCurrentPhase(matter: matter, phaseId: phaseId);
-      }
-      ref.invalidate(noteListProvider);
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .openMatterInWorkspace(
+            matterId: matter.id,
+            phaseId: phaseId,
+            matter: matter,
+          );
     }
 
     Future<void> openManagePhases() async {

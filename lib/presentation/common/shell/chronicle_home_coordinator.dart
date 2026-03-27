@@ -186,32 +186,43 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
     }
   }
 
-  void _queueAutoOpenOnMatterSelectionChange(String? selectedMatterId) {
+  void _queueAutoOpenOnMatterSelectionChange({
+    required String? selectedMatterId,
+    required bool shouldQueueAutoOpen,
+  }) {
     if (_lastSelectedMatterIdForAutoOpen == selectedMatterId) {
+      if (!shouldQueueAutoOpen &&
+          _pendingAutoOpenMatterId == selectedMatterId) {
+        _pendingAutoOpenMatterId = null;
+      }
       return;
     }
     _lastSelectedMatterIdForAutoOpen = selectedMatterId;
-    _pendingAutoOpenMatterId = selectedMatterId;
+    _pendingAutoOpenMatterId = shouldQueueAutoOpen ? selectedMatterId : null;
   }
 
   void _maybeScheduleAutoOpenForPendingMatter({
     required Matter? selectedMatter,
     required bool showNotebook,
     required bool showConflicts,
+    required bool isResolvingWorkspace,
+    required MatterViewMode matterViewMode,
   }) {
     final pendingMatterId = _pendingAutoOpenMatterId;
     if (pendingMatterId == null ||
         selectedMatter == null ||
         selectedMatter.id != pendingMatterId ||
         showNotebook ||
-        showConflicts) {
+        showConflicts ||
+        isResolvingWorkspace ||
+        matterViewMode != MatterViewMode.phase) {
       return;
     }
     _pendingAutoOpenMatterId = null;
     final requestToken = ++_autoOpenNoteRequestToken;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(
-        _autoOpenFirstNoteForMatter(
+        _autoOpenMatterInWorkspace(
           requestToken: requestToken,
           matter: selectedMatter,
         ),
@@ -219,7 +230,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
     });
   }
 
-  Future<void> _autoOpenFirstNoteForMatter({
+  Future<void> _autoOpenMatterInWorkspace({
     required int requestToken,
     required Matter matter,
   }) async {
@@ -229,68 +240,39 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
     if (ref.read(showNotebookProvider) || ref.read(showConflictsProvider)) {
       return;
     }
+    if (ref.read(matterViewModeProvider) != MatterViewMode.phase) {
+      return;
+    }
     if (ref.read(selectedMatterIdProvider) != matter.id) {
       return;
     }
+    if (ref.read(isResolvingWorkspaceNoteProvider)) {
+      return;
+    }
 
-    final selectedPhaseId =
-        ref.read(selectedPhaseIdProvider) ??
-        matter.currentPhaseId ??
-        (matter.phases.isEmpty ? null : matter.phases.first.id);
+    final selectedPhaseId = ref.read(selectedPhaseIdProvider);
     final noteEditorState = ref.read(noteEditorControllerProvider);
     final currentNote = noteEditorState.asData?.value;
+    final currentDraft = ref.read(notebookDraftSessionProvider);
     final currentNoteMatchesTarget =
         currentNote != null &&
         currentNote.matterId == matter.id &&
         (selectedPhaseId == null || currentNote.phaseId == selectedPhaseId);
-    if (currentNoteMatchesTarget) {
+    final currentDraftMatchesTarget =
+        currentDraft != null &&
+        currentDraft.folderId == null &&
+        currentDraft.matterId == matter.id &&
+        (selectedPhaseId == null || currentDraft.phaseId == selectedPhaseId);
+    if (currentNoteMatchesTarget || currentDraftMatchesTarget) {
       return;
     }
-
-    final noteRepository = ref.read(noteRepositoryProvider);
-    final notes = selectedPhaseId == null || selectedPhaseId.isEmpty
-        ? await noteRepository.listMatterTimeline(matter.id)
-        : await noteRepository.listNotesByMatterAndPhase(
-            matterId: matter.id,
-            phaseId: selectedPhaseId,
-          );
-
-    if (!mounted || requestToken != _autoOpenNoteRequestToken) {
-      return;
-    }
-    if (ref.read(showNotebookProvider) || ref.read(showConflictsProvider)) {
-      return;
-    }
-    if (ref.read(selectedMatterIdProvider) != matter.id) {
-      return;
-    }
-    if (notes.isEmpty) {
-      final staleSelectedNote = ref
-          .read(noteEditorControllerProvider)
-          .asData
-          ?.value;
-      if (staleSelectedNote != null &&
-          (staleSelectedNote.matterId != matter.id ||
-              (selectedPhaseId != null &&
-                  staleSelectedNote.phaseId != selectedPhaseId))) {
-        await ref.read(noteEditorControllerProvider.notifier).selectNote(null);
-      }
-      return;
-    }
-
-    final latestEditorState = ref.read(noteEditorControllerProvider);
-    final latestNote = latestEditorState.asData?.value;
-    final latestNoteMatchesTarget =
-        latestNote != null &&
-        latestNote.matterId == matter.id &&
-        (selectedPhaseId == null || latestNote.phaseId == selectedPhaseId);
-    if (latestNoteMatchesTarget) {
-      return;
-    }
-
     await ref
         .read(noteEditorControllerProvider.notifier)
-        .selectNote(notes.first.id);
+        .openMatterInWorkspace(
+          matterId: matter.id,
+          phaseId: selectedPhaseId,
+          matter: matter,
+        );
   }
 
   @override
@@ -353,6 +335,11 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
         final matterViewMode = ref.watch(matterViewModeProvider);
         final showNotebook = ref.watch(showNotebookProvider);
         final showConflicts = ref.watch(showConflictsProvider);
+        final selectedNoteId = ref.watch(selectedNoteIdProvider);
+        final notebookDraft = ref.watch(notebookDraftSessionProvider);
+        final isResolvingWorkspace = ref.watch(
+          isResolvingWorkspaceNoteProvider,
+        );
         final selectedNotebookFolderId = ref.watch(
           selectedNotebookFolderIdProvider,
         );
@@ -374,11 +361,23 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
           matterSections,
           selectedMatterId,
         );
-        _queueAutoOpenOnMatterSelectionChange(selectedMatterId);
+        final shouldQueueAutoOpen =
+            selectedMatterId != null &&
+            !showNotebook &&
+            !showConflicts &&
+            matterViewMode == MatterViewMode.phase &&
+            selectedNoteId == null &&
+            notebookDraft == null;
+        _queueAutoOpenOnMatterSelectionChange(
+          selectedMatterId: selectedMatterId,
+          shouldQueueAutoOpen: shouldQueueAutoOpen,
+        );
         _maybeScheduleAutoOpenForPendingMatter(
           selectedMatter: selectedMatter,
           showNotebook: showNotebook,
           showConflicts: showConflicts,
+          isResolvingWorkspace: isResolvingWorkspace,
+          matterViewMode: matterViewMode,
         );
         final workspaceTitle = showConflicts
             ? l10n.conflictsLabel
@@ -483,6 +482,11 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
             },
             hasParkedSearchResults: hasParkedSearchResults,
             onShowConflicts: () {
+              unawaited(
+                ref
+                    .read(noteEditorControllerProvider.notifier)
+                    .flushAndClearNotebookDraftSession(),
+              );
               ref.read(showConflictsProvider.notifier).set(true);
               ref.read(showNotebookProvider.notifier).set(false);
               ref.read(selectedTimeViewProvider.notifier).set(null);

@@ -36,10 +36,18 @@ class MacosChronicleShell extends StatelessWidget {
         dragClosed: true,
         dragClosedBuffer: 0,
         topOffset: 28,
-        builder: (context, scrollController) => PrimaryScrollController(
-          controller: scrollController,
-          child: viewModel.sidebarBuilder(scrollController),
-        ),
+        builder: (context, scrollController) {
+          final sidebarBackground = MacosTheme.brightnessOf(
+            context,
+          ).resolve(const Color(0xFFF4F4F4), const Color(0xFF202327));
+          return Container(
+            color: sidebarBackground,
+            child: PrimaryScrollController(
+              controller: scrollController,
+              child: viewModel.sidebarBuilder(scrollController),
+            ),
+          );
+        },
       ),
       child: MacosScaffold(
         children: <Widget>[

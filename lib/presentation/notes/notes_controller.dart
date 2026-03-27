@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_providers.dart';
 import '../../domain/entities/enums.dart';
+import '../../domain/entities/matter.dart';
 import '../../domain/entities/note.dart';
 import '../../domain/entities/notebook_folder.dart';
 import '../../domain/entities/notebook_import_result.dart';
@@ -22,6 +25,83 @@ final selectedNoteIdProvider =
 final selectedNotebookFolderIdProvider =
     NotifierProvider<ValueNotifierController<String?>, String?>(
       () => ValueNotifierController<String?>(null),
+    );
+
+class NotebookDraftSession {
+  const NotebookDraftSession({
+    required this.folderId,
+    required this.matterId,
+    required this.phaseId,
+    required this.title,
+    required this.content,
+    required this.tags,
+    required this.persistedNoteId,
+    required this.isDirty,
+  });
+
+  const NotebookDraftSession.emptyNotebook({required this.folderId})
+    : title = '',
+      content = '',
+      tags = const <String>[],
+      matterId = null,
+      phaseId = null,
+      persistedNoteId = null,
+      isDirty = false;
+
+  const NotebookDraftSession.emptyMatter({
+    required this.matterId,
+    required this.phaseId,
+  }) : title = '',
+       content = '',
+       tags = const <String>[],
+       folderId = null,
+       persistedNoteId = null,
+       isDirty = false;
+
+  final String? folderId;
+  final String? matterId;
+  final String? phaseId;
+  final String title;
+  final String content;
+  final List<String> tags;
+  final String? persistedNoteId;
+  final bool isDirty;
+
+  NotebookDraftSession copyWith({
+    String? folderId,
+    String? matterId,
+    String? phaseId,
+    String? title,
+    String? content,
+    List<String>? tags,
+    String? persistedNoteId,
+    bool clearPersistedNoteId = false,
+    bool? isDirty,
+  }) {
+    return NotebookDraftSession(
+      folderId: folderId ?? this.folderId,
+      matterId: matterId ?? this.matterId,
+      phaseId: phaseId ?? this.phaseId,
+      title: title ?? this.title,
+      content: content ?? this.content,
+      tags: tags ?? this.tags,
+      persistedNoteId: clearPersistedNoteId
+          ? null
+          : persistedNoteId ?? this.persistedNoteId,
+      isDirty: isDirty ?? this.isDirty,
+    );
+  }
+}
+
+final notebookDraftSessionProvider =
+    NotifierProvider<
+      ValueNotifierController<NotebookDraftSession?>,
+      NotebookDraftSession?
+    >(() => ValueNotifierController<NotebookDraftSession?>(null));
+
+final isResolvingWorkspaceNoteProvider =
+    NotifierProvider<ValueNotifierController<bool>, bool>(
+      () => ValueNotifierController<bool>(false),
     );
 
 enum NoteEditorViewMode { edit, read }
@@ -120,8 +200,18 @@ final noteEditorControllerProvider =
     );
 
 class NoteEditorController extends AsyncNotifier<Note?> {
+  static const Duration _kNotebookDraftAutosaveDelay = Duration(
+    milliseconds: 650,
+  );
+
+  Timer? _notebookDraftAutosaveTimer;
+  int _notebookFolderSelectionRequestToken = 0;
+  int _matterSelectionRequestToken = 0;
+  int _workspaceResolutionToken = 0;
+
   @override
   Future<Note?> build() async {
+    ref.onDispose(_cancelNotebookDraftAutosave);
     final noteId = ref.watch(selectedNoteIdProvider);
     if (noteId == null || noteId.isEmpty) {
       return null;
@@ -135,6 +225,9 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       ref.read(selectedNoteIdProvider.notifier).set(null);
       return;
     }
+
+    _cancelNotebookDraftAutosave();
+    ref.read(notebookDraftSessionProvider.notifier).set(null);
 
     final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
     state = AsyncData(note);
@@ -265,13 +358,220 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }
 
   Future<void> selectNotebookFolder(String? folderId) async {
-    ref.read(selectedTimeViewProvider.notifier).set(null);
-    ref.read(showNotebookProvider.notifier).set(true);
-    ref.read(showConflictsProvider.notifier).set(false);
-    ref.read(selectedMatterIdProvider.notifier).set(null);
-    ref.read(selectedPhaseIdProvider.notifier).set(null);
-    ref.read(selectedNotebookFolderIdProvider.notifier).set(folderId);
-    ref.invalidate(notebookNoteListProvider);
+    await openNotebookFolderInWorkspace(folderId);
+  }
+
+  Future<void> openNotebookFolderInWorkspace(String? folderId) async {
+    final resolutionToken = _beginWorkspaceResolution();
+    await flushAndClearNotebookDraftSession();
+    final requestToken = ++_notebookFolderSelectionRequestToken;
+    try {
+      ref.read(selectedTimeViewProvider.notifier).set(null);
+      ref.read(showNotebookProvider.notifier).set(true);
+      ref.read(showConflictsProvider.notifier).set(false);
+      ref.read(selectedMatterIdProvider.notifier).set(null);
+      ref.read(selectedPhaseIdProvider.notifier).set(null);
+      ref.read(selectedNotebookFolderIdProvider.notifier).set(folderId);
+      ref.invalidate(notebookNoteListProvider);
+      await selectNote(null);
+
+      final notes = await ref
+          .read(noteRepositoryProvider)
+          .listNotebookNotes(folderId: folderId);
+      if (requestToken != _notebookFolderSelectionRequestToken) {
+        return;
+      }
+      if (!ref.read(showNotebookProvider) ||
+          ref.read(selectedNotebookFolderIdProvider) != folderId) {
+        return;
+      }
+
+      if (notes.isEmpty) {
+        ref
+            .read(noteEditorViewModeProvider.notifier)
+            .set(NoteEditorViewMode.edit);
+        ref
+            .read(notebookDraftSessionProvider.notifier)
+            .set(NotebookDraftSession.emptyNotebook(folderId: folderId));
+        return;
+      }
+
+      await selectNote(notes.first.id);
+    } finally {
+      _endWorkspaceResolution(resolutionToken);
+    }
+  }
+
+  Future<void> openMatterInWorkspace({
+    required String matterId,
+    String? phaseId,
+    Matter? matter,
+  }) async {
+    final resolutionToken = _beginWorkspaceResolution();
+    final requestToken = ++_matterSelectionRequestToken;
+    await flushAndClearNotebookDraftSession();
+
+    try {
+      ref.read(selectedTimeViewProvider.notifier).set(null);
+      ref.read(showNotebookProvider.notifier).set(false);
+      ref.read(showConflictsProvider.notifier).set(false);
+      ref.read(selectedMatterIdProvider.notifier).set(matterId);
+      ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
+      ref.read(matterViewModeProvider.notifier).set(MatterViewMode.phase);
+      ref.read(selectedPhaseIdProvider.notifier).set(phaseId);
+
+      if (phaseId != null && phaseId.isNotEmpty) {
+        final selectedMatter =
+            matter ??
+            ref.read(mattersControllerProvider.notifier).findMatter(matterId);
+        if (selectedMatter != null) {
+          await ref
+              .read(mattersControllerProvider.notifier)
+              .setMatterCurrentPhase(matter: selectedMatter, phaseId: phaseId);
+        }
+      }
+
+      ref.invalidate(noteListProvider);
+      await selectNote(null);
+
+      final noteRepository = ref.read(noteRepositoryProvider);
+      final notes = phaseId == null || phaseId.isEmpty
+          ? await noteRepository.listMatterTimeline(matterId)
+          : await noteRepository.listNotesByMatterAndPhase(
+              matterId: matterId,
+              phaseId: phaseId,
+            );
+      if (requestToken != _matterSelectionRequestToken) {
+        return;
+      }
+      if (ref.read(showNotebookProvider) ||
+          ref.read(selectedMatterIdProvider) != matterId) {
+        return;
+      }
+      if (ref.read(selectedPhaseIdProvider) != phaseId) {
+        return;
+      }
+
+      if (notes.isEmpty) {
+        final phaseIdForDraft =
+            phaseId ?? await _resolvePhaseIdForMatterDraft(matterId: matterId);
+        ref
+            .read(noteEditorViewModeProvider.notifier)
+            .set(NoteEditorViewMode.edit);
+        ref
+            .read(notebookDraftSessionProvider.notifier)
+            .set(
+              NotebookDraftSession.emptyMatter(
+                matterId: matterId,
+                phaseId: phaseIdForDraft,
+              ),
+            );
+        return;
+      }
+
+      await selectNote(notes.first.id);
+    } finally {
+      _endWorkspaceResolution(resolutionToken);
+    }
+  }
+
+  void updateNotebookDraft({
+    String? title,
+    String? content,
+    List<String>? tags,
+  }) {
+    final draft = ref.read(notebookDraftSessionProvider);
+    if (draft == null) {
+      return;
+    }
+    final nextTitle = title ?? draft.title;
+    final nextContent = content ?? draft.content;
+    final nextTags = tags ?? draft.tags;
+    final changed =
+        nextTitle != draft.title ||
+        nextContent != draft.content ||
+        !_stringListsEqual(nextTags, draft.tags);
+    if (!changed) {
+      return;
+    }
+
+    ref
+        .read(notebookDraftSessionProvider.notifier)
+        .set(
+          draft.copyWith(
+            title: nextTitle,
+            content: nextContent,
+            tags: nextTags,
+            isDirty: true,
+          ),
+        );
+    _scheduleNotebookDraftAutosave();
+  }
+
+  Future<void> flushAndClearNotebookDraftSession() async {
+    await flushNotebookDraftAutosave();
+    _cancelNotebookDraftAutosave();
+    ref.read(notebookDraftSessionProvider.notifier).set(null);
+  }
+
+  Future<void> flushNotebookDraftAutosave() async {
+    _cancelNotebookDraftAutosave();
+
+    final draft = ref.read(notebookDraftSessionProvider);
+    if (draft == null || !draft.isDirty) {
+      return;
+    }
+
+    final hasUserInput =
+        draft.title.trim().isNotEmpty || draft.content.trim().isNotEmpty;
+    if (!hasUserInput && draft.persistedNoteId == null) {
+      ref
+          .read(notebookDraftSessionProvider.notifier)
+          .set(draft.copyWith(isDirty: false));
+      return;
+    }
+
+    if (draft.persistedNoteId == null) {
+      final created = await CreateNote(ref.read(noteRepositoryProvider)).call(
+        title: draft.title.trim(),
+        content: draft.content,
+        tags: draft.tags,
+        matterId: draft.matterId,
+        phaseId: draft.phaseId,
+        notebookFolderId: draft.folderId,
+      );
+      await _refreshCollections();
+
+      if (!_isDraftContextStillActive(draft)) {
+        return;
+      }
+      ref.read(notebookDraftSessionProvider.notifier).set(null);
+      await selectNote(created.id);
+      return;
+    }
+
+    final existing = await ref
+        .read(noteRepositoryProvider)
+        .getNoteById(draft.persistedNoteId!);
+    if (existing == null) {
+      ref.read(notebookDraftSessionProvider.notifier).set(null);
+      return;
+    }
+
+    final updated = existing.copyWith(
+      title: draft.title.trim(),
+      content: draft.content,
+      tags: draft.tags,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await ref.read(noteRepositoryProvider).updateNote(updated);
+    await _refreshCollections();
+    if (ref.read(selectedNoteIdProvider) == updated.id) {
+      state = AsyncData(updated);
+    }
+    ref
+        .read(notebookDraftSessionProvider.notifier)
+        .set(draft.copyWith(isDirty: false));
   }
 
   Future<void> createNotebookFolder({
@@ -482,45 +782,53 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     String noteId, {
     bool openInReadMode = false,
   }) async {
+    final resolutionToken = _beginWorkspaceResolution();
     final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
     if (note == null) {
+      _endWorkspaceResolution(resolutionToken);
       return;
     }
 
-    ref.read(selectedTimeViewProvider.notifier).set(null);
-    ref.read(showConflictsProvider.notifier).set(false);
+    await flushAndClearNotebookDraftSession();
 
-    if (note.isInNotebook) {
-      ref.read(showNotebookProvider.notifier).set(true);
-      ref.read(selectedMatterIdProvider.notifier).set(null);
-      ref.read(selectedPhaseIdProvider.notifier).set(null);
-      ref
-          .read(selectedNotebookFolderIdProvider.notifier)
-          .set(note.notebookFolderId);
-    } else {
-      ref.read(showNotebookProvider.notifier).set(false);
-      ref.read(selectedMatterIdProvider.notifier).set(note.matterId);
-      ref.read(selectedPhaseIdProvider.notifier).set(note.phaseId);
-      ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
-      ref.read(matterViewModeProvider.notifier).set(MatterViewMode.phase);
-      if (note.matterId != null && note.phaseId != null) {
-        final matter = ref
-            .read(mattersControllerProvider.notifier)
-            .findMatter(note.matterId!);
-        if (matter != null) {
-          await ref
+    try {
+      ref.read(selectedTimeViewProvider.notifier).set(null);
+      ref.read(showConflictsProvider.notifier).set(false);
+
+      if (note.isInNotebook) {
+        ref.read(showNotebookProvider.notifier).set(true);
+        ref.read(selectedMatterIdProvider.notifier).set(null);
+        ref.read(selectedPhaseIdProvider.notifier).set(null);
+        ref
+            .read(selectedNotebookFolderIdProvider.notifier)
+            .set(note.notebookFolderId);
+      } else {
+        ref.read(showNotebookProvider.notifier).set(false);
+        ref.read(selectedMatterIdProvider.notifier).set(note.matterId);
+        ref.read(selectedPhaseIdProvider.notifier).set(note.phaseId);
+        ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
+        ref.read(matterViewModeProvider.notifier).set(MatterViewMode.phase);
+        if (note.matterId != null && note.phaseId != null) {
+          final matter = ref
               .read(mattersControllerProvider.notifier)
-              .setMatterCurrentPhase(matter: matter, phaseId: note.phaseId!);
+              .findMatter(note.matterId!);
+          if (matter != null) {
+            await ref
+                .read(mattersControllerProvider.notifier)
+                .setMatterCurrentPhase(matter: matter, phaseId: note.phaseId!);
+          }
         }
       }
-    }
 
-    ref.invalidate(noteListProvider);
-    await selectNote(noteId);
-    if (openInReadMode) {
-      ref
-          .read(noteEditorViewModeProvider.notifier)
-          .set(NoteEditorViewMode.read);
+      ref.invalidate(noteListProvider);
+      await selectNote(noteId);
+      if (openInReadMode) {
+        ref
+            .read(noteEditorViewModeProvider.notifier)
+            .set(NoteEditorViewMode.read);
+      }
+    } finally {
+      _endWorkspaceResolution(resolutionToken);
     }
   }
 
@@ -533,5 +841,80 @@ class NoteEditorController extends AsyncNotifier<Note?> {
     ref.invalidate(timeViewSummaryProvider);
     await ref.read(searchRepositoryProvider).rebuildIndex();
     ref.read(linksControllerProvider).invalidateAll();
+  }
+
+  void _scheduleNotebookDraftAutosave() {
+    _cancelNotebookDraftAutosave();
+    _notebookDraftAutosaveTimer = Timer(_kNotebookDraftAutosaveDelay, () {
+      unawaited(flushNotebookDraftAutosave());
+    });
+  }
+
+  void _cancelNotebookDraftAutosave() {
+    _notebookDraftAutosaveTimer?.cancel();
+    _notebookDraftAutosaveTimer = null;
+  }
+
+  bool _stringListsEqual(List<String> a, List<String> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  int _beginWorkspaceResolution() {
+    final token = ++_workspaceResolutionToken;
+    ref.read(isResolvingWorkspaceNoteProvider.notifier).set(true);
+    return token;
+  }
+
+  void _endWorkspaceResolution(int token) {
+    if (token == _workspaceResolutionToken) {
+      ref.read(isResolvingWorkspaceNoteProvider.notifier).set(false);
+    }
+  }
+
+  bool _isDraftContextStillActive(NotebookDraftSession draft) {
+    if (draft.folderId != null || ref.read(showNotebookProvider)) {
+      return ref.read(showNotebookProvider) &&
+          ref.read(selectedNotebookFolderIdProvider) == draft.folderId;
+    }
+    if (ref.read(showNotebookProvider) ||
+        ref.read(selectedMatterIdProvider) != draft.matterId) {
+      return false;
+    }
+    final selectedPhaseId = ref.read(selectedPhaseIdProvider);
+    if (selectedPhaseId == null || selectedPhaseId.isEmpty) {
+      return true;
+    }
+    return selectedPhaseId == draft.phaseId;
+  }
+
+  Future<String?> _resolvePhaseIdForMatterDraft({
+    required String matterId,
+  }) async {
+    final selectedPhaseId = ref.read(selectedPhaseIdProvider);
+    if (selectedPhaseId != null && selectedPhaseId.isNotEmpty) {
+      return selectedPhaseId;
+    }
+    final localMatter = ref
+        .read(mattersControllerProvider.notifier)
+        .findMatter(matterId);
+    if (localMatter != null) {
+      return localMatter.currentPhaseId ??
+          (localMatter.phases.isEmpty ? null : localMatter.phases.first.id);
+    }
+    final repositoryMatter = await ref
+        .read(matterRepositoryProvider)
+        .getMatterById(matterId);
+    return repositoryMatter?.currentPhaseId ??
+        (repositoryMatter?.phases.isEmpty ?? true
+            ? null
+            : repositoryMatter!.phases.first.id);
   }
 }

@@ -915,16 +915,19 @@ class _MatterSidebar extends ConsumerWidget {
   }
 
   void _selectNotebookFolder(WidgetRef ref, String? folderId) {
-    ref.read(selectedTimeViewProvider.notifier).set(null);
-    ref.read(showNotebookProvider.notifier).set(true);
-    ref.read(showConflictsProvider.notifier).set(false);
-    ref.read(selectedMatterIdProvider.notifier).set(null);
-    ref.read(selectedPhaseIdProvider.notifier).set(null);
-    ref.read(selectedNotebookFolderIdProvider.notifier).set(folderId);
-    ref.invalidate(notebookNoteListProvider);
+    unawaited(
+      ref
+          .read(noteEditorControllerProvider.notifier)
+          .openNotebookFolderInWorkspace(folderId),
+    );
   }
 
   void _selectTimeView(WidgetRef ref, ChronicleTimeView timeView) {
+    unawaited(
+      ref
+          .read(noteEditorControllerProvider.notifier)
+          .flushAndClearNotebookDraftSession(),
+    );
     ref.read(showNotebookProvider.notifier).set(false);
     ref.read(showConflictsProvider.notifier).set(false);
     ref.read(selectedMatterIdProvider.notifier).set(null);
@@ -1839,18 +1842,18 @@ class _MatterSidebar extends ConsumerWidget {
   }
 
   void _selectMatter(WidgetRef ref, Matter matter) {
-    ref.read(selectedTimeViewProvider.notifier).set(null);
-    ref.read(showNotebookProvider.notifier).set(false);
-    ref.read(showConflictsProvider.notifier).set(false);
-    ref.read(selectedMatterIdProvider.notifier).set(matter.id);
-    ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
-    ref
-        .read(selectedPhaseIdProvider.notifier)
-        .set(
-          matter.currentPhaseId ??
-              (matter.phases.isEmpty ? null : matter.phases.first.id),
-        );
-    ref.invalidate(noteListProvider);
+    final phaseId =
+        matter.currentPhaseId ??
+        (matter.phases.isEmpty ? null : matter.phases.first.id);
+    unawaited(
+      ref
+          .read(noteEditorControllerProvider.notifier)
+          .openMatterInWorkspace(
+            matterId: matter.id,
+            phaseId: phaseId,
+            matter: matter,
+          ),
+    );
   }
 }
 

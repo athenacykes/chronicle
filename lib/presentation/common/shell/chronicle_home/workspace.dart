@@ -94,13 +94,11 @@ class _WelcomeTourWorkspace extends ConsumerWidget {
   }
 
   void _openNotebook(WidgetRef ref) {
-    ref.read(selectedTimeViewProvider.notifier).set(null);
-    ref.read(showNotebookProvider.notifier).set(true);
-    ref.read(showConflictsProvider.notifier).set(false);
-    ref.read(selectedMatterIdProvider.notifier).set(null);
-    ref.read(selectedPhaseIdProvider.notifier).set(null);
-    ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
-    ref.invalidate(notebookNoteListProvider);
+    unawaited(
+      ref
+          .read(noteEditorControllerProvider.notifier)
+          .openNotebookFolderInWorkspace(null),
+    );
   }
 
   @override
@@ -724,19 +722,28 @@ class _MatterWorkspace extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final viewMode = ref.watch(matterViewModeProvider);
     final currentNote = ref.watch(noteEditorControllerProvider).value;
+    final draft = ref.watch(notebookDraftSessionProvider);
+    final isResolvingWorkspace = ref.watch(isResolvingWorkspaceNoteProvider);
+    final matterDraft = draft != null && draft.matterId == matter.id
+        ? draft
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: ChronicleNoteTitleHeader(
-            note: currentNote,
-            canEdit:
-                currentNote != null &&
-                currentNote.matterId == matter.id &&
-                currentNote.phaseId != null,
-          ),
+          child: currentNote == null && matterDraft != null
+              ? _NotebookDraftTitleHeader(draft: matterDraft)
+              : currentNote == null && isResolvingWorkspace
+              ? const _WorkspaceTitleSkeleton()
+              : ChronicleNoteTitleHeader(
+                  note: currentNote,
+                  canEdit:
+                      currentNote != null &&
+                      currentNote.matterId == matter.id &&
+                      currentNote.phaseId != null,
+                ),
         ),
         const SizedBox(height: 8),
         Expanded(
@@ -933,35 +940,9 @@ class _MatterNotesWorkspace extends ConsumerWidget {
 }
 
 Future<void> _openNoteInPhaseEditor(WidgetRef ref, Note note) async {
-  final showNotebookNotifier = ref.read(showNotebookProvider.notifier);
-  final showConflictsNotifier = ref.read(showConflictsProvider.notifier);
-  final selectedMatterNotifier = ref.read(selectedMatterIdProvider.notifier);
-  final selectedPhaseNotifier = ref.read(selectedPhaseIdProvider.notifier);
-  final selectedNotebookFolderNotifier = ref.read(
-    selectedNotebookFolderIdProvider.notifier,
-  );
-  final matterViewModeNotifier = ref.read(matterViewModeProvider.notifier);
-  final mattersNotifier = ref.read(mattersControllerProvider.notifier);
-  final noteEditorNotifier = ref.read(noteEditorControllerProvider.notifier);
-
-  showNotebookNotifier.set(false);
-  showConflictsNotifier.set(false);
-  selectedMatterNotifier.set(note.matterId);
-  selectedPhaseNotifier.set(note.phaseId);
-  selectedNotebookFolderNotifier.set(null);
-  matterViewModeNotifier.set(MatterViewMode.phase);
-  if (note.matterId != null && note.phaseId != null) {
-    final matter = mattersNotifier.findMatter(note.matterId!);
-    if (matter != null) {
-      unawaited(
-        mattersNotifier.setMatterCurrentPhase(
-          matter: matter,
-          phaseId: note.phaseId!,
-        ),
-      );
-    }
-  }
-  await noteEditorNotifier.selectNote(note.id);
+  await ref
+      .read(noteEditorControllerProvider.notifier)
+      .openNoteInWorkspace(note.id);
 }
 
 class _MatterTimelineWorkspace extends ConsumerWidget {
@@ -1233,16 +1214,25 @@ class _NotebookWorkspace extends ConsumerWidget {
     final l10n = context.l10n;
     final notes = ref.watch(notebookNoteListProvider);
     final currentNote = ref.watch(noteEditorControllerProvider).value;
+    final allDraft = ref.watch(notebookDraftSessionProvider);
+    final isResolvingWorkspace = ref.watch(isResolvingWorkspaceNoteProvider);
+    final notebookDraft = allDraft != null && allDraft.matterId == null
+        ? allDraft
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: ChronicleNoteTitleHeader(
-            note: currentNote,
-            canEdit: currentNote?.isInNotebook ?? false,
-          ),
+          child: currentNote == null && notebookDraft != null
+              ? _NotebookDraftTitleHeader(draft: notebookDraft)
+              : currentNote == null && isResolvingWorkspace
+              ? const _WorkspaceTitleSkeleton()
+              : ChronicleNoteTitleHeader(
+                  note: currentNote,
+                  canEdit: currentNote?.isInNotebook ?? false,
+                ),
         ),
         const SizedBox(height: 8),
         Expanded(
@@ -1423,6 +1413,148 @@ class _NotebookWorkspace extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+const Key _kNotebookDraftTitleFieldKey = Key('notebook_draft_title_field');
+const Key _kWorkspaceTitleSkeletonKey = Key('workspace_title_skeleton');
+
+String _draftSessionContextKey(NotebookDraftSession draft) {
+  if (draft.matterId != null) {
+    return 'matter:${draft.matterId}:${draft.phaseId ?? ''}';
+  }
+  return 'notebook:${draft.folderId ?? ''}';
+}
+
+class _WorkspaceTitleSkeleton extends StatelessWidget {
+  const _WorkspaceTitleSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final color = isMacOSNativeUI
+        ? MacosTheme.brightnessOf(
+            context,
+          ).resolve(const Color(0xFFE4E4E4), const Color(0xFF3A3D42))
+        : Theme.of(context).colorScheme.surfaceContainerHighest;
+    final borderColor = isMacOSNativeUI
+        ? MacosTheme.of(context).dividerColor
+        : Theme.of(context).dividerColor;
+
+    return Container(
+      key: _kWorkspaceTitleSkeletonKey,
+      height: 34,
+      decoration: BoxDecoration(
+        border: Border.all(color: borderColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Container(
+        width: 220,
+        height: 14,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(7),
+        ),
+      ),
+    );
+  }
+}
+
+class _NotebookDraftTitleHeader extends ConsumerStatefulWidget {
+  const _NotebookDraftTitleHeader({required this.draft});
+
+  final NotebookDraftSession draft;
+
+  @override
+  ConsumerState<_NotebookDraftTitleHeader> createState() =>
+      _NotebookDraftTitleHeaderState();
+}
+
+class _NotebookDraftTitleHeaderState
+    extends ConsumerState<_NotebookDraftTitleHeader> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.text = widget.draft.title;
+  }
+
+  @override
+  void didUpdateWidget(covariant _NotebookDraftTitleHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final contextChanged =
+        _draftSessionContextKey(oldWidget.draft) !=
+        _draftSessionContextKey(widget.draft);
+    if (contextChanged || !_focusNode.hasFocus) {
+      final draftTitle = widget.draft.title;
+      if (_controller.text != draftTitle) {
+        _controller.text = draftTitle;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    Future<void> saveDraft() async {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .flushNotebookDraftAutosave();
+    }
+
+    if (isMacOSNativeUI) {
+      return MacosTextField(
+        key: _kNotebookDraftTitleFieldKey,
+        focusNode: _focusNode,
+        controller: _controller,
+        placeholder: l10n.titleLabel,
+        onChanged: (value) {
+          ref
+              .read(noteEditorControllerProvider.notifier)
+              .updateNotebookDraft(title: value);
+        },
+        onSubmitted: (_) {
+          unawaited(saveDraft());
+        },
+        onEditingComplete: () {
+          unawaited(saveDraft());
+        },
+      );
+    }
+
+    return TextField(
+      key: _kNotebookDraftTitleFieldKey,
+      focusNode: _focusNode,
+      controller: _controller,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: l10n.titleLabel,
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (value) {
+        ref
+            .read(noteEditorControllerProvider.notifier)
+            .updateNotebookDraft(title: value);
+      },
+      onSubmitted: (_) {
+        unawaited(saveDraft());
+      },
+      onEditingComplete: () {
+        unawaited(saveDraft());
+      },
     );
   }
 }

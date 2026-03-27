@@ -13,19 +13,118 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   final TextEditingController _tagsController = TextEditingController();
   final MarkdownEditFormatter _markdownFormatter = MarkdownEditFormatter();
   String? _loadedNoteId;
+  String? _loadedDraftSessionContextKey;
+  Timer? _notebookNoteAutosaveTimer;
+  String? _notebookNoteAutosaveTargetId;
+  bool _suppressEditorInputListeners = false;
 
   @override
   void initState() {
     super.initState();
     _contentController = MarkdownCodeController(text: '');
+    _contentController.addListener(_handleEditorContentChanged);
   }
 
   @override
   void dispose() {
+    _contentController.removeListener(_handleEditorContentChanged);
+    _cancelPendingNotebookNoteAutosave();
     _titleController.dispose();
     _contentController.dispose();
     _tagsController.dispose();
     super.dispose();
+  }
+
+  void _handleEditorContentChanged() {
+    if (_suppressEditorInputListeners) {
+      return;
+    }
+
+    final draft = ref.read(notebookDraftSessionProvider);
+    if (draft != null) {
+      ref
+          .read(noteEditorControllerProvider.notifier)
+          .updateNotebookDraft(content: _contentController.text);
+      return;
+    }
+
+    final note = ref.read(noteEditorControllerProvider).value;
+    final editorMode = ref.read(noteEditorViewModeProvider);
+    if (note == null || editorMode != NoteEditorViewMode.edit) {
+      return;
+    }
+    _queueNotebookNoteAutosave(note.id);
+  }
+
+  void _queueNotebookNoteAutosave(String noteId) {
+    _notebookNoteAutosaveTargetId = noteId;
+    _notebookNoteAutosaveTimer?.cancel();
+    _notebookNoteAutosaveTimer = Timer(const Duration(milliseconds: 650), () {
+      unawaited(_flushPendingNotebookNoteAutosave());
+    });
+  }
+
+  void _cancelPendingNotebookNoteAutosave() {
+    _notebookNoteAutosaveTimer?.cancel();
+    _notebookNoteAutosaveTimer = null;
+  }
+
+  Future<void> _flushPendingNotebookNoteAutosave() async {
+    final targetNoteId = _notebookNoteAutosaveTargetId;
+    _notebookNoteAutosaveTargetId = null;
+    _cancelPendingNotebookNoteAutosave();
+    if (targetNoteId == null) {
+      return;
+    }
+
+    final tags = _parsedTags(_tagsController.text);
+    final title = _titleController.text.trim();
+    final content = _contentController.text;
+    final existing = await ref
+        .read(noteRepositoryProvider)
+        .getNoteById(targetNoteId);
+    if (existing == null ||
+        (existing.title == title &&
+            existing.content == content &&
+            _stringListsEqual(existing.tags, tags))) {
+      return;
+    }
+
+    await ref
+        .read(noteEditorControllerProvider.notifier)
+        .updateNoteById(
+          noteId: targetNoteId,
+          title: title,
+          content: content,
+          tags: tags,
+        );
+  }
+
+  List<String> _parsedTags(String value) {
+    return value
+        .split(',')
+        .map((entry) => entry.trim())
+        .where((entry) => entry.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  bool _stringListsEqual(List<String> a, List<String> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  String _draftSessionContextKey(NotebookDraftSession draft) {
+    if (draft.matterId != null) {
+      return 'matter:${draft.matterId}:${draft.phaseId ?? ''}';
+    }
+    return 'notebook:${draft.folderId ?? ''}';
   }
 
   Future<void> _attachFiles(BuildContext context) async {
@@ -146,6 +245,8 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final noteAsync = ref.watch(noteEditorControllerProvider);
     final editorViewMode = ref.watch(noteEditorViewModeProvider);
+    final notebookDraft = ref.watch(notebookDraftSessionProvider);
+    final isResolvingWorkspace = ref.watch(isResolvingWorkspaceNoteProvider);
     final storageRootPath = ref
         .watch(settingsControllerProvider)
         .asData
@@ -158,14 +259,116 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
       return Center(child: Text(l10n.editorError(noteError.toString())));
     }
     if (note == null) {
+      if (notebookDraft != null) {
+        if (_loadedNoteId != null) {
+          unawaited(_flushPendingNotebookNoteAutosave());
+          _loadedNoteId = null;
+        }
+        final draftContextKey = _draftSessionContextKey(notebookDraft);
+        if (_loadedDraftSessionContextKey != draftContextKey) {
+          _loadedDraftSessionContextKey = draftContextKey;
+          _suppressEditorInputListeners = true;
+          _titleController.text = notebookDraft.title;
+          _contentController.text = notebookDraft.content;
+          _tagsController.text = notebookDraft.tags.join(', ');
+          _suppressEditorInputListeners = false;
+        }
+
+        Future<void> saveDraftNote() async {
+          await ref
+              .read(noteEditorControllerProvider.notifier)
+              .flushNotebookDraftAutosave();
+        }
+
+        final saveDraftAction = isMacOSNativeUI
+            ? ChronicleMacosCompactIconButton(
+                key: _kMacosNoteEditorSaveButtonKey,
+                tooltip: l10n.saveAction,
+                onPressed: saveDraftNote,
+                icon: const MacosIcon(CupertinoIcons.floppy_disk),
+              )
+            : IconButton(
+                key: _kMacosNoteEditorSaveButtonKey,
+                tooltip: l10n.saveAction,
+                onPressed: saveDraftNote,
+                icon: const Icon(Icons.save),
+              );
+
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Align(alignment: Alignment.centerRight, child: saveDraftAction),
+              const SizedBox(height: 8),
+              Expanded(
+                child: Container(
+                  decoration: isMacOSNativeUI
+                      ? _macosPanelDecoration(context)
+                      : BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(context).dividerColor,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    children: <Widget>[
+                      MarkdownFormatToolbar(
+                        key: _kNoteEditorMarkdownToolbarKey,
+                        controller: _contentController,
+                        isMacOSNativeUI: isMacOSNativeUI,
+                        keyPrefix: 'note_editor',
+                        formatter: _markdownFormatter,
+                        showImageAction: false,
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: CodeTheme(
+                          data: _noteEditorCodeThemeData(context),
+                          child: CodeField(
+                            key: _kMacosNoteEditorContentFieldKey,
+                            controller: _contentController,
+                            expands: true,
+                            textStyle: TextStyle(
+                              fontFamily: isMacOSNativeUI
+                                  ? 'Menlo'
+                                  : 'monospace',
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+      if (_loadedNoteId != null) {
+        unawaited(_flushPendingNotebookNoteAutosave());
+        _loadedNoteId = null;
+      }
+      _loadedDraftSessionContextKey = null;
+      if (isResolvingWorkspace) {
+        return const _NoteEditorLoadingSkeleton();
+      }
       return Center(child: Text(l10n.selectNoteToEditPrompt));
     }
     final linkedNotesAsync = ref.watch(linkedNotesByNoteProvider(note.id));
 
+    if (_loadedNoteId != null && _loadedNoteId != note.id) {
+      unawaited(_flushPendingNotebookNoteAutosave());
+    }
     if (_loadedNoteId != note.id) {
       _loadedNoteId = note.id;
+      _loadedDraftSessionContextKey = null;
+      _suppressEditorInputListeners = true;
       _contentController.text = note.content;
       _tagsController.text = note.tags.join(', ');
+      _suppressEditorInputListeners = false;
     }
     if (_titleController.text != note.title) {
       _titleController.text = note.title;
@@ -234,11 +437,9 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     }
 
     Future<void> saveNote() async {
-      final tags = _tagsController.text
-          .split(',')
-          .map((value) => value.trim())
-          .where((value) => value.isNotEmpty)
-          .toList();
+      _cancelPendingNotebookNoteAutosave();
+      _notebookNoteAutosaveTargetId = null;
+      final tags = _parsedTags(_tagsController.text);
 
       await ref
           .read(noteEditorControllerProvider.notifier)
@@ -250,32 +451,21 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     }
 
     bool hasDraftChanges() {
-      final currentTags = _tagsController.text
-          .split(',')
-          .map((value) => value.trim())
-          .where((value) => value.isNotEmpty)
-          .toList();
+      final currentTags = _parsedTags(_tagsController.text);
       if (_titleController.text.trim() != note.title) {
         return true;
       }
       if (_contentController.text != note.content) {
         return true;
       }
-      if (currentTags.length != note.tags.length) {
-        return true;
-      }
-      for (var i = 0; i < currentTags.length; i++) {
-        if (currentTags[i] != note.tags[i]) {
-          return true;
-        }
-      }
-      return false;
+      return !_stringListsEqual(currentTags, note.tags);
     }
 
     Future<void> switchEditorMode(NoteEditorViewMode mode) async {
       if (mode == editorViewMode) {
         return;
       }
+      await _flushPendingNotebookNoteAutosave();
       if (editorViewMode == NoteEditorViewMode.edit &&
           mode == NoteEditorViewMode.read) {
         try {
@@ -293,11 +483,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
       ref.read(noteEditorViewModeProvider.notifier).set(mode);
     }
 
-    final currentTags = _tagsController.text
-        .split(',')
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toList();
+    final currentTags = _parsedTags(_tagsController.text);
 
     Future<void> showUtilityDialog({
       required String title,
@@ -901,6 +1087,81 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+const Key _kNoteEditorLoadingSkeletonKey = Key('note_editor_loading_skeleton');
+
+class _NoteEditorLoadingSkeleton extends StatelessWidget {
+  const _NoteEditorLoadingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final borderColor = isMacOSNativeUI
+        ? MacosTheme.of(context).dividerColor
+        : Theme.of(context).dividerColor;
+    final blockColor = isMacOSNativeUI
+        ? MacosTheme.brightnessOf(
+            context,
+          ).resolve(const Color(0xFFE7E7E7), const Color(0xFF373B40))
+        : Theme.of(context).colorScheme.surfaceContainerHighest;
+
+    Widget line({required double width, double height = 12}) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: blockColor,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      key: _kNoteEditorLoadingSkeletonKey,
+      padding: const EdgeInsets.all(12),
+      child: Container(
+        decoration: isMacOSNativeUI
+            ? _macosPanelDecoration(context)
+            : BoxDecoration(
+                border: Border.all(color: borderColor),
+                borderRadius: BorderRadius.circular(8),
+              ),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            line(width: 180, height: 14),
+            const SizedBox(height: 10),
+            line(width: 120),
+            const SizedBox(height: 12),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: borderColor),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    line(width: 220),
+                    const SizedBox(height: 8),
+                    line(width: 260),
+                    const SizedBox(height: 8),
+                    line(width: 200),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

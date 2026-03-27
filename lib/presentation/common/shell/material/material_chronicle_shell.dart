@@ -118,7 +118,10 @@ class MaterialChronicleShell extends StatelessWidget {
         children: <Widget>[
           SizedBox(
             width: viewModel.sidebarWidth,
-            child: viewModel.sidebarBuilder(null),
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: colorScheme.surface),
+              child: viewModel.sidebarBuilder(null),
+            ),
           ),
           const VerticalDivider(width: 1),
           Expanded(child: viewModel.content),
