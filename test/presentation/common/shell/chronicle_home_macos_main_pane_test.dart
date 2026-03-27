@@ -272,6 +272,228 @@ void main() {
     expect(find.byType(MacosPulldownButton), findsWidgets);
   });
 
+  testWidgets('matter note list pane resizes, clamps, and persists', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    final settingsRepository = _FakeSettingsRepository(
+      AppSettings(
+        storageRootPath: '/tmp/chronicle-test',
+        clientId: 'test-client',
+        syncConfig: SyncConfig.initial(),
+        lastSyncAt: null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        settingsRepository: settingsRepository,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final paneFinder = find.byKey(const Key('matter_note_list_pane'));
+    final handleFinder = find.byKey(
+      const Key('matter_note_list_resize_handle'),
+    );
+    final initialWidth = tester.getSize(paneFinder).width;
+
+    await tester.drag(handleFinder, const Offset(-120, 0));
+    await tester.pumpAndSettle();
+    final resizedWidth = tester.getSize(paneFinder).width;
+    expect(resizedWidth, lessThan(initialWidth));
+    expect(resizedWidth, greaterThanOrEqualTo(180));
+
+    await tester.drag(handleFinder, const Offset(-1000, 0));
+    await tester.pumpAndSettle();
+    final clampedWidth = tester.getSize(paneFinder).width;
+    expect(clampedWidth, closeTo(180, 0.1));
+
+    final persistedAfterDrag = await settingsRepository.loadSettings();
+    expect(
+      persistedAfterDrag.matterNoteListPaneWidth,
+      closeTo(clampedWidth, 0.1),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        settingsRepository: settingsRepository,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    final restoredWidth = tester.getSize(paneFinder).width;
+    expect(
+      restoredWidth,
+      closeTo(persistedAfterDrag.matterNoteListPaneWidth, 0.1),
+    );
+  });
+
+  testWidgets(
+    'notebook note list pane persists independently from matter pane width',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final settingsRepository = _FakeSettingsRepository(
+        AppSettings(
+          storageRootPath: '/tmp/chronicle-test',
+          clientId: 'test-client',
+          syncConfig: SyncConfig.initial(),
+          lastSyncAt: null,
+          matterNoteListPaneWidth: 286,
+          notebookNoteListPaneWidth: 380,
+        ),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          settingsRepository: settingsRepository,
+          overrides: [
+            showOrphansProvider.overrideWithBuild((ref, notifier) => true),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-2',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final notebookPaneFinder = find.byKey(
+        const Key('notebook_note_list_pane'),
+      );
+      final notebookHandleFinder = find.byKey(
+        const Key('notebook_note_list_resize_handle'),
+      );
+      await tester.drag(notebookHandleFinder, const Offset(-90, 0));
+      await tester.pumpAndSettle();
+
+      final notebookWidth = tester.getSize(notebookPaneFinder).width;
+      final persisted = await settingsRepository.loadSettings();
+      expect(persisted.notebookNoteListPaneWidth, closeTo(notebookWidth, 0.1));
+      expect(persisted.matterNoteListPaneWidth, 286);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          settingsRepository: settingsRepository,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      final matterPaneFinder = find.byKey(const Key('matter_note_list_pane'));
+      expect(tester.getSize(matterPaneFinder).width, closeTo(286, 0.1));
+    },
+  );
+
+  testWidgets('macOS sidebar uses reduced minimum width', (tester) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final macosWindow = tester.widget<MacosWindow>(find.byType(MacosWindow));
+    final sidebar = macosWindow.sidebar!;
+    expect(sidebar.minWidth, 200);
+    expect(sidebar.startWidth, 320);
+  });
+
+  testWidgets('macOS sidebar does not render material scrollbar wrapper', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: true,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final sidebarRoot = find.byKey(const Key('sidebar_root'));
+    expect(
+      find.descendant(of: sidebarRoot, matching: find.byType(Scrollbar)),
+      findsNothing,
+    );
+  });
+
   testWidgets('empty workspace shows one-screen welcome tour', (tester) async {
     _setDesktopViewport(tester);
     final repos = _TestRepos(
@@ -410,7 +632,7 @@ void main() {
 
       await tester.pumpWidget(
         _buildApp(
-          useMacOSNativeUI: true,
+          useMacOSNativeUI: false,
           repos: repos,
           overrides: [
             selectedMatterIdProvider.overrideWithBuild(
@@ -727,6 +949,84 @@ void main() {
 
       final updated = noteRepository.noteById('note-2');
       expect(updated?.content, 'First notebook draft body\nautosave update');
+    },
+  );
+
+  testWidgets(
+    'same notebook context draft replacement clears stale draft editor state',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final notebookRepository = _MemoryNotebookRepository(<NotebookFolder>[
+        notebookFolder,
+      ]);
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            notebookRepositoryProvider.overrideWithValue(notebookRepository),
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await _tapSidebarNotebookFolder(tester, 'folder-1');
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      expect(container.read(notebookDraftSessionProvider), isNotNull);
+
+      await tester.enterText(
+        find.byKey(const Key('notebook_draft_title_field')),
+        'Stale notebook draft',
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('macos_note_editor_content')),
+        'stale notebook body',
+      );
+      await tester.pump();
+
+      container
+          .read(notebookDraftSessionProvider.notifier)
+          .set(
+            const NotebookDraftSession.emptyNotebook(
+              folderId: 'folder-1',
+              draftSessionToken: 999,
+            ),
+          );
+      await tester.pump();
+
+      final titleField = tester.widget<TextField>(
+        find.byKey(const Key('notebook_draft_title_field')),
+      );
+      expect(titleField.controller?.text, isEmpty);
+      final contentField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(contentField.controller.text, isEmpty);
+
+      await tester.tap(find.byKey(const Key('macos_note_editor_save')));
+      await tester.pumpAndSettle();
+
+      expect(noteRepository.noteById('note-2'), isNull);
+      expect(container.read(selectedNoteIdProvider), isNull);
     },
   );
 
@@ -3174,15 +3474,76 @@ Inline \$x^2\$ and:
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Second Matter Note').first);
+    final container = _containerForApp(tester);
+    await container.read(noteEditorControllerProvider.notifier).selectNote('note-2');
     await tester.pump();
 
     expect(find.text('Select a note to edit.'), findsNothing);
-
-    await tester.pumpAndSettle();
-    final container = _containerForApp(tester);
     expect(container.read(selectedNoteIdProvider), 'note-2');
+    await tester.idle();
   });
+
+  testWidgets(
+    'switching notes with pending autosave updates only source note snapshot',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final secondMatterNote = noteTwo.copyWith(
+        matterId: 'matter-1',
+        phaseId: 'phase-start',
+        title: 'Second Matter Note',
+        content: '# Second Matter Note\noriginal second body',
+        tags: const <String>['second'],
+      );
+      final noteRepository = _MemoryNoteRepository(<Note>[
+        noteOne,
+        secondMatterNote,
+      ]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('macos_note_editor_content')),
+        '# Editor Note\nedited in note one',
+      );
+      await tester.pump(const Duration(milliseconds: 120));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('phase_note_row_note-2')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        noteRepository.noteById('note-1')?.content,
+        '# Editor Note\nedited in note one',
+      );
+      expect(
+        noteRepository.noteById('note-2')?.content,
+        '# Second Matter Note\noriginal second body',
+      );
+    },
+  );
 
   testWidgets('switching matter auto-opens first note in current phase', (
     tester,
@@ -3350,6 +3711,76 @@ Inline \$x^2\$ and:
 
       final updated = noteRepository.noteById('note-2');
       expect(updated?.content, 'Draft content body\nautosave update');
+    },
+  );
+
+  testWidgets(
+    'same matter context draft replacement clears stale draft editor state',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-end',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      expect(container.read(selectedNoteIdProvider), isNull);
+      expect(container.read(notebookDraftSessionProvider), isNotNull);
+
+      await tester.enterText(
+        find.byKey(const Key('notebook_draft_title_field')),
+        'Stale matter draft',
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('macos_note_editor_content')),
+        'stale matter body',
+      );
+      await tester.pump();
+
+      container
+          .read(notebookDraftSessionProvider.notifier)
+          .set(
+            const NotebookDraftSession.emptyMatter(
+              matterId: 'matter-1',
+              phaseId: 'phase-end',
+              draftSessionToken: 1001,
+            ),
+          );
+      await tester.pump();
+
+      final titleField = tester.widget<TextField>(
+        find.byKey(const Key('notebook_draft_title_field')),
+      );
+      expect(titleField.controller?.text, isEmpty);
+      final contentField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(contentField.controller.text, isEmpty);
+
+      await tester.tap(find.byKey(const Key('macos_note_editor_save')));
+      await tester.pumpAndSettle();
+
+      expect(noteRepository.noteById('note-3'), isNull);
+      expect(container.read(selectedNoteIdProvider), isNull);
     },
   );
 
@@ -4188,6 +4619,7 @@ Widget _buildApp({
   required bool useMacOSNativeUI,
   required _TestRepos repos,
   CategoryRepository? categoryRepository,
+  SettingsRepository? settingsRepository,
   String localeTag = 'en',
   List overrides = const [],
 }) {
@@ -4197,19 +4629,21 @@ Widget _buildApp({
   final hasConflictsControllerOverride = overrides.any(
     (override) => override.toString().contains('ConflictsController'),
   );
-  final settingsRepository = _FakeSettingsRepository(
-    AppSettings(
-      storageRootPath: '/tmp/chronicle-test',
-      clientId: 'test-client',
-      syncConfig: SyncConfig.initial(),
-      lastSyncAt: null,
-      localeTag: localeTag,
-    ),
-  );
+  final resolvedSettingsRepository =
+      settingsRepository ??
+      _FakeSettingsRepository(
+        AppSettings(
+          storageRootPath: '/tmp/chronicle-test',
+          clientId: 'test-client',
+          syncConfig: SyncConfig.initial(),
+          lastSyncAt: null,
+          localeTag: localeTag,
+        ),
+      );
 
   return ProviderScope(
     overrides: [
-      settingsRepositoryProvider.overrideWithValue(settingsRepository),
+      settingsRepositoryProvider.overrideWithValue(resolvedSettingsRepository),
       matterRepositoryProvider.overrideWithValue(repos.matterRepository),
       categoryRepositoryProvider.overrideWithValue(
         categoryRepository ?? _MemoryCategoryRepository(),

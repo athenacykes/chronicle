@@ -27,12 +27,16 @@ class MacosChronicleShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sidebarStartWidth = viewModel.sidebarWidth < viewModel.sidebarMinWidth
+        ? viewModel.sidebarMinWidth
+        : viewModel.sidebarWidth;
+    final sidebarMaxWidth = sidebarStartWidth + 80;
     return MacosWindow(
       titleBar: TitleBar(title: Text(viewModel.appWindowTitle)),
       sidebar: Sidebar(
-        minWidth: viewModel.sidebarWidth,
-        maxWidth: viewModel.sidebarWidth + 80,
-        startWidth: viewModel.sidebarWidth,
+        minWidth: viewModel.sidebarMinWidth,
+        maxWidth: sidebarMaxWidth,
+        startWidth: sidebarStartWidth,
         dragClosed: true,
         dragClosedBuffer: 0,
         topOffset: 28,
@@ -40,10 +44,13 @@ class MacosChronicleShell extends StatelessWidget {
           final sidebarBackground = MacosTheme.brightnessOf(
             context,
           ).resolve(const Color(0xFFF4F4F4), const Color(0xFF202327));
+          final sidebarScrollBehavior = ScrollConfiguration.of(
+            context,
+          ).copyWith(scrollbars: false);
           return Container(
             color: sidebarBackground,
-            child: PrimaryScrollController(
-              controller: scrollController,
+            child: ScrollConfiguration(
+              behavior: sidebarScrollBehavior,
               child: viewModel.sidebarBuilder(scrollController),
             ),
           );

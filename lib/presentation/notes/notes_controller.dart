@@ -32,6 +32,7 @@ class NotebookDraftSession {
     required this.folderId,
     required this.matterId,
     required this.phaseId,
+    required this.draftSessionToken,
     required this.title,
     required this.content,
     required this.tags,
@@ -39,18 +40,21 @@ class NotebookDraftSession {
     required this.isDirty,
   });
 
-  const NotebookDraftSession.emptyNotebook({required this.folderId})
-    : title = '',
-      content = '',
-      tags = const <String>[],
-      matterId = null,
-      phaseId = null,
-      persistedNoteId = null,
-      isDirty = false;
+  const NotebookDraftSession.emptyNotebook({
+    required this.folderId,
+    required this.draftSessionToken,
+  }) : title = '',
+       content = '',
+       tags = const <String>[],
+       matterId = null,
+       phaseId = null,
+       persistedNoteId = null,
+       isDirty = false;
 
   const NotebookDraftSession.emptyMatter({
     required this.matterId,
     required this.phaseId,
+    required this.draftSessionToken,
   }) : title = '',
        content = '',
        tags = const <String>[],
@@ -61,6 +65,7 @@ class NotebookDraftSession {
   final String? folderId;
   final String? matterId;
   final String? phaseId;
+  final int draftSessionToken;
   final String title;
   final String content;
   final List<String> tags;
@@ -71,6 +76,7 @@ class NotebookDraftSession {
     String? folderId,
     String? matterId,
     String? phaseId,
+    int? draftSessionToken,
     String? title,
     String? content,
     List<String>? tags,
@@ -82,6 +88,7 @@ class NotebookDraftSession {
       folderId: folderId ?? this.folderId,
       matterId: matterId ?? this.matterId,
       phaseId: phaseId ?? this.phaseId,
+      draftSessionToken: draftSessionToken ?? this.draftSessionToken,
       title: title ?? this.title,
       content: content ?? this.content,
       tags: tags ?? this.tags,
@@ -205,6 +212,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   );
 
   Timer? _notebookDraftAutosaveTimer;
+  int _notebookDraftSessionTokenCounter = 0;
   int _notebookFolderSelectionRequestToken = 0;
   int _matterSelectionRequestToken = 0;
   int _workspaceResolutionToken = 0;
@@ -392,7 +400,12 @@ class NoteEditorController extends AsyncNotifier<Note?> {
             .set(NoteEditorViewMode.edit);
         ref
             .read(notebookDraftSessionProvider.notifier)
-            .set(NotebookDraftSession.emptyNotebook(folderId: folderId));
+            .set(
+              NotebookDraftSession.emptyNotebook(
+                folderId: folderId,
+                draftSessionToken: _nextNotebookDraftSessionToken(),
+              ),
+            );
         return;
       }
 
@@ -464,6 +477,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
               NotebookDraftSession.emptyMatter(
                 matterId: matterId,
                 phaseId: phaseIdForDraft,
+                draftSessionToken: _nextNotebookDraftSessionToken(),
               ),
             );
         return;
@@ -865,6 +879,11 @@ class NoteEditorController extends AsyncNotifier<Note?> {
       }
     }
     return true;
+  }
+
+  int _nextNotebookDraftSessionToken() {
+    _notebookDraftSessionTokenCounter += 1;
+    return _notebookDraftSessionTokenCounter;
   }
 
   int _beginWorkspaceResolution() {

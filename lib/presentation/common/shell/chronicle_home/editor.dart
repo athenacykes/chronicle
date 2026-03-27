@@ -1,5 +1,19 @@
 part of '../chronicle_home_coordinator.dart';
 
+class _NotebookNoteAutosaveSnapshot {
+  _NotebookNoteAutosaveSnapshot({
+    required this.noteId,
+    required this.title,
+    required this.content,
+    required this.tags,
+  });
+
+  final String noteId;
+  final String title;
+  final String content;
+  final List<String> tags;
+}
+
 class _NoteEditorPane extends ConsumerStatefulWidget {
   const _NoteEditorPane();
 
@@ -13,9 +27,9 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   final TextEditingController _tagsController = TextEditingController();
   final MarkdownEditFormatter _markdownFormatter = MarkdownEditFormatter();
   String? _loadedNoteId;
-  String? _loadedDraftSessionContextKey;
+  int? _loadedDraftSessionToken;
   Timer? _notebookNoteAutosaveTimer;
-  String? _notebookNoteAutosaveTargetId;
+  _NotebookNoteAutosaveSnapshot? _pendingNotebookNoteAutosave;
   bool _suppressEditorInputListeners = false;
 
   @override
@@ -57,7 +71,12 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   }
 
   void _queueNotebookNoteAutosave(String noteId) {
-    _notebookNoteAutosaveTargetId = noteId;
+    _pendingNotebookNoteAutosave = _NotebookNoteAutosaveSnapshot(
+      noteId: noteId,
+      title: _titleController.text.trim(),
+      content: _contentController.text,
+      tags: _parsedTags(_tagsController.text),
+    );
     _notebookNoteAutosaveTimer?.cancel();
     _notebookNoteAutosaveTimer = Timer(const Duration(milliseconds: 650), () {
       unawaited(_flushPendingNotebookNoteAutosave());
@@ -70,33 +89,30 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   }
 
   Future<void> _flushPendingNotebookNoteAutosave() async {
-    final targetNoteId = _notebookNoteAutosaveTargetId;
-    _notebookNoteAutosaveTargetId = null;
+    final pending = _pendingNotebookNoteAutosave;
+    _pendingNotebookNoteAutosave = null;
     _cancelPendingNotebookNoteAutosave();
-    if (targetNoteId == null) {
+    if (pending == null) {
       return;
     }
 
-    final tags = _parsedTags(_tagsController.text);
-    final title = _titleController.text.trim();
-    final content = _contentController.text;
     final existing = await ref
         .read(noteRepositoryProvider)
-        .getNoteById(targetNoteId);
+        .getNoteById(pending.noteId);
     if (existing == null ||
-        (existing.title == title &&
-            existing.content == content &&
-            _stringListsEqual(existing.tags, tags))) {
+        (existing.title == pending.title &&
+            existing.content == pending.content &&
+            _stringListsEqual(existing.tags, pending.tags))) {
       return;
     }
 
     await ref
         .read(noteEditorControllerProvider.notifier)
         .updateNoteById(
-          noteId: targetNoteId,
-          title: title,
-          content: content,
-          tags: tags,
+          noteId: pending.noteId,
+          title: pending.title,
+          content: pending.content,
+          tags: pending.tags,
         );
   }
 
@@ -118,13 +134,6 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
       }
     }
     return true;
-  }
-
-  String _draftSessionContextKey(NotebookDraftSession draft) {
-    if (draft.matterId != null) {
-      return 'matter:${draft.matterId}:${draft.phaseId ?? ''}';
-    }
-    return 'notebook:${draft.folderId ?? ''}';
   }
 
   Future<void> _attachFiles(BuildContext context) async {
@@ -264,9 +273,8 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
           unawaited(_flushPendingNotebookNoteAutosave());
           _loadedNoteId = null;
         }
-        final draftContextKey = _draftSessionContextKey(notebookDraft);
-        if (_loadedDraftSessionContextKey != draftContextKey) {
-          _loadedDraftSessionContextKey = draftContextKey;
+        if (_loadedDraftSessionToken != notebookDraft.draftSessionToken) {
+          _loadedDraftSessionToken = notebookDraft.draftSessionToken;
           _suppressEditorInputListeners = true;
           _titleController.text = notebookDraft.title;
           _contentController.text = notebookDraft.content;
@@ -351,7 +359,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
         unawaited(_flushPendingNotebookNoteAutosave());
         _loadedNoteId = null;
       }
-      _loadedDraftSessionContextKey = null;
+      _loadedDraftSessionToken = null;
       if (isResolvingWorkspace) {
         return const _NoteEditorLoadingSkeleton();
       }
@@ -364,7 +372,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     }
     if (_loadedNoteId != note.id) {
       _loadedNoteId = note.id;
-      _loadedDraftSessionContextKey = null;
+      _loadedDraftSessionToken = null;
       _suppressEditorInputListeners = true;
       _contentController.text = note.content;
       _tagsController.text = note.tags.join(', ');
@@ -438,7 +446,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
 
     Future<void> saveNote() async {
       _cancelPendingNotebookNoteAutosave();
-      _notebookNoteAutosaveTargetId = null;
+      _pendingNotebookNoteAutosave = null;
       final tags = _parsedTags(_tagsController.text);
 
       await ref

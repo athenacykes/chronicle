@@ -65,6 +65,36 @@ void main() {
       <String>['notebooks'],
     );
   });
+
+  test('setNoteListPaneWidth methods persist both pane widths', () async {
+    final repository = _InMemorySettingsRepository(
+      AppSettings(
+        storageRootPath: null,
+        clientId: 'settings-test',
+        syncConfig: SyncConfig.initial(),
+        lastSyncAt: null,
+      ),
+    );
+
+    final container = ProviderContainer(
+      overrides: [settingsRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(settingsControllerProvider.future);
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setMatterNoteListPaneWidth(226);
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setNotebookNoteListPaneWidth(294);
+
+    final state = container.read(settingsControllerProvider).asData?.value;
+    expect(state?.matterNoteListPaneWidth, 226);
+    expect(state?.notebookNoteListPaneWidth, 294);
+    expect((await repository.loadSettings()).matterNoteListPaneWidth, 226);
+    expect((await repository.loadSettings()).notebookNoteListPaneWidth, 294);
+  });
 }
 
 class _InMemorySettingsRepository implements SettingsRepository {

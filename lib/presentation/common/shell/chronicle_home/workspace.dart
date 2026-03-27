@@ -765,6 +765,7 @@ class _MatterNotesWorkspace extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final notes = ref.watch(noteListProvider);
+    final settings = ref.watch(settingsControllerProvider).asData?.value;
 
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     return LayoutBuilder(
@@ -774,165 +775,163 @@ class _MatterNotesWorkspace extends ConsumerWidget {
         if (useCompactEditorOnly) {
           return const _NoteEditorPane();
         }
-        return Row(
-          children: <Widget>[
-            SizedBox(
-              width: 380,
-              child: notes.when(
-                loading: () =>
-                    Center(child: _adaptiveLoadingIndicator(context)),
-                error: (error, _) => Center(child: Text('$error')),
-                data: (items) => _NoteList(
-                  notes: items,
-                  onEdit: (note) async {
-                    final result = await showDialog<ChronicleNoteDialogResult>(
-                      context: context,
-                      builder: (_) => ChronicleNoteDialog(
-                        mode: ChronicleNoteDialogMode.edit,
-                        initialTitle: note.title,
-                        initialContent: note.content,
-                        initialTags: note.tags,
-                        initialPinned: note.isPinned,
-                      ),
+        return _ResizableNoteEditorSplitPane(
+          listPaneKey: _kMatterNoteListPaneKey,
+          resizeHandleKey: _kMatterNoteListResizeHandleKey,
+          storedPaneWidth:
+              settings?.matterNoteListPaneWidth ?? _kDefaultNoteListPaneWidth,
+          onWidthCommitted: (width) async {
+            await ref
+                .read(settingsControllerProvider.notifier)
+                .setMatterNoteListPaneWidth(width);
+          },
+          listPane: notes.when(
+            loading: () => Center(child: _adaptiveLoadingIndicator(context)),
+            error: (error, _) => Center(child: Text('$error')),
+            data: (items) => _NoteList(
+              notes: items,
+              onEdit: (note) async {
+                final result = await showDialog<ChronicleNoteDialogResult>(
+                  context: context,
+                  builder: (_) => ChronicleNoteDialog(
+                    mode: ChronicleNoteDialogMode.edit,
+                    initialTitle: note.title,
+                    initialContent: note.content,
+                    initialTags: note.tags,
+                    initialPinned: note.isPinned,
+                  ),
+                );
+
+                if (result == null || result.title.trim().isEmpty) {
+                  return;
+                }
+
+                await ref
+                    .read(noteEditorControllerProvider.notifier)
+                    .updateNoteById(
+                      noteId: note.id,
+                      title: result.title,
+                      content: result.content,
+                      tags: result.tags,
+                      isPinned: result.isPinned,
                     );
+              },
+              onTogglePinned: (note) async {
+                await ref
+                    .read(noteEditorControllerProvider.notifier)
+                    .updateNoteById(noteId: note.id, isPinned: !note.isPinned);
+              },
+              onDelete: (note) async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: Text(l10n.deleteNoteTitle),
+                    content: Text(l10n.deleteNoteConfirmation(note.title)),
+                    actions: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: Text(l10n.cancelAction),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: Text(l10n.deleteAction),
+                      ),
+                    ],
+                  ),
+                );
 
-                    if (result == null || result.title.trim().isEmpty) {
-                      return;
-                    }
-
+                if (confirmed == true) {
+                  await ref
+                      .read(noteEditorControllerProvider.notifier)
+                      .deleteNote(note.id);
+                }
+              },
+              onLink: (note) {
+                return showChronicleLinkNoteDialogFlow(
+                  context: context,
+                  sourceNote: note,
+                  useMacOSNativeUI: _isMacOSNativeUIContext(context),
+                  loadAllNotes: () =>
+                      ref.read(allNotesForLinkPickerProvider.future),
+                  createLink: (result) async {
                     await ref
-                        .read(noteEditorControllerProvider.notifier)
-                        .updateNoteById(
-                          noteId: note.id,
-                          title: result.title,
-                          content: result.content,
-                          tags: result.tags,
-                          isPinned: result.isPinned,
+                        .read(linksControllerProvider)
+                        .createLink(
+                          sourceNoteId: note.id,
+                          targetNoteId: result.targetNoteId,
+                          context: result.context,
                         );
                   },
-                  onTogglePinned: (note) async {
-                    await ref
-                        .read(noteEditorControllerProvider.notifier)
-                        .updateNoteById(
-                          noteId: note.id,
-                          isPinned: !note.isPinned,
-                        );
-                  },
-                  onDelete: (note) async {
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: Text(l10n.deleteNoteTitle),
-                        content: Text(l10n.deleteNoteConfirmation(note.title)),
-                        actions: <Widget>[
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: Text(l10n.cancelAction),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: Text(l10n.deleteAction),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (confirmed == true) {
-                      await ref
-                          .read(noteEditorControllerProvider.notifier)
-                          .deleteNote(note.id);
+                );
+              },
+              onMoveToMatter: (note) async {
+                final targetMatter = await _showMoveToMatterDialog(
+                  context: context,
+                  ref: ref,
+                  note: note,
+                );
+                if (!context.mounted || targetMatter == null) {
+                  return;
+                }
+                await _moveNoteToMatter(
+                  context: context,
+                  ref: ref,
+                  noteId: note.id,
+                  targetMatter: targetMatter,
+                );
+              },
+              onMoveToPhase: (note) async {
+                final matterId = note.matterId;
+                if (matterId == null) {
+                  return;
+                }
+                Matter? sourceMatter = ref
+                    .read(mattersControllerProvider.notifier)
+                    .findMatter(matterId);
+                if (sourceMatter == null) {
+                  final matters = await _allMattersForMove(ref);
+                  if (!context.mounted) {
+                    return;
+                  }
+                  for (final candidate in matters) {
+                    if (candidate.id == matterId) {
+                      sourceMatter = candidate;
+                      break;
                     }
-                  },
-                  onLink: (note) {
-                    return showChronicleLinkNoteDialogFlow(
-                      context: context,
-                      sourceNote: note,
-                      useMacOSNativeUI: _isMacOSNativeUIContext(context),
-                      loadAllNotes: () =>
-                          ref.read(allNotesForLinkPickerProvider.future),
-                      createLink: (result) async {
-                        await ref
-                            .read(linksControllerProvider)
-                            .createLink(
-                              sourceNoteId: note.id,
-                              targetNoteId: result.targetNoteId,
-                              context: result.context,
-                            );
-                      },
-                    );
-                  },
-                  onMoveToMatter: (note) async {
-                    final targetMatter = await _showMoveToMatterDialog(
-                      context: context,
-                      ref: ref,
-                      note: note,
-                    );
-                    if (!context.mounted || targetMatter == null) {
-                      return;
-                    }
-                    await _moveNoteToMatter(
-                      context: context,
-                      ref: ref,
-                      noteId: note.id,
-                      targetMatter: targetMatter,
-                    );
-                  },
-                  onMoveToPhase: (note) async {
-                    final matterId = note.matterId;
-                    if (matterId == null) {
-                      return;
-                    }
-                    Matter? sourceMatter = ref
-                        .read(mattersControllerProvider.notifier)
-                        .findMatter(matterId);
-                    if (sourceMatter == null) {
-                      final matters = await _allMattersForMove(ref);
-                      if (!context.mounted) {
-                        return;
-                      }
-                      for (final candidate in matters) {
-                        if (candidate.id == matterId) {
-                          sourceMatter = candidate;
-                          break;
-                        }
-                      }
-                    }
-                    if (sourceMatter == null) {
-                      _showMoveMessage(
-                        context,
-                        context.l10n.moveSourceMatterMissingMessage,
-                      );
-                      return;
-                    }
-                    final phase = await _showMoveToPhaseDialog(
-                      context: context,
-                      matter: sourceMatter,
-                      note: note,
-                    );
-                    if (!context.mounted || phase == null) {
-                      return;
-                    }
-                    await _moveNoteToPhase(
-                      context: context,
-                      ref: ref,
-                      noteId: note.id,
-                      sourceMatterId: sourceMatter.id,
-                      phase: phase,
-                    );
-                  },
-                  onMoveToNotebook: (note) async {
-                    await _moveNoteToNotebookViaDialog(
-                      context: context,
-                      ref: ref,
-                      note: note,
-                    );
-                  },
-                ),
-              ),
+                  }
+                }
+                if (sourceMatter == null) {
+                  _showMoveMessage(
+                    context,
+                    context.l10n.moveSourceMatterMissingMessage,
+                  );
+                  return;
+                }
+                final phase = await _showMoveToPhaseDialog(
+                  context: context,
+                  matter: sourceMatter,
+                  note: note,
+                );
+                if (!context.mounted || phase == null) {
+                  return;
+                }
+                await _moveNoteToPhase(
+                  context: context,
+                  ref: ref,
+                  noteId: note.id,
+                  sourceMatterId: sourceMatter.id,
+                  phase: phase,
+                );
+              },
+              onMoveToNotebook: (note) async {
+                await _moveNoteToNotebookViaDialog(
+                  context: context,
+                  ref: ref,
+                  note: note,
+                );
+              },
             ),
-            const VerticalDivider(width: 1),
-            const Expanded(child: _NoteEditorPane()),
-          ],
+          ),
         );
       },
     );
@@ -1213,6 +1212,7 @@ class _NotebookWorkspace extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
     final notes = ref.watch(notebookNoteListProvider);
+    final settings = ref.watch(settingsControllerProvider).asData?.value;
     final currentNote = ref.watch(noteEditorControllerProvider).value;
     final allDraft = ref.watch(notebookDraftSessionProvider);
     final isResolvingWorkspace = ref.watch(isResolvingWorkspaceNoteProvider);
@@ -1244,170 +1244,171 @@ class _NotebookWorkspace extends ConsumerWidget {
               if (useCompactEditorOnly) {
                 return const _NoteEditorPane();
               }
-              return Row(
-                children: <Widget>[
-                  SizedBox(
-                    width: 380,
-                    child: notes.when(
-                      loading: () =>
-                          Center(child: _adaptiveLoadingIndicator(context)),
-                      error: (error, _) => Center(child: Text('$error')),
-                      data: (items) => _NoteList(
-                        notes: items,
-                        onEdit: (note) async {
-                          final result =
-                              await showDialog<ChronicleNoteDialogResult>(
-                                context: context,
-                                builder: (_) => ChronicleNoteDialog(
-                                  mode: ChronicleNoteDialogMode.edit,
-                                  initialTitle: note.title,
-                                  initialContent: note.content,
-                                  initialTags: note.tags,
-                                  initialPinned: note.isPinned,
-                                ),
-                              );
-
-                          if (result == null || result.title.trim().isEmpty) {
-                            return;
-                          }
-
-                          await ref
-                              .read(noteEditorControllerProvider.notifier)
-                              .updateNoteById(
-                                noteId: note.id,
-                                title: result.title,
-                                content: result.content,
-                                tags: result.tags,
-                                isPinned: result.isPinned,
-                              );
-                        },
-                        onTogglePinned: (note) async {
-                          await ref
-                              .read(noteEditorControllerProvider.notifier)
-                              .updateNoteById(
-                                noteId: note.id,
-                                isPinned: !note.isPinned,
-                              );
-                        },
-                        onDelete: (note) async {
-                          final confirmed = await showDialog<bool>(
+              return _ResizableNoteEditorSplitPane(
+                listPaneKey: _kNotebookNoteListPaneKey,
+                resizeHandleKey: _kNotebookNoteListResizeHandleKey,
+                storedPaneWidth:
+                    settings?.notebookNoteListPaneWidth ??
+                    _kDefaultNoteListPaneWidth,
+                onWidthCommitted: (width) async {
+                  await ref
+                      .read(settingsControllerProvider.notifier)
+                      .setNotebookNoteListPaneWidth(width);
+                },
+                listPane: notes.when(
+                  loading: () =>
+                      Center(child: _adaptiveLoadingIndicator(context)),
+                  error: (error, _) => Center(child: Text('$error')),
+                  data: (items) => _NoteList(
+                    notes: items,
+                    onEdit: (note) async {
+                      final result =
+                          await showDialog<ChronicleNoteDialogResult>(
                             context: context,
-                            builder: (_) => AlertDialog(
-                              title: Text(l10n.deleteNoteTitle),
-                              content: Text(
-                                l10n.deleteNoteConfirmation(note.title),
-                              ),
-                              actions: <Widget>[
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(false),
-                                  child: Text(l10n.cancelAction),
-                                ),
-                                FilledButton(
-                                  onPressed: () =>
-                                      Navigator.of(context).pop(true),
-                                  child: Text(l10n.deleteAction),
-                                ),
-                              ],
+                            builder: (_) => ChronicleNoteDialog(
+                              mode: ChronicleNoteDialogMode.edit,
+                              initialTitle: note.title,
+                              initialContent: note.content,
+                              initialTags: note.tags,
+                              initialPinned: note.isPinned,
                             ),
                           );
 
-                          if (confirmed == true) {
-                            await ref
-                                .read(noteEditorControllerProvider.notifier)
-                                .deleteNote(note.id);
-                          }
-                        },
-                        onLink: (note) {
-                          return showChronicleLinkNoteDialogFlow(
-                            context: context,
-                            sourceNote: note,
-                            useMacOSNativeUI: _isMacOSNativeUIContext(context),
-                            loadAllNotes: () =>
-                                ref.read(allNotesForLinkPickerProvider.future),
-                            createLink: (result) async {
-                              await ref
-                                  .read(linksControllerProvider)
-                                  .createLink(
-                                    sourceNoteId: note.id,
-                                    targetNoteId: result.targetNoteId,
-                                    context: result.context,
-                                  );
-                            },
-                          );
-                        },
-                        onMoveToMatter: (note) async {
-                          final targetMatter = await _showMoveToMatterDialog(
-                            context: context,
-                            ref: ref,
-                            note: note,
-                          );
-                          if (!context.mounted || targetMatter == null) {
-                            return;
-                          }
-                          await _moveNoteToMatter(
-                            context: context,
-                            ref: ref,
+                      if (result == null || result.title.trim().isEmpty) {
+                        return;
+                      }
+
+                      await ref
+                          .read(noteEditorControllerProvider.notifier)
+                          .updateNoteById(
                             noteId: note.id,
-                            targetMatter: targetMatter,
+                            title: result.title,
+                            content: result.content,
+                            tags: result.tags,
+                            isPinned: result.isPinned,
                           );
-                        },
-                        onMoveToPhase: (note) async {
-                          final matterId = note.matterId;
-                          if (matterId == null) {
-                            return;
-                          }
-                          Matter? sourceMatter = ref
-                              .read(mattersControllerProvider.notifier)
-                              .findMatter(matterId);
-                          if (sourceMatter == null) {
-                            final matters = await _allMattersForMove(ref);
-                            if (!context.mounted) {
-                              return;
-                            }
-                            for (final candidate in matters) {
-                              if (candidate.id == matterId) {
-                                sourceMatter = candidate;
-                                break;
-                              }
-                            }
-                          }
-                          if (sourceMatter == null) {
-                            _showMoveMessage(
-                              context,
-                              context.l10n.moveSourceMatterMissingMessage,
-                            );
-                            return;
-                          }
-                          final phase = await _showMoveToPhaseDialog(
-                            context: context,
-                            matter: sourceMatter,
-                            note: note,
-                          );
-                          if (!context.mounted || phase == null) {
-                            return;
-                          }
-                          await _moveNoteToPhase(
-                            context: context,
-                            ref: ref,
+                    },
+                    onTogglePinned: (note) async {
+                      await ref
+                          .read(noteEditorControllerProvider.notifier)
+                          .updateNoteById(
                             noteId: note.id,
-                            sourceMatterId: sourceMatter.id,
-                            phase: phase,
+                            isPinned: !note.isPinned,
                           );
+                    },
+                    onDelete: (note) async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text(l10n.deleteNoteTitle),
+                          content: Text(
+                            l10n.deleteNoteConfirmation(note.title),
+                          ),
+                          actions: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: Text(l10n.cancelAction),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text(l10n.deleteAction),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirmed == true) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .deleteNote(note.id);
+                      }
+                    },
+                    onLink: (note) {
+                      return showChronicleLinkNoteDialogFlow(
+                        context: context,
+                        sourceNote: note,
+                        useMacOSNativeUI: _isMacOSNativeUIContext(context),
+                        loadAllNotes: () =>
+                            ref.read(allNotesForLinkPickerProvider.future),
+                        createLink: (result) async {
+                          await ref
+                              .read(linksControllerProvider)
+                              .createLink(
+                                sourceNoteId: note.id,
+                                targetNoteId: result.targetNoteId,
+                                context: result.context,
+                              );
                         },
-                        onMoveToNotebook: (note) async {
-                          await _moveNoteToNotebookViaDialog(
-                            context: context,
-                            ref: ref,
-                            note: note,
-                          );
-                        },
-                      ),
-                    ),
+                      );
+                    },
+                    onMoveToMatter: (note) async {
+                      final targetMatter = await _showMoveToMatterDialog(
+                        context: context,
+                        ref: ref,
+                        note: note,
+                      );
+                      if (!context.mounted || targetMatter == null) {
+                        return;
+                      }
+                      await _moveNoteToMatter(
+                        context: context,
+                        ref: ref,
+                        noteId: note.id,
+                        targetMatter: targetMatter,
+                      );
+                    },
+                    onMoveToPhase: (note) async {
+                      final matterId = note.matterId;
+                      if (matterId == null) {
+                        return;
+                      }
+                      Matter? sourceMatter = ref
+                          .read(mattersControllerProvider.notifier)
+                          .findMatter(matterId);
+                      if (sourceMatter == null) {
+                        final matters = await _allMattersForMove(ref);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        for (final candidate in matters) {
+                          if (candidate.id == matterId) {
+                            sourceMatter = candidate;
+                            break;
+                          }
+                        }
+                      }
+                      if (sourceMatter == null) {
+                        _showMoveMessage(
+                          context,
+                          context.l10n.moveSourceMatterMissingMessage,
+                        );
+                        return;
+                      }
+                      final phase = await _showMoveToPhaseDialog(
+                        context: context,
+                        matter: sourceMatter,
+                        note: note,
+                      );
+                      if (!context.mounted || phase == null) {
+                        return;
+                      }
+                      await _moveNoteToPhase(
+                        context: context,
+                        ref: ref,
+                        noteId: note.id,
+                        sourceMatterId: sourceMatter.id,
+                        phase: phase,
+                      );
+                    },
+                    onMoveToNotebook: (note) async {
+                      await _moveNoteToNotebookViaDialog(
+                        context: context,
+                        ref: ref,
+                        note: note,
+                      );
+                    },
                   ),
-                  const VerticalDivider(width: 1),
-                  const Expanded(child: _NoteEditorPane()),
-                ],
+                ),
               );
             },
           ),
@@ -1417,14 +1418,155 @@ class _NotebookWorkspace extends ConsumerWidget {
   }
 }
 
+const double _kDefaultNoteListPaneWidth = 380;
+const double _kMinNoteListPaneWidth = 180;
+const double _kMinEditorPaneWidth = 360;
+const double _kNoteListResizeHandleWidth = 12;
+const Key _kMatterNoteListPaneKey = Key('matter_note_list_pane');
+const Key _kMatterNoteListResizeHandleKey = Key(
+  'matter_note_list_resize_handle',
+);
+const Key _kNotebookNoteListPaneKey = Key('notebook_note_list_pane');
+const Key _kNotebookNoteListResizeHandleKey = Key(
+  'notebook_note_list_resize_handle',
+);
+
+class _ResizableNoteEditorSplitPane extends StatefulWidget {
+  const _ResizableNoteEditorSplitPane({
+    required this.listPane,
+    required this.storedPaneWidth,
+    required this.onWidthCommitted,
+    required this.listPaneKey,
+    required this.resizeHandleKey,
+  });
+
+  final Widget listPane;
+  final double storedPaneWidth;
+  final Future<void> Function(double width) onWidthCommitted;
+  final Key listPaneKey;
+  final Key resizeHandleKey;
+
+  @override
+  State<_ResizableNoteEditorSplitPane> createState() =>
+      _ResizableNoteEditorSplitPaneState();
+}
+
+class _ResizableNoteEditorSplitPaneState
+    extends State<_ResizableNoteEditorSplitPane> {
+  late double _currentPaneWidth;
+  double _maxPaneWidthForLayout = _kDefaultNoteListPaneWidth;
+  bool _isDragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPaneWidth = widget.storedPaneWidth;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ResizableNoteEditorSplitPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_isDragging) {
+      return;
+    }
+    if ((widget.storedPaneWidth - oldWidget.storedPaneWidth).abs() > 0.01) {
+      _currentPaneWidth = widget.storedPaneWidth;
+    }
+  }
+
+  double _effectiveMaxPaneWidth(double availableWidth) {
+    final maxWidth =
+        availableWidth - _kNoteListResizeHandleWidth - _kMinEditorPaneWidth;
+    return math.max(_kMinNoteListPaneWidth, maxWidth);
+  }
+
+  double _clampPaneWidth(double width, double maxPaneWidth) {
+    return width.clamp(_kMinNoteListPaneWidth, maxPaneWidth).toDouble();
+  }
+
+  void _updateWidthByDelta(double deltaX) {
+    final maxPaneWidth = _maxPaneWidthForLayout;
+    final updated = _clampPaneWidth(_currentPaneWidth + deltaX, maxPaneWidth);
+    if ((updated - _currentPaneWidth).abs() <= 0.01) {
+      return;
+    }
+    setState(() {
+      _currentPaneWidth = updated;
+    });
+  }
+
+  void _finishDrag() {
+    final clamped = _clampPaneWidth(_currentPaneWidth, _maxPaneWidthForLayout);
+    if (!_isDragging && (clamped - _currentPaneWidth).abs() <= 0.01) {
+      return;
+    }
+    setState(() {
+      _isDragging = false;
+      _currentPaneWidth = clamped;
+    });
+    unawaited(widget.onWidthCommitted(clamped));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dividerColor = _isMacOSNativeUIContext(context)
+        ? MacosTheme.of(context).dividerColor
+        : Theme.of(context).dividerColor;
+    final handleColor = _isDragging
+        ? Theme.of(context).colorScheme.primary
+        : dividerColor;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxPaneWidth = _effectiveMaxPaneWidth(constraints.maxWidth);
+        _maxPaneWidthForLayout = maxPaneWidth;
+        final paneWidth = _clampPaneWidth(_currentPaneWidth, maxPaneWidth);
+        return Row(
+          children: <Widget>[
+            SizedBox(
+              key: widget.listPaneKey,
+              width: paneWidth,
+              child: widget.listPane,
+            ),
+            SizedBox(
+              key: widget.resizeHandleKey,
+              width: _kNoteListResizeHandleWidth,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeColumn,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragStart: (_) {
+                    setState(() {
+                      _isDragging = true;
+                    });
+                  },
+                  onHorizontalDragUpdate: (details) {
+                    _updateWidthByDelta(details.delta.dx);
+                  },
+                  onHorizontalDragEnd: (_) {
+                    _finishDrag();
+                  },
+                  onHorizontalDragCancel: _finishDrag,
+                  child: Center(child: Container(width: 1, color: handleColor)),
+                ),
+              ),
+            ),
+            const Expanded(child: _NoteEditorPane()),
+          ],
+        );
+      },
+    );
+  }
+}
+
 const Key _kNotebookDraftTitleFieldKey = Key('notebook_draft_title_field');
 const Key _kWorkspaceTitleSkeletonKey = Key('workspace_title_skeleton');
 
 String _draftSessionContextKey(NotebookDraftSession draft) {
   if (draft.matterId != null) {
-    return 'matter:${draft.matterId}:${draft.phaseId ?? ''}';
+    return 'matter:${draft.matterId}:${draft.phaseId ?? ''}:${draft.draftSessionToken}';
   }
-  return 'notebook:${draft.folderId ?? ''}';
+  return 'notebook:${draft.folderId ?? ''}:${draft.draftSessionToken}';
 }
 
 class _WorkspaceTitleSkeleton extends StatelessWidget {

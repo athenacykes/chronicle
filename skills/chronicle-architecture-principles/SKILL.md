@@ -22,6 +22,8 @@ Provide a repeatable architecture decision framework for Chronicle changes so re
 - Prefer backward-compatible refactors over behavior changes unless feature scope explicitly requires UX changes.
 - Home shell refactor: preserve public entrypoints (`ChronicleHomeScreen`, `showChronicleSettingsDialog`) while extracting reusable leaf modules.
 - Keep orchestration state centralized in coordinator until extraction reduces coupling and keeps constructor contracts explicit.
+- Preserve note integrity: read-intent flows (select/view/navigation) must not mutate note content/title or on-disk note state.
+- Restrict note mutations to explicit write-intent operations (edit input, explicit save, create/move/delete/rename, attachment add/remove).
 
 ## Workflow
 1. Identify impacted layer(s) and list all affected contracts first.
@@ -30,6 +32,7 @@ Provide a repeatable architecture decision framework for Chronicle changes so re
 4. Wire new dependencies in `app_providers.dart` and keep provider graph explicit.
 5. For shell refactors, extract leaf widgets/helpers first, then reduce coordinator responsibilities incrementally.
 6. Re-check public API stability for shell and settings entrypoints after edits.
+7. Classify touched paths as read-intent vs write-intent and ensure repository writes are reachable only from explicit write-intent triggers.
 
 ## Verification Commands
 - `flutter analyze`
@@ -41,3 +44,4 @@ Provide a repeatable architecture decision framework for Chronicle changes so re
 - Provider wiring is centralized in `app_providers.dart`.
 - Public shell API remains unchanged unless explicitly intended.
 - Refactor changes preserve existing behavior and pass analyzer/tests.
+- Navigation/view/selection behavior does not persist note content/title changes without explicit write-intent user action.

@@ -10,6 +10,8 @@ class AppSettings {
     this.localeTag = 'en',
     this.collapsedCategoryIds = const <String>[],
     this.collapsedSidebarSectionIds = const <String>[],
+    this.matterNoteListPaneWidth = 380,
+    this.notebookNoteListPaneWidth = 380,
   });
 
   final String? storageRootPath;
@@ -19,6 +21,8 @@ class AppSettings {
   final String localeTag;
   final List<String> collapsedCategoryIds;
   final List<String> collapsedSidebarSectionIds;
+  final double matterNoteListPaneWidth;
+  final double notebookNoteListPaneWidth;
 
   AppSettings copyWith({
     String? storageRootPath,
@@ -30,6 +34,8 @@ class AppSettings {
     String? localeTag,
     List<String>? collapsedCategoryIds,
     List<String>? collapsedSidebarSectionIds,
+    double? matterNoteListPaneWidth,
+    double? notebookNoteListPaneWidth,
   }) {
     return AppSettings(
       storageRootPath: clearStorageRootPath
@@ -42,6 +48,10 @@ class AppSettings {
       collapsedCategoryIds: collapsedCategoryIds ?? this.collapsedCategoryIds,
       collapsedSidebarSectionIds:
           collapsedSidebarSectionIds ?? this.collapsedSidebarSectionIds,
+      matterNoteListPaneWidth:
+          matterNoteListPaneWidth ?? this.matterNoteListPaneWidth,
+      notebookNoteListPaneWidth:
+          notebookNoteListPaneWidth ?? this.notebookNoteListPaneWidth,
     );
   }
 
@@ -54,10 +64,20 @@ class AppSettings {
       'localeTag': localeTag,
       'collapsedCategoryIds': collapsedCategoryIds,
       'collapsedSidebarSectionIds': collapsedSidebarSectionIds,
+      'matterNoteListPaneWidth': matterNoteListPaneWidth,
+      'notebookNoteListPaneWidth': notebookNoteListPaneWidth,
     };
   }
 
   static AppSettings fromJson(Map<String, dynamic> json) {
+    double parsePaneWidth(String key) {
+      final value = json[key];
+      if (value is num && value.isFinite && value > 0) {
+        return value.toDouble();
+      }
+      return 380;
+    }
+
     return AppSettings(
       storageRootPath: json['storageRootPath'] as String?,
       clientId: (json['clientId'] as String?) ?? '',
@@ -77,6 +97,8 @@ class AppSettings {
                   const <dynamic>[])
               .whereType<String>()
               .toList(growable: false),
+      matterNoteListPaneWidth: parsePaneWidth('matterNoteListPaneWidth'),
+      notebookNoteListPaneWidth: parsePaneWidth('notebookNoteListPaneWidth'),
     );
   }
 
@@ -89,6 +111,8 @@ class AppSettings {
       localeTag: 'en',
       collapsedCategoryIds: const <String>[],
       collapsedSidebarSectionIds: const <String>[],
+      matterNoteListPaneWidth: 380,
+      notebookNoteListPaneWidth: 380,
     );
   }
 }

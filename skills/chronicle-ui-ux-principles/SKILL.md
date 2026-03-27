@@ -24,6 +24,7 @@ Guide UI and interaction changes so Chronicle stays platform-consistent, localiz
 - During refactors, preserve user-facing behavior unless the task explicitly includes UX changes.
 - Localize user-facing strings via `l10n` resources; do not hard-code user copy.
 - Treat visual diffs as regressions unless intentional and documented.
+- Keep navigation/read interactions side-effect free: selecting/opening notes, matters, phases, folders, or search results must not mutate persisted note title/content.
 
 ## Workflow
 1. Identify target platform contexts (`useMacOSNativeUI` true/false) and expected parity behavior.
@@ -32,6 +33,7 @@ Guide UI and interaction changes so Chronicle stays platform-consistent, localiz
 4. Route all new user-visible strings through ARB localization keys.
 5. Validate with targeted shell/widget tests and run golden checks for visual impact.
 6. If refactor-only, verify no functional UX deltas were introduced.
+7. For sidebar/list/search/time-view navigation changes, verify no repository/content-title writes occur unless user performs explicit write-intent actions.
 
 ## Verification Commands
 - `flutter analyze`
@@ -44,3 +46,4 @@ Guide UI and interaction changes so Chronicle stays platform-consistent, localiz
 - All new UI strings are localized.
 - No unintended golden or interaction regressions remain.
 - Refactor-only changes do not alter UX behavior.
+- Navigation/view interactions remain read-only for note title/content persistence.

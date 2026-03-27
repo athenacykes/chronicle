@@ -22,6 +22,7 @@ class ChronicleShellViewModel {
     this.topBarContextActions,
     this.compactHamburgerContent,
     this.searchFieldWidth = 340,
+    this.sidebarMinWidth = 200,
     this.sidebarWidth = 320,
   });
 
@@ -40,5 +41,6 @@ class ChronicleShellViewModel {
   final Widget? topBarContextActions;
   final Widget? compactHamburgerContent;
   final double searchFieldWidth;
+  final double sidebarMinWidth;
   final double sidebarWidth;
 }

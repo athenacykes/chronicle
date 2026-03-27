@@ -113,6 +113,22 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     state = AsyncData(updated);
   }
 
+  Future<void> setMatterNoteListPaneWidth(double width) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final updated = settings.copyWith(matterNoteListPaneWidth: width);
+    await repository.saveSettings(updated);
+    state = AsyncData(updated);
+  }
+
+  Future<void> setNotebookNoteListPaneWidth(double width) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final updated = settings.copyWith(notebookNoteListPaneWidth: width);
+    await repository.saveSettings(updated);
+    state = AsyncData(updated);
+  }
+
   Future<void> refresh() async {
     final settings = await ref.read(settingsRepositoryProvider).loadSettings();
     state = AsyncData(settings);

@@ -14,6 +14,8 @@ void main() {
     expect(settings.localeTag, 'en');
     expect(settings.collapsedCategoryIds, isEmpty);
     expect(settings.collapsedSidebarSectionIds, isEmpty);
+    expect(settings.matterNoteListPaneWidth, 380);
+    expect(settings.notebookNoteListPaneWidth, 380);
   });
 
   test('toJson/fromJson roundtrip preserves localeTag', () {
@@ -44,5 +46,21 @@ void main() {
     final restored = AppSettings.fromJson(original.toJson());
     expect(restored.collapsedCategoryIds, <String>['a', 'b']);
     expect(restored.collapsedSidebarSectionIds, <String>['views', 'notebooks']);
+  });
+
+  test('toJson/fromJson roundtrip preserves note list pane widths', () {
+    final original = AppSettings(
+      storageRootPath: '/tmp/chronicle',
+      clientId: 'client-id',
+      syncConfig: SyncConfig.initial(),
+      lastSyncAt: null,
+      matterNoteListPaneWidth: 244,
+      notebookNoteListPaneWidth: 312,
+    );
+
+    final restored = AppSettings.fromJson(original.toJson());
+
+    expect(restored.matterNoteListPaneWidth, 244);
+    expect(restored.notebookNoteListPaneWidth, 312);
   });
 }
