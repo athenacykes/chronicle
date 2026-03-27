@@ -213,6 +213,7 @@ class NoteEditorController extends AsyncNotifier<Note?> {
 
   Timer? _notebookDraftAutosaveTimer;
   int _notebookDraftSessionTokenCounter = 0;
+  int _noteSelectionRequestToken = 0;
   int _notebookFolderSelectionRequestToken = 0;
   int _matterSelectionRequestToken = 0;
   int _workspaceResolutionToken = 0;
@@ -228,18 +229,28 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }
 
   Future<void> selectNote(String? noteId) async {
+    final requestToken = ++_noteSelectionRequestToken;
     if (noteId == null) {
-      state = const AsyncData(null);
       ref.read(selectedNoteIdProvider.notifier).set(null);
+      state = const AsyncData(null);
       return;
     }
 
     _cancelNotebookDraftAutosave();
     ref.read(notebookDraftSessionProvider.notifier).set(null);
 
-    final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
-    state = AsyncData(note);
+    // Set selectedNoteIdProvider BEFORE the async load so that any
+    // concurrent unawaited autosave flush (which checks
+    // selectedNoteIdProvider to decide whether to update controller state)
+    // sees the new target note ID and does not overwrite the state with
+    // the old note's data.
     ref.read(selectedNoteIdProvider.notifier).set(noteId);
+
+    final note = await ref.read(noteRepositoryProvider).getNoteById(noteId);
+    if (requestToken != _noteSelectionRequestToken) {
+      return;
+    }
+    state = AsyncData(note);
   }
 
   Future<Note?> createNoteForSelectedMatter() async {
@@ -496,6 +507,9 @@ class NoteEditorController extends AsyncNotifier<Note?> {
   }) {
     final draft = ref.read(notebookDraftSessionProvider);
     if (draft == null) {
+      return;
+    }
+    if (!_isDraftContextStillActive(draft)) {
       return;
     }
     final nextTitle = title ?? draft.title;

@@ -1,17 +1,10 @@
 part of '../chronicle_home_coordinator.dart';
 
 class _NotebookNoteAutosaveSnapshot {
-  _NotebookNoteAutosaveSnapshot({
-    required this.noteId,
-    required this.title,
-    required this.content,
-    required this.tags,
-  });
+  _NotebookNoteAutosaveSnapshot({required this.noteId, required this.content});
 
   final String noteId;
-  final String title;
   final String content;
-  final List<String> tags;
 }
 
 class _NoteEditorPane extends ConsumerStatefulWidget {
@@ -31,11 +24,13 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   Timer? _notebookNoteAutosaveTimer;
   _NotebookNoteAutosaveSnapshot? _pendingNotebookNoteAutosave;
   bool _suppressEditorInputListeners = false;
+  String _lastObservedContentText = '';
 
   @override
   void initState() {
     super.initState();
     _contentController = MarkdownCodeController(text: '');
+    _lastObservedContentText = _contentController.text;
     _contentController.addListener(_handleEditorContentChanged);
   }
 
@@ -53,29 +48,48 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     if (_suppressEditorInputListeners) {
       return;
     }
+    final currentContent = _contentController.text;
+    if (currentContent == _lastObservedContentText) {
+      return;
+    }
+    _lastObservedContentText = currentContent;
 
     final draft = ref.read(notebookDraftSessionProvider);
     if (draft != null) {
+      // Only forward changes to the draft when in pure draft mode (no
+      // persisted note loaded). If a real note is loaded, ignore the draft
+      // session to prevent content from one note leaking into a draft.
+      if (_loadedNoteId != null) {
+        return;
+      }
       ref
           .read(noteEditorControllerProvider.notifier)
-          .updateNotebookDraft(content: _contentController.text);
+          .updateNotebookDraft(content: currentContent);
       return;
     }
 
-    final note = ref.read(noteEditorControllerProvider).value;
     final editorMode = ref.read(noteEditorViewModeProvider);
-    if (note == null || editorMode != NoteEditorViewMode.edit) {
+    final loadedNoteId = _loadedNoteId;
+    if (loadedNoteId == null || editorMode != NoteEditorViewMode.edit) {
       return;
     }
-    _queueNotebookNoteAutosave(note.id);
+    // Verify the loaded note still matches the controller's current note
+    // to guard against deferred listener callbacks firing after a note switch.
+    final controllerNoteId =
+        ref.read(noteEditorControllerProvider).asData?.value?.id;
+    if (controllerNoteId != loadedNoteId) {
+      return;
+    }
+    _queueNotebookNoteAutosave(noteId: loadedNoteId, content: currentContent);
   }
 
-  void _queueNotebookNoteAutosave(String noteId) {
+  void _queueNotebookNoteAutosave({
+    required String noteId,
+    required String content,
+  }) {
     _pendingNotebookNoteAutosave = _NotebookNoteAutosaveSnapshot(
       noteId: noteId,
-      title: _titleController.text.trim(),
-      content: _contentController.text,
-      tags: _parsedTags(_tagsController.text),
+      content: content,
     );
     _notebookNoteAutosaveTimer?.cancel();
     _notebookNoteAutosaveTimer = Timer(const Duration(milliseconds: 650), () {
@@ -99,21 +113,13 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     final existing = await ref
         .read(noteRepositoryProvider)
         .getNoteById(pending.noteId);
-    if (existing == null ||
-        (existing.title == pending.title &&
-            existing.content == pending.content &&
-            _stringListsEqual(existing.tags, pending.tags))) {
+    if (existing == null || existing.content == pending.content) {
       return;
     }
 
     await ref
         .read(noteEditorControllerProvider.notifier)
-        .updateNoteById(
-          noteId: pending.noteId,
-          title: pending.title,
-          content: pending.content,
-          tags: pending.tags,
-        );
+        .updateNoteById(noteId: pending.noteId, content: pending.content);
   }
 
   List<String> _parsedTags(String value) {
@@ -277,7 +283,10 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
           _loadedDraftSessionToken = notebookDraft.draftSessionToken;
           _suppressEditorInputListeners = true;
           _titleController.text = notebookDraft.title;
-          _contentController.text = notebookDraft.content;
+          // Use fullText to bypass CodeController's edit-diffing logic
+          // which can produce mangled content when switching between notes.
+          _contentController.fullText = notebookDraft.content;
+          _lastObservedContentText = _contentController.text;
           _tagsController.text = notebookDraft.tags.join(', ');
           _suppressEditorInputListeners = false;
         }
@@ -374,11 +383,19 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
       _loadedNoteId = note.id;
       _loadedDraftSessionToken = null;
       _suppressEditorInputListeners = true;
-      _contentController.text = note.content;
+      _titleController.text = note.title;
+      // Use fullText to bypass CodeController's edit-diffing logic.
+      // The standard .text setter runs through CodeController.set value which
+      // diffs the old and new text as if it were a user edit. When note A's
+      // content is in the controller and note B's content is set, the diff
+      // can produce a mangled hybrid, writing the wrong content to disk.
+      _contentController.fullText = note.content;
+      _lastObservedContentText = _contentController.text;
       _tagsController.text = note.tags.join(', ');
       _suppressEditorInputListeners = false;
-    }
-    if (_titleController.text != note.title) {
+    } else if (_titleController.text != note.title) {
+      // Sync external title changes (e.g. from ChronicleNoteTitleHeader)
+      // only for the same note — never cross note boundaries.
       _titleController.text = note.title;
     }
 

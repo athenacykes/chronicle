@@ -3475,7 +3475,9 @@ Inline \$x^2\$ and:
     await tester.pumpAndSettle();
 
     final container = _containerForApp(tester);
-    await container.read(noteEditorControllerProvider.notifier).selectNote('note-2');
+    await container
+        .read(noteEditorControllerProvider.notifier)
+        .selectNote('note-2');
     await tester.pump();
 
     expect(find.text('Select a note to edit.'), findsNothing);
@@ -3541,6 +3543,173 @@ Inline \$x^2\$ and:
       expect(
         noteRepository.noteById('note-2')?.content,
         '# Second Matter Note\noriginal second body',
+      );
+    },
+  );
+
+  testWidgets(
+    'selection-only listener during note switch never copies stale buffer into destination note',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final secondMatterNote = noteTwo.copyWith(
+        matterId: 'matter-1',
+        phaseId: 'phase-start',
+        title: 'Second Matter Note',
+        content: '# Second Matter Note\noriginal second body',
+        tags: const <String>['second'],
+      );
+      final noteRepository = _MemoryNoteRepository(<Note>[
+        noteOne,
+        secondMatterNote,
+      ]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+            noteEditorViewModeProvider.overrideWithBuild(
+              (ref, notifier) => NoteEditorViewMode.edit,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      final codeField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      final selectionOffset = codeField.controller.text.isEmpty ? 0 : 1;
+
+      await container
+          .read(noteEditorControllerProvider.notifier)
+          .selectNote('note-2');
+      codeField.controller.selection = TextSelection.collapsed(
+        offset: selectionOffset,
+      );
+
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pumpAndSettle();
+
+      expect(
+        noteRepository.noteById('note-1')?.content,
+        '# Editor Note\ncontent',
+      );
+      expect(
+        noteRepository.noteById('note-2')?.content,
+        '# Second Matter Note\noriginal second body',
+      );
+    },
+  );
+
+  testWidgets(
+    'switching notebook folders and back without edits keeps note contents unchanged',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final folderTwo = NotebookFolder(
+        id: 'folder-2',
+        name: 'Folder Two',
+        parentId: null,
+        createdAt: now,
+        updatedAt: now,
+      );
+      final folderOneNote = noteOne.copyWith(
+        id: 'notebook-1',
+        matterId: null,
+        phaseId: null,
+        notebookFolderId: 'folder-1',
+        title: 'Notebook One',
+        content: '39<br>QR-UAT-ADMINE-138 |',
+        tags: const <String>['one'],
+      );
+      final folderTwoNote = noteOne.copyWith(
+        id: 'notebook-2',
+        matterId: null,
+        phaseId: null,
+        notebookFolderId: 'folder-2',
+        title: 'Notebook Two',
+        content: 'Stable destination content',
+        tags: const <String>['two'],
+      );
+      final noteRepository = _MemoryNoteRepository(<Note>[
+        folderOneNote,
+        folderTwoNote,
+      ]);
+      final notebookRepository = _MemoryNotebookRepository(<NotebookFolder>[
+        notebookFolder,
+        folderTwo,
+      ]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            showNotebookProvider.overrideWithBuild((ref, notifier) => true),
+            selectedNotebookFolderIdProvider.overrideWithBuild(
+              (ref, notifier) => 'folder-1',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'notebook-1',
+            ),
+            noteEditorViewModeProvider.overrideWithBuild(
+              (ref, notifier) => NoteEditorViewMode.edit,
+            ),
+            notebookRepositoryProvider.overrideWithValue(notebookRepository),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      final codeField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      final selectionOffset = codeField.controller.text.isEmpty ? 0 : 1;
+
+      await container
+          .read(noteEditorControllerProvider.notifier)
+          .openNotebookFolderInWorkspace('folder-2');
+      codeField.controller.selection = TextSelection.collapsed(
+        offset: selectionOffset,
+      );
+      await container
+          .read(noteEditorControllerProvider.notifier)
+          .openNotebookFolderInWorkspace('folder-1');
+      codeField.controller.selection = TextSelection.collapsed(
+        offset: selectionOffset,
+      );
+
+      await tester.pump(const Duration(milliseconds: 900));
+      await tester.pumpAndSettle();
+
+      expect(
+        noteRepository.noteById('notebook-1')?.content,
+        '39<br>QR-UAT-ADMINE-138 |',
+      );
+      expect(
+        noteRepository.noteById('notebook-2')?.content,
+        'Stable destination content',
       );
     },
   );
@@ -3821,6 +3990,65 @@ Inline \$x^2\$ and:
 
     expect(noteRepository.noteById('note-1')?.title, 'Header Edited Title');
   });
+
+  testWidgets(
+    'switching notes while title is being edited never applies title to destination note',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final secondMatterNote = noteTwo.copyWith(
+        matterId: 'matter-1',
+        phaseId: 'phase-start',
+        title: 'Second Matter Note',
+        content: '# Second Matter Note\ncontent',
+        tags: const <String>['second'],
+      );
+      final noteRepository = _MemoryNoteRepository(<Note>[
+        noteOne,
+        secondMatterNote,
+      ]);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: noteRepository,
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: true,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = _containerForApp(tester);
+      await tester.tap(find.byKey(const Key('note_header_title_display')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('note_header_title_edit')),
+        'Leaked Title',
+      );
+
+      await container
+          .read(noteEditorControllerProvider.notifier)
+          .selectNote('note-2');
+      await tester.pumpAndSettle();
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(noteRepository.noteById('note-2')?.title, 'Second Matter Note');
+    },
+  );
 
   testWidgets('macOS note editor save uses existing controller path', (
     tester,

@@ -31,6 +31,7 @@ class _ChronicleNoteTitleHeaderState
   final TextEditingController _titleController = TextEditingController();
   final FocusNode _titleFocusNode = FocusNode();
   bool _editing = false;
+  String? _editingSourceNoteId;
 
   @override
   void initState() {
@@ -45,6 +46,10 @@ class _ChronicleNoteTitleHeaderState
     final noteChanged =
         oldWidget.note?.id != widget.note?.id ||
         oldWidget.note?.title != widget.note?.title;
+    if (oldWidget.note?.id != widget.note?.id && _editing) {
+      _editing = false;
+      _editingSourceNoteId = null;
+    }
     if (noteChanged && !_editing) {
       _titleController.text = widget.note?.title ?? '';
     }
@@ -67,6 +72,7 @@ class _ChronicleNoteTitleHeaderState
     }
     setState(() {
       _editing = true;
+      _editingSourceNoteId = widget.note?.id;
       _titleController.text = widget.note?.title ?? '';
     });
     await Future<void>.delayed(Duration.zero);
@@ -84,13 +90,17 @@ class _ChronicleNoteTitleHeaderState
     if (!_editing) {
       return;
     }
+    final editingSourceNoteId = _editingSourceNoteId;
     final note = widget.note;
-    if (note != null && widget.canEdit) {
+    if (note != null &&
+        widget.canEdit &&
+        editingSourceNoteId != null &&
+        note.id == editingSourceNoteId) {
       final nextTitle = _titleController.text.trim();
       if (nextTitle != note.title) {
         await ref
             .read(noteEditorControllerProvider.notifier)
-            .updateCurrent(title: nextTitle);
+            .updateNoteById(noteId: editingSourceNoteId, title: nextTitle);
       }
     }
     if (!mounted) {
@@ -98,6 +108,7 @@ class _ChronicleNoteTitleHeaderState
     }
     setState(() {
       _editing = false;
+      _editingSourceNoteId = null;
     });
   }
 
