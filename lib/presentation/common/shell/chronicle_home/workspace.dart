@@ -41,7 +41,10 @@ class _MainWorkspace extends ConsumerWidget {
 
     final sections = ref.watch(mattersControllerProvider).asData?.value;
     final selectedMatterId = ref.watch(selectedMatterIdProvider);
-    if (sections == null || selectedMatterId == null) {
+    if (selectedMatterId == null) {
+      return const _WelcomeTourWorkspace();
+    }
+    if (sections == null) {
       return Center(child: Text(l10n.selectMatterNotebookOrConflictsPrompt));
     }
 
@@ -52,6 +55,216 @@ class _MainWorkspace extends ConsumerWidget {
     }
 
     return _MatterWorkspace(matter: selected);
+  }
+}
+
+class _WelcomeTourWorkspace extends ConsumerWidget {
+  const _WelcomeTourWorkspace();
+
+  Future<void> _createMatter(BuildContext context, WidgetRef ref) async {
+    final selectedMatterId = ref.read(selectedMatterIdProvider);
+    final defaultCategoryId = selectedMatterId == null
+        ? null
+        : ref
+              .read(mattersControllerProvider.notifier)
+              .findMatter(selectedMatterId)
+              ?.categoryId;
+    final result = await showDialog<ChronicleMatterDialogResult>(
+      context: context,
+      builder: (_) =>
+          const ChronicleMatterDialog(mode: ChronicleMatterDialogMode.create),
+    );
+
+    if (result == null || result.title.trim().isEmpty) {
+      return;
+    }
+
+    await ref
+        .read(mattersControllerProvider.notifier)
+        .createMatter(
+          title: result.title,
+          description: result.description,
+          categoryId: defaultCategoryId,
+          status: result.status,
+          color: result.color,
+          icon: result.icon,
+          isPinned: result.isPinned,
+        );
+    ref.invalidate(noteListProvider);
+  }
+
+  void _openNotebook(WidgetRef ref) {
+    ref.read(selectedTimeViewProvider.notifier).set(null);
+    ref.read(showNotebookProvider.notifier).set(true);
+    ref.read(showConflictsProvider.notifier).set(false);
+    ref.read(selectedMatterIdProvider.notifier).set(null);
+    ref.read(selectedPhaseIdProvider.notifier).set(null);
+    ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
+    ref.invalidate(notebookNoteListProvider);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final titleStyle = isMacOSNativeUI
+        ? MacosTheme.of(
+            context,
+          ).typography.title2.copyWith(fontWeight: MacosFontWeight.w700)
+        : Theme.of(context).textTheme.headlineSmall;
+    final subtitleStyle = isMacOSNativeUI
+        ? MacosTheme.of(context).typography.body
+        : Theme.of(context).textTheme.bodyMedium;
+    final panelDecoration = isMacOSNativeUI
+        ? _macosPanelDecoration(context)
+        : BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border.all(color: Theme.of(context).dividerColor),
+            borderRadius: BorderRadius.circular(12),
+          );
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 860),
+          child: Container(
+            key: const Key('welcome_tour_panel'),
+            decoration: panelDecoration,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(l10n.welcomeTourHeadline, style: titleStyle),
+                const SizedBox(height: 10),
+                Text(l10n.welcomeTourDescription, style: subtitleStyle),
+                const SizedBox(height: 18),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: <Widget>[
+                    _WelcomeTourStepCard(
+                      icon: isMacOSNativeUI
+                          ? CupertinoIcons.square_grid_2x2
+                          : Icons.workspaces_outline,
+                      title: l10n.welcomeTourMatterStepTitle,
+                      description: l10n.welcomeTourMatterStepDescription,
+                    ),
+                    _WelcomeTourStepCard(
+                      icon: isMacOSNativeUI
+                          ? CupertinoIcons.arrow_right_circle
+                          : Icons.alt_route,
+                      title: l10n.welcomeTourPhaseStepTitle,
+                      description: l10n.welcomeTourPhaseStepDescription,
+                    ),
+                    _WelcomeTourStepCard(
+                      icon: isMacOSNativeUI
+                          ? CupertinoIcons.doc_text
+                          : Icons.sticky_note_2_outlined,
+                      title: l10n.welcomeTourNoteStepTitle,
+                      description: l10n.welcomeTourNoteStepDescription,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: <Widget>[
+                    if (isMacOSNativeUI)
+                      PushButton(
+                        key: const Key('welcome_tour_create_matter_button'),
+                        controlSize: ControlSize.large,
+                        onPressed: () async {
+                          await _createMatter(context, ref);
+                        },
+                        child: Text(l10n.welcomeTourCreateMatterAction),
+                      )
+                    else
+                      FilledButton.icon(
+                        key: const Key('welcome_tour_create_matter_button'),
+                        onPressed: () async {
+                          await _createMatter(context, ref);
+                        },
+                        icon: const Icon(Icons.add_circle_outline),
+                        label: Text(l10n.welcomeTourCreateMatterAction),
+                      ),
+                    if (isMacOSNativeUI)
+                      PushButton(
+                        key: const Key('welcome_tour_open_notebook_button'),
+                        controlSize: ControlSize.large,
+                        secondary: true,
+                        onPressed: () {
+                          _openNotebook(ref);
+                        },
+                        child: Text(l10n.welcomeTourOpenNotebookAction),
+                      )
+                    else
+                      OutlinedButton.icon(
+                        key: const Key('welcome_tour_open_notebook_button'),
+                        onPressed: () {
+                          _openNotebook(ref);
+                        },
+                        icon: const Icon(Icons.menu_book_outlined),
+                        label: Text(l10n.welcomeTourOpenNotebookAction),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WelcomeTourStepCard extends StatelessWidget {
+  const _WelcomeTourStepCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+    final borderColor = isMacOSNativeUI
+        ? MacosTheme.of(context).dividerColor
+        : Theme.of(context).dividerColor;
+    final titleStyle = isMacOSNativeUI
+        ? MacosTheme.of(
+            context,
+          ).typography.headline.copyWith(fontWeight: MacosFontWeight.w600)
+        : Theme.of(context).textTheme.titleSmall;
+    final bodyStyle = isMacOSNativeUI
+        ? MacosTheme.of(context).typography.caption1
+        : Theme.of(context).textTheme.bodySmall;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 220, maxWidth: 264),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: borderColor),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(icon, size: 20),
+            const SizedBox(height: 8),
+            Text(title, style: titleStyle),
+            const SizedBox(height: 6),
+            Text(description, style: bodyStyle),
+          ],
+        ),
+      ),
+    );
   }
 }
 

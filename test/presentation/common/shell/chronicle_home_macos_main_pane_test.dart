@@ -272,6 +272,132 @@ void main() {
     expect(find.byType(MacosPulldownButton), findsWidgets);
   });
 
+  testWidgets('empty workspace shows one-screen welcome tour', (tester) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(const <Matter>[]),
+      noteRepository: _MemoryNoteRepository(const <Note>[]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(_buildApp(useMacOSNativeUI: true, repos: repos));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('welcome_tour_panel')), findsOneWidget);
+    expect(find.text('Welcome to Chronicle'), findsOneWidget);
+    expect(
+      find.byKey(const Key('welcome_tour_create_matter_button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('welcome_tour_open_notebook_button')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('welcome tour Create Matter action creates a matter', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final matterRepository = _MemoryMatterRepository(const <Matter>[]);
+    final repos = _TestRepos(
+      matterRepository: matterRepository,
+      noteRepository: _MemoryNoteRepository(const <Note>[]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(_buildApp(useMacOSNativeUI: false, repos: repos));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('welcome_tour_create_matter_button')),
+    );
+    await tester.pumpAndSettle();
+
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget);
+    await tester.enterText(
+      find.descendant(of: dialog, matching: find.byType(TextField)).at(0),
+      'Welcome Tour Matter',
+    );
+    await tester.enterText(
+      find.descendant(of: dialog, matching: find.byType(TextField)).at(1),
+      'Created from welcome tour',
+    );
+    await tester.tap(find.text('Create').last);
+    await tester.pumpAndSettle();
+
+    final matters = await matterRepository.listMatters();
+    expect(matters, hasLength(1));
+    expect(matters.first.title, 'Welcome Tour Matter');
+
+    final container = _containerForApp(tester);
+    expect(container.read(selectedMatterIdProvider), 'matter-1');
+    expect(find.byKey(const Key('welcome_tour_panel')), findsNothing);
+  });
+
+  testWidgets('welcome tour Open Notebook action switches workspace mode', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(const <Matter>[]),
+      noteRepository: _MemoryNoteRepository(const <Note>[]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(_buildApp(useMacOSNativeUI: false, repos: repos));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('welcome_tour_open_notebook_button')),
+    );
+    await tester.pumpAndSettle();
+
+    final container = _containerForApp(tester);
+    expect(container.read(showOrphansProvider), isTrue);
+    expect(container.read(selectedMatterIdProvider), isNull);
+    expect(
+      find.byKey(const Key('macos_notebook_new_note_button')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('welcome_tour_panel')), findsNothing);
+  });
+
+  testWidgets('welcome tour is hidden when a matter is selected', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('welcome_tour_panel')), findsNothing);
+    expect(
+      find.byKey(const Key('matter_top_phase_menu_button')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'top phase control shows All Phases label when filter is unselected',
     (tester) async {
