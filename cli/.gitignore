@@ -1,0 +1,59 @@
+# Chronicle CLI - Git Ignore
+
+# Built binaries
+chronicle
+chronicle-linux
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Distribution packages
+dist/
+*.tar.gz
+*.tar.gz.sha256
+*.zip
+
+# Go build artifacts
+*.o
+*.a
+*.test
+*.out
+/vendor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test coverage
+coverage.out
+coverage.html
+*.cover
+
+# Debug files
+debug
+__debug_bin
+*.log
+
+# Local configuration (may contain secrets)
+chronicle.json
+chronicle.yaml
+chronicle.yml
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+/tmp/
+/temp/
+
+# OS files
+Thumbs.db
