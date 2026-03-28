@@ -21,6 +21,8 @@ Define a consistent test strategy for Chronicle changes, with mandatory targeted
 - Golden updates are allowed only for intentional UI changes.
 - Large refactors require targeted shell tests plus full `flutter test`.
 - Note integrity is mandatory: read-only flows (select/view/navigation) must produce zero note content/title persistence changes.
+- Critical bug fixes must leave behind a regression matrix, not a single happy-path assertion. Cover stale callbacks, pending debounces, recovery paths, and restart-sensitive state when those risks exist.
+- Sync correctness changes must verify both behavior and bookkeeping: conflicts, blockers, and local metadata/history persistence all need direct assertions.
 
 ## Workflow
 1. Map changed files to existing test locations and identify coverage gaps.
@@ -32,11 +34,20 @@ Define a consistent test strategy for Chronicle changes, with mandatory targeted
 7. When editor/draft/autosave/navigation paths are touched, include regressions for:
    - switching/selecting notes does not mutate non-edited notes,
    - matter/folder/search navigation does not write note title/content,
-   - draft/session switches do not leak title/content across notes or sessions.
+   - draft/session switches do not leak title/content across notes or sessions,
+   - stale debounce/listener callbacks do not save into the newly selected note.
+8. When sync/conflict/storage paths are touched, include regressions for:
+   - conflict detection exposes detail/fingerprint data for review flows,
+   - conflict history or blocker state survives reload where designed,
+   - local create/update/delete paths emit sync metadata exactly once,
+   - recovery/conflict resolution preserves post-sync invalidation ordering.
 
 ## Verification Commands
 - `flutter analyze`
 - `flutter test test/presentation/common/shell/chronicle_home_macos_main_pane_test.dart`
+- `flutter test test/data/sync_webdav/webdav_sync_engine_test.dart`
+- `flutter test test/data/sync_webdav/local_sync_metadata_store_test.dart`
+- `flutter test test/data/local_fs/local_settings_repository_test.dart`
 - `flutter test`
 - `flutter test test/golden/platform_shell_golden_test.dart`
 - `flutter test test/golden/platform_shell_golden_test.dart --update-goldens` (intentional UI changes only)
@@ -47,3 +58,4 @@ Define a consistent test strategy for Chronicle changes, with mandatory targeted
 - Golden changes are intentional and reviewed.
 - Analyzer passes without new issues.
 - Test evidence confirms note title/content persistence changes occur only under explicit write-intent operations.
+- Test evidence also confirms sync blockers, conflicts, and metadata tracking remain coherent across the changed paths.

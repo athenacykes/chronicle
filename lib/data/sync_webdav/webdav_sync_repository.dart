@@ -1,5 +1,6 @@
 import '../../core/clock.dart';
 import '../../domain/entities/enums.dart';
+import '../../domain/entities/sync_bootstrap_assessment.dart';
 import '../../domain/entities/sync_config.dart';
 import '../../domain/entities/sync_result.dart';
 import '../../domain/entities/sync_run_options.dart';
@@ -45,6 +46,45 @@ class WebDavSyncRepository implements SyncRepository {
   @override
   Future<String?> getPassword() {
     return _settingsRepository.readSyncPassword();
+  }
+
+  @override
+  Future<SyncBootstrapAssessment> assessBootstrap({
+    required SyncConfig config,
+    required String storageRootPath,
+    String? password,
+  }) async {
+    final normalizedRoot = storageRootPath.trim();
+    if (config.type != SyncTargetType.webdav ||
+        config.url.trim().isEmpty ||
+        config.username.trim().isEmpty ||
+        normalizedRoot.isEmpty) {
+      return SyncBootstrapAssessment.fromCounts(
+        localItemCount: 0,
+        remoteItemCount: 0,
+      );
+    }
+
+    final effectivePassword = password != null && password.trim().isNotEmpty
+        ? password.trim()
+        : await _settingsRepository.readSyncPassword();
+    if (effectivePassword == null || effectivePassword.isEmpty) {
+      return SyncBootstrapAssessment.fromCounts(
+        localItemCount: 0,
+        remoteItemCount: 0,
+      );
+    }
+
+    final proxyPassword = await _settingsRepository.readSyncProxyPassword();
+    final client = _clientFactory.create(
+      config: config,
+      password: effectivePassword,
+      proxyPassword: proxyPassword,
+    );
+    return _syncEngine.assessBootstrap(
+      client: client,
+      storageRootPath: normalizedRoot,
+    );
   }
 
   @override

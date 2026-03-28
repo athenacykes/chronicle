@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:chronicle/app/app_providers.dart';
 import 'package:chronicle/domain/entities/note_search_hit.dart';
 import 'package:chronicle/domain/entities/search_query.dart';
+import 'package:chronicle/domain/entities/sync_bootstrap_assessment.dart';
 import 'package:chronicle/domain/entities/sync_blocker.dart';
 import 'package:chronicle/domain/entities/sync_conflict.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
@@ -145,6 +146,18 @@ class _ThrowingSyncRepository implements SyncRepository {
   Future<String?> getPassword() async => null;
 
   @override
+  Future<SyncBootstrapAssessment> assessBootstrap({
+    required SyncConfig config,
+    required String storageRootPath,
+    String? password,
+  }) async {
+    return SyncBootstrapAssessment.fromCounts(
+      localItemCount: 0,
+      remoteItemCount: 0,
+    );
+  }
+
+  @override
   Future<void> saveConfig(SyncConfig config, {String? password}) async {}
 
   @override
@@ -186,6 +199,18 @@ class _BlockingSyncRepository implements SyncRepository {
   Future<String?> getPassword() async => null;
 
   @override
+  Future<SyncBootstrapAssessment> assessBootstrap({
+    required SyncConfig config,
+    required String storageRootPath,
+    String? password,
+  }) async {
+    return SyncBootstrapAssessment.fromCounts(
+      localItemCount: 0,
+      remoteItemCount: 0,
+    );
+  }
+
+  @override
   Future<void> saveConfig(SyncConfig config, {String? password}) async {}
 
   @override
@@ -209,6 +234,18 @@ class _RecordingSyncRepository implements SyncRepository {
 
   @override
   Future<String?> getPassword() async => null;
+
+  @override
+  Future<SyncBootstrapAssessment> assessBootstrap({
+    required SyncConfig config,
+    required String storageRootPath,
+    String? password,
+  }) async {
+    return SyncBootstrapAssessment.fromCounts(
+      localItemCount: 0,
+      remoteItemCount: 0,
+    );
+  }
 
   @override
   Future<void> saveConfig(SyncConfig config, {String? password}) async {}

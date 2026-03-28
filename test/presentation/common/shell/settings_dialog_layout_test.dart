@@ -1,9 +1,16 @@
 import 'package:chronicle/app/app_providers.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
 import 'package:chronicle/domain/entities/enums.dart';
+import 'package:chronicle/domain/entities/note_search_hit.dart';
+import 'package:chronicle/domain/entities/search_query.dart';
+import 'package:chronicle/domain/entities/sync_bootstrap_assessment.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
 import 'package:chronicle/domain/entities/sync_proxy_config.dart';
+import 'package:chronicle/domain/entities/sync_result.dart';
+import 'package:chronicle/domain/entities/sync_run_options.dart';
+import 'package:chronicle/domain/repositories/search_repository.dart';
 import 'package:chronicle/domain/repositories/settings_repository.dart';
+import 'package:chronicle/domain/repositories/sync_repository.dart';
 import 'package:chronicle/l10n/generated/app_localizations.dart';
 import 'package:chronicle/presentation/common/shell/chronicle_home_coordinator.dart';
 import 'package:chronicle/presentation/settings/settings_controller.dart';
@@ -147,6 +154,112 @@ void main() {
     expect(find.text('Proxy username'), findsOneWidget);
     expect(find.text('Proxy password'), findsOneWidget);
   });
+
+  testWidgets(
+    'settings dialog requires double confirmation for replace remote with local',
+    (tester) async {
+      final syncRepository = _TrackingSyncRepository(
+        assessment: SyncBootstrapAssessment.fromCounts(
+          localItemCount: 2,
+          remoteItemCount: 3,
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          settingsRepositoryProvider.overrideWithValue(
+            _FakeSettingsRepository(
+              AppSettings(
+                storageRootPath: '/tmp/chronicle-test',
+                clientId: 'settings-layout-client',
+                syncConfig: SyncConfig(
+                  type: SyncTargetType.webdav,
+                  url: 'https://old.example.com/dav/Chronicle',
+                  username: 'chronicle-user',
+                  intervalMinutes: 5,
+                  failSafe: true,
+                  proxy: SyncProxyConfig.initial(),
+                ),
+                lastSyncAt: null,
+              ),
+            ),
+          ),
+          syncRepositoryProvider.overrideWithValue(syncRepository),
+          searchRepositoryProvider.overrideWithValue(_NoopSearchRepository()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(settingsControllerProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: Center(
+                  child: FilledButton(
+                    onPressed: () {
+                      showChronicleSettingsDialog(
+                        context: context,
+                        useMacOSNativeUI: false,
+                      );
+                    },
+                    child: const Text('Open settings'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Sync'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'WebDAV URL',
+        ),
+        'https://new.example.com/dav/Chronicle',
+      );
+
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Choose Source Of Truth'), findsOneWidget);
+      expect(
+        find.textContaining('Local items: 2. Remote items: 3.'),
+        findsOneWidget,
+      );
+      expect(syncRepository.lastOptions, isNull);
+
+      await tester.tap(find.text('Replace Remote With Local'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Local Wins Recovery'), findsOneWidget);
+      await tester.tap(find.text('Continue').last);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Clear Remote And Replace It?'), findsOneWidget);
+      expect(syncRepository.lastSavedConfig, isNull);
+      expect(syncRepository.lastOptions, isNull);
+
+      await tester.tap(find.text('Cancel').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Settings'), findsOneWidget);
+      expect(syncRepository.lastSavedConfig, isNull);
+      expect(syncRepository.lastOptions, isNull);
+    },
+  );
 }
 
 class _FakeSettingsRepository implements SettingsRepository {
@@ -193,5 +306,55 @@ class _FakeSettingsRepository implements SettingsRepository {
   @override
   Future<void> setStorageRootPath(String path) async {
     _settings = _settings.copyWith(storageRootPath: path);
+  }
+}
+
+class _TrackingSyncRepository implements SyncRepository {
+  _TrackingSyncRepository({required this.assessment});
+
+  final SyncBootstrapAssessment assessment;
+  SyncConfig? lastSavedConfig;
+  SyncRunOptions? lastOptions;
+
+  @override
+  Future<SyncConfig> getConfig() async => SyncConfig.initial();
+
+  @override
+  Future<String?> getPassword() async => null;
+
+  @override
+  Future<SyncBootstrapAssessment> assessBootstrap({
+    required SyncConfig config,
+    required String storageRootPath,
+    String? password,
+  }) async {
+    return assessment;
+  }
+
+  @override
+  Future<void> saveConfig(SyncConfig config, {String? password}) async {
+    lastSavedConfig = config;
+  }
+
+  @override
+  Future<SyncResult> syncNow({
+    SyncRunOptions options = const SyncRunOptions(),
+    SyncProgressCallback? onProgress,
+  }) async {
+    lastOptions = options;
+    return SyncResult.empty(DateTime.utc(2026, 3, 28, 12));
+  }
+}
+
+class _NoopSearchRepository implements SearchRepository {
+  @override
+  Future<List<String>> listTags() async => const <String>[];
+
+  @override
+  Future<void> rebuildIndex() async {}
+
+  @override
+  Future<List<NoteSearchHit>> search(SearchQuery query) async {
+    return const <NoteSearchHit>[];
   }
 }

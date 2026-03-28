@@ -17,6 +17,7 @@ import 'package:chronicle/data/sync_webdav/sync_local_metadata_tracker.dart';
 import 'package:chronicle/data/sync_webdav/webdav_sync_engine.dart';
 import 'package:chronicle/data/sync_webdav/webdav_types.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
+import 'package:chronicle/domain/entities/sync_bootstrap_assessment.dart';
 import 'package:chronicle/domain/entities/sync_blocker.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
 import 'package:chronicle/domain/entities/sync_conflict.dart';
@@ -118,6 +119,13 @@ void main() {
     return metadataTracker.rebuildFromDisk();
   }
 
+  Future<SyncBootstrapAssessment> assessBootstrap() {
+    return syncEngine.assessBootstrap(
+      client: webDavClient,
+      storageRootPath: rootDir.path,
+    );
+  }
+
   String currentNamespace() {
     return syncStateStore.buildNamespace(
       syncTargetUrl: syncTargetUrl,
@@ -146,6 +154,88 @@ void main() {
       ),
     );
   }
+
+  test('bootstrap assessment treats initialized skeleton as empty', () async {
+    final assessment = await assessBootstrap();
+
+    expect(assessment.scenario, SyncBootstrapScenario.neither);
+    expect(assessment.localItemCount, 0);
+    expect(assessment.remoteItemCount, 0);
+  });
+
+  test('bootstrap assessment reports local-only content', () async {
+    final layout = ChronicleLayout(rootDir);
+    await const FileSystemUtils().atomicWriteString(
+      layout.notebookRootNoteFile('local-note'),
+      'local content',
+    );
+
+    final assessment = await assessBootstrap();
+
+    expect(assessment.scenario, SyncBootstrapScenario.localOnly);
+    expect(assessment.localItemCount, 1);
+    expect(assessment.remoteItemCount, 0);
+  });
+
+  test('bootstrap assessment reports remote-only content', () async {
+    await webDavClient.uploadFile(
+      'notebook/root/remote-note.md',
+      utf8.encode('remote content'),
+    );
+
+    final assessment = await assessBootstrap();
+
+    expect(assessment.scenario, SyncBootstrapScenario.remoteOnly);
+    expect(assessment.localItemCount, 0);
+    expect(assessment.remoteItemCount, 1);
+  });
+
+  test('bootstrap assessment ignores remote skeleton metadata', () async {
+    await webDavClient.uploadFile(
+      'info.json',
+      utf8.encode(
+        const JsonEncoder.withIndent('  ').convert(<String, dynamic>{
+          'app': 'chronicle',
+          'formatVersion': 2,
+          'createdAt': '2026-02-16T00:00:00Z',
+        }),
+      ),
+    );
+    await webDavClient.uploadFile(
+      'notebook/folders.json',
+      utf8.encode(
+        const JsonEncoder.withIndent(
+          '  ',
+        ).convert(<String, dynamic>{'folders': <dynamic>[]}),
+      ),
+    );
+
+    final assessment = await assessBootstrap();
+
+    expect(assessment.scenario, SyncBootstrapScenario.neither);
+    expect(assessment.remoteItemCount, 0);
+  });
+
+  test(
+    'bootstrap assessment reports both sides when local and remote exist',
+    () async {
+      final layout = ChronicleLayout(rootDir);
+      await const FileSystemUtils().atomicWriteString(
+        layout.notebookRootNoteFile('local-note'),
+        'local content',
+      );
+      await webDavClient.uploadFile(
+        'notebook/root/remote-note.md',
+        utf8.encode('remote content'),
+      );
+
+      final assessment = await assessBootstrap();
+
+      expect(assessment.scenario, SyncBootstrapScenario.both);
+      expect(assessment.localItemCount, 1);
+      expect(assessment.remoteItemCount, 1);
+    },
+  );
 
   test('classifies uploads and downloads', () async {
     final layout = ChronicleLayout(rootDir);

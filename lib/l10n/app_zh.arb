@@ -576,10 +576,33 @@
   "syncRecoverRemoteWinsAction": "将远端重新下载到本地",
   "syncOverrideRemoteLockAction": "覆盖锁并重试",
   "syncForceDeletionNextRunAction": "下次同步强制应用删除",
+  "syncBootstrapLocalOnlyTitle": "将本地内容上传到远端？",
+  "syncBootstrapLocalOnlyWarning": "本地已存在 Chronicle 内容，而所选远端看起来为空。是否继续并用本地内容初始化远端？",
+  "syncBootstrapRemoteOnlyTitle": "将远端内容下载到本地？",
+  "syncBootstrapRemoteOnlyWarning": "所选远端已存在 Chronicle 内容，而本地存储看起来为空。是否继续并把远端内容下载到这个本地存储？",
+  "syncBootstrapConflictTitle": "选择事实来源",
+  "syncBootstrapConflictWarning": "本地和所选远端都已存在 Chronicle 内容。请选择这个同步目标应以哪一侧覆盖另一侧。",
+  "syncBootstrapUseLocalAction": "用本地替换远端",
+  "syncBootstrapUseRemoteAction": "用远端替换本地",
+  "syncBootstrapCountsSummary": "本地项目：{local}。远端项目：{remote}。",
+  "@syncBootstrapCountsSummary": {
+    "placeholders": {
+      "local": {
+        "type": "int"
+      },
+      "remote": {
+        "type": "int"
+      }
+    }
+  },
   "syncRecoverLocalWinsTitle": "本地优先恢复",
   "syncRecoverLocalWinsWarning": "此操作会用本地数据覆盖远端，并可能删除远端中本地不存在的文件。建议先备份。",
+  "syncRecoverLocalWinsSecondTitle": "清空远端并替换？",
+  "syncRecoverLocalWinsSecondWarning": "这会永久清空远端目标中的 Chronicle 内容，并用本地内容替换。仅在确定应丢弃远端内容时继续。",
   "syncRecoverRemoteWinsTitle": "远端优先恢复",
   "syncRecoverRemoteWinsWarning": "此操作会用远端数据覆盖本地，并可能删除本地中远端不存在的文件。建议先备份。",
+  "syncRecoverRemoteWinsSecondTitle": "清空本地并替换？",
+  "syncRecoverRemoteWinsSecondWarning": "这会永久清空本地存储中的 Chronicle 内容，并用远端内容替换。仅在确定应丢弃本地内容时继续。",
   "syncOverrideRemoteLockTitle": "覆盖远端锁",
   "syncOverrideRemoteLockWarning": "这会删除 {summary} 的活动远端同步锁并立即重试。仅在确认该同步已不再运行时继续。",
   "@syncOverrideRemoteLockWarning": {

@@ -1,7 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
-import 'package:flutter_code_editor/src/code_field/search_result_highlighted_builder.dart';
 import 'package:highlight/languages/markdown.dart' as highlight_markdown;
 
 import 'markdown_code_highlighting.dart';
@@ -60,16 +58,7 @@ class MarkdownCodeController extends CodeController {
       );
     }
 
-    final spanBeforeSearch = TextSpan(style: style, children: spans);
-    final searchHighlightedSpan = SearchResultHighlightedBuilder(
-      searchResult: fullSearchResult,
-      rootStyle: style,
-      textSpan: spanBeforeSearch,
-      searchNavigationState: searchController.navigationController.value,
-    ).build();
-
-    lastTextSpan = searchHighlightedSpan;
-    return searchHighlightedSpan;
+    return TextSpan(style: style, children: spans);
   }
 }
 

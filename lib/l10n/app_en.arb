@@ -577,10 +577,33 @@
   "syncRecoverRemoteWinsAction": "Re-download remote to local",
   "syncOverrideRemoteLockAction": "Override lock and retry",
   "syncForceDeletionNextRunAction": "Force apply deletions (next run)",
+  "syncBootstrapLocalOnlyTitle": "Upload Local Content To Remote?",
+  "syncBootstrapLocalOnlyWarning": "Local Chronicle content exists, and the selected remote appears empty. Continue and upload local content to initialize the remote?",
+  "syncBootstrapRemoteOnlyTitle": "Download Remote Content To Local?",
+  "syncBootstrapRemoteOnlyWarning": "The selected remote already has Chronicle content, and the local storage appears empty. Continue and download the remote content into this local storage?",
+  "syncBootstrapConflictTitle": "Choose Source Of Truth",
+  "syncBootstrapConflictWarning": "Chronicle content exists both locally and on the selected remote. Choose which side should replace the other for this sync target.",
+  "syncBootstrapUseLocalAction": "Replace Remote With Local",
+  "syncBootstrapUseRemoteAction": "Replace Local With Remote",
+  "syncBootstrapCountsSummary": "Local items: {local}. Remote items: {remote}.",
+  "@syncBootstrapCountsSummary": {
+    "placeholders": {
+      "local": {
+        "type": "int"
+      },
+      "remote": {
+        "type": "int"
+      }
+    }
+  },
   "syncRecoverLocalWinsTitle": "Local Wins Recovery",
   "syncRecoverLocalWinsWarning": "This will overwrite remote data with local data and may delete remote files that do not exist locally. Back up first if needed.",
+  "syncRecoverLocalWinsSecondTitle": "Clear Remote And Replace It?",
+  "syncRecoverLocalWinsSecondWarning": "This will permanently clear Chronicle content from the remote target and replace it with local content. Continue only if the remote should be discarded.",
   "syncRecoverRemoteWinsTitle": "Remote Wins Recovery",
   "syncRecoverRemoteWinsWarning": "This will overwrite local data with remote data and may delete local files that do not exist remotely. Back up first if needed.",
+  "syncRecoverRemoteWinsSecondTitle": "Clear Local And Replace It?",
+  "syncRecoverRemoteWinsSecondWarning": "This will permanently clear Chronicle content from local storage and replace it with remote content. Continue only if the local content should be discarded.",
   "syncOverrideRemoteLockTitle": "Override Remote Lock",
   "syncOverrideRemoteLockWarning": "This will delete the active remote sync lock for {summary} and retry immediately. Proceed only if that sync is no longer running.",
   "@syncOverrideRemoteLockWarning": {

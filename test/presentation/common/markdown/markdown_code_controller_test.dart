@@ -71,26 +71,28 @@ void main() {
       text: '# Title\n```dart\nfinal value = 1;\n```\n',
     );
     final theme = markdownCodeThemeDataForBrightness(Brightness.light);
+    late TextSpan builtSpan;
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: CodeTheme(
-            data: theme,
-            child: CodeField(
-              controller: controller,
-              textStyle: const TextStyle(fontSize: 13),
-            ),
+        home: CodeTheme(
+          data: theme,
+          child: Builder(
+            builder: (context) {
+              builtSpan = controller.buildTextSpan(
+                context: context,
+                style: const TextStyle(fontSize: 13),
+                withComposing: false,
+              );
+              return const SizedBox.shrink();
+            },
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    final span = controller.lastTextSpan;
-    expect(span, isNotNull);
-
-    final chunks = _collectChunks(span!);
+    final chunks = _collectChunks(builtSpan);
     final titleChunk = chunks.firstWhere(
       (chunk) => chunk.text.contains('# Title'),
     );

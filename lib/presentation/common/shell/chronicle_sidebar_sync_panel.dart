@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
 
+import '../../../app/app_providers.dart';
 import '../../../domain/entities/sync_blocker.dart';
 import '../../../domain/entities/sync_progress.dart';
 import '../../../domain/entities/sync_status.dart';
@@ -102,12 +103,50 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
       return confirmed == true;
     }
 
+    Future<String?> currentBootstrapCountsSummary() async {
+      final currentSettings = ref
+          .read(settingsControllerProvider)
+          .asData
+          ?.value;
+      final storageRootPath = currentSettings?.storageRootPath?.trim();
+      if (currentSettings == null ||
+          storageRootPath == null ||
+          storageRootPath.isEmpty) {
+        return null;
+      }
+
+      try {
+        final assessment = await ref
+            .read(syncRepositoryProvider)
+            .assessBootstrap(
+              config: currentSettings.syncConfig,
+              storageRootPath: storageRootPath,
+            );
+        return l10n.syncBootstrapCountsSummary(
+          assessment.localItemCount,
+          assessment.remoteItemCount,
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
     Future<void> runRecoverLocalWins() async {
+      final countsSummary = await currentBootstrapCountsSummary();
       final confirmed = await confirmAction(
         title: l10n.syncRecoverLocalWinsTitle,
-        message: l10n.syncRecoverLocalWinsWarning,
+        message: countsSummary == null
+            ? l10n.syncRecoverLocalWinsWarning
+            : '${l10n.syncRecoverLocalWinsWarning}\n\n$countsSummary',
       );
       if (!confirmed) {
+        return;
+      }
+      final confirmedAgain = await confirmAction(
+        title: l10n.syncRecoverLocalWinsSecondTitle,
+        message: l10n.syncRecoverLocalWinsSecondWarning,
+      );
+      if (!confirmedAgain) {
         return;
       }
       await ref.read(syncControllerProvider.notifier).runRecoverLocalWins();
@@ -118,11 +157,21 @@ class ChronicleSidebarSyncPanel extends ConsumerWidget {
       if (!remoteRecoveryEnabled) {
         return;
       }
+      final countsSummary = await currentBootstrapCountsSummary();
       final confirmed = await confirmAction(
         title: l10n.syncRecoverRemoteWinsTitle,
-        message: l10n.syncRecoverRemoteWinsWarning,
+        message: countsSummary == null
+            ? l10n.syncRecoverRemoteWinsWarning
+            : '${l10n.syncRecoverRemoteWinsWarning}\n\n$countsSummary',
       );
       if (!confirmed) {
+        return;
+      }
+      final confirmedAgain = await confirmAction(
+        title: l10n.syncRecoverRemoteWinsSecondTitle,
+        message: l10n.syncRecoverRemoteWinsSecondWarning,
+      );
+      if (!confirmedAgain) {
         return;
       }
       await ref.read(syncControllerProvider.notifier).runRecoverRemoteWins();

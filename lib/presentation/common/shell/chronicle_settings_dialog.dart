@@ -4,11 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
 
+import '../../../app/app_providers.dart';
+import '../../../domain/entities/app_settings.dart';
 import '../../../domain/entities/enums.dart';
+import '../../../domain/entities/sync_bootstrap_assessment.dart';
+import '../../../domain/entities/sync_config.dart';
 import '../../../domain/entities/sync_proxy_config.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
+import '../../matters/matters_controller.dart';
+import '../../notes/notes_controller.dart';
 import '../../settings/settings_controller.dart';
+import '../../sync/conflicts_controller.dart';
 import '../../sync/sync_controller.dart';
 
 const Key _kSettingsDialogNavPaneKey = Key('settings_dialog_nav_pane');
@@ -25,6 +32,8 @@ class ChronicleSettingsDialog extends ConsumerStatefulWidget {
 }
 
 enum _SettingsSection { storage, language, sync }
+
+enum _BootstrapSyncAction { none, normal, recoverLocalWins, recoverRemoteWins }
 
 class _ChronicleSettingsDialogState
     extends ConsumerState<ChronicleSettingsDialog> {
@@ -90,6 +99,166 @@ class _ChronicleSettingsDialogState
     _proxyPasswordController.dispose();
     _intervalController.dispose();
     super.dispose();
+  }
+
+  Future<bool> _confirmDialog({
+    required String title,
+    required String message,
+    String? continueLabel,
+  }) async {
+    final l10n = context.l10n;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(l10n.cancelAction),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(continueLabel ?? l10n.continueAction),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  bool _shouldAssessBootstrap({
+    required AppSettings currentSettings,
+    required SyncConfig nextConfig,
+    required String nextStorageRootPath,
+  }) {
+    if (nextConfig.type != SyncTargetType.webdav ||
+        nextConfig.url.trim().isEmpty ||
+        nextConfig.username.trim().isEmpty ||
+        nextStorageRootPath.isEmpty) {
+      return false;
+    }
+
+    final currentConfig = currentSettings.syncConfig;
+    final currentRoot = currentSettings.storageRootPath?.trim() ?? '';
+    final currentUrl = currentConfig.url.trim();
+    final currentUsername = currentConfig.username.trim();
+    final nextUrl = nextConfig.url.trim();
+    final nextUsername = nextConfig.username.trim();
+
+    return currentConfig.type != SyncTargetType.webdav ||
+        currentRoot != nextStorageRootPath ||
+        currentUrl != nextUrl ||
+        currentUsername != nextUsername;
+  }
+
+  Future<_BootstrapSyncAction?> _resolveBootstrapAction({
+    required SyncBootstrapAssessment assessment,
+  }) async {
+    final l10n = context.l10n;
+    final countsSummary = l10n.syncBootstrapCountsSummary(
+      assessment.localItemCount,
+      assessment.remoteItemCount,
+    );
+
+    switch (assessment.scenario) {
+      case SyncBootstrapScenario.neither:
+        return _BootstrapSyncAction.none;
+      case SyncBootstrapScenario.localOnly:
+        final confirmed = await _confirmDialog(
+          title: l10n.syncBootstrapLocalOnlyTitle,
+          message: '${l10n.syncBootstrapLocalOnlyWarning}\n\n$countsSummary',
+        );
+        return confirmed ? _BootstrapSyncAction.normal : null;
+      case SyncBootstrapScenario.remoteOnly:
+        final confirmed = await _confirmDialog(
+          title: l10n.syncBootstrapRemoteOnlyTitle,
+          message: '${l10n.syncBootstrapRemoteOnlyWarning}\n\n$countsSummary',
+        );
+        return confirmed ? _BootstrapSyncAction.normal : null;
+      case SyncBootstrapScenario.both:
+        final selection = await showDialog<_BootstrapSyncAction>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(l10n.syncBootstrapConflictTitle),
+            content: Text(
+              '${l10n.syncBootstrapConflictWarning}\n\n$countsSummary',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: Text(l10n.cancelAction),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(
+                  dialogContext,
+                ).pop(_BootstrapSyncAction.recoverRemoteWins),
+                child: Text(l10n.syncBootstrapUseRemoteAction),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(
+                  dialogContext,
+                ).pop(_BootstrapSyncAction.recoverLocalWins),
+                child: Text(l10n.syncBootstrapUseLocalAction),
+              ),
+            ],
+          ),
+        );
+        if (selection == _BootstrapSyncAction.recoverLocalWins) {
+          final firstConfirmed = await _confirmDialog(
+            title: l10n.syncRecoverLocalWinsTitle,
+            message: '${l10n.syncRecoverLocalWinsWarning}\n\n$countsSummary',
+          );
+          if (!firstConfirmed) {
+            return null;
+          }
+          final secondConfirmed = await _confirmDialog(
+            title: l10n.syncRecoverLocalWinsSecondTitle,
+            message: l10n.syncRecoverLocalWinsSecondWarning,
+          );
+          return secondConfirmed ? _BootstrapSyncAction.recoverLocalWins : null;
+        }
+        if (selection == _BootstrapSyncAction.recoverRemoteWins) {
+          final firstConfirmed = await _confirmDialog(
+            title: l10n.syncRecoverRemoteWinsTitle,
+            message: '${l10n.syncRecoverRemoteWinsWarning}\n\n$countsSummary',
+          );
+          if (!firstConfirmed) {
+            return null;
+          }
+          final secondConfirmed = await _confirmDialog(
+            title: l10n.syncRecoverRemoteWinsSecondTitle,
+            message: l10n.syncRecoverRemoteWinsSecondWarning,
+          );
+          return secondConfirmed
+              ? _BootstrapSyncAction.recoverRemoteWins
+              : null;
+        }
+        return null;
+    }
+  }
+
+  Future<void> _reloadStorageBoundState() async {
+    await ref.read(mattersControllerProvider.notifier).reload();
+    await ref.read(conflictsControllerProvider.notifier).reload();
+    ref.invalidate(notebookFoldersProvider);
+    ref.invalidate(notebookFolderTreeProvider);
+  }
+
+  Future<void> _runBootstrapSync(_BootstrapSyncAction action) async {
+    switch (action) {
+      case _BootstrapSyncAction.none:
+        return;
+      case _BootstrapSyncAction.normal:
+        await ref.read(syncControllerProvider.notifier).runSyncNow();
+        return;
+      case _BootstrapSyncAction.recoverLocalWins:
+        await ref.read(syncControllerProvider.notifier).runRecoverLocalWins();
+        return;
+      case _BootstrapSyncAction.recoverRemoteWins:
+        await ref.read(syncControllerProvider.notifier).runRecoverRemoteWins();
+        return;
+    }
   }
 
   @override
@@ -551,11 +720,20 @@ class _ChronicleSettingsDialogState
     );
 
     Future<void> saveSettings() async {
+      final currentSettings = ref
+          .read(settingsControllerProvider)
+          .asData
+          ?.value;
+      if (currentSettings == null) {
+        return;
+      }
       final proxyHost = _proxyHostController.text.trim();
       final proxyPortRaw = _proxyPortController.text.trim();
       final proxyPort = int.tryParse(proxyPortRaw);
+      final storageRootPath = _rootPathController.text.trim();
       final proxyEnabled =
           _type == SyncTargetType.webdav && _proxyType != SyncProxyType.none;
+      final password = _passwordController.text.trim();
       String? proxyHostError;
       String? proxyPortError;
 
@@ -578,55 +756,78 @@ class _ChronicleSettingsDialogState
         return;
       }
 
-      await ref
-          .read(settingsControllerProvider.notifier)
-          .setStorageRootPath(_rootPathController.text.trim());
+      final syncConfig = currentSettings.syncConfig.copyWith(
+        type: _type,
+        url: _urlController.text.trim(),
+        username: _usernameController.text.trim(),
+        intervalMinutes: int.tryParse(_intervalController.text.trim()) ?? 5,
+        failSafe: _failSafe,
+        proxy: proxyEnabled
+            ? SyncProxyConfig(
+                type: _proxyType,
+                host: proxyHost,
+                port: proxyPort,
+                username: _proxyUsernameController.text.trim(),
+              )
+            : SyncProxyConfig.initial(),
+      );
 
-      final syncConfig = ref
-          .read(settingsControllerProvider)
-          .asData
-          ?.value
-          .syncConfig
-          .copyWith(
-            type: _type,
-            url: _urlController.text.trim(),
-            username: _usernameController.text.trim(),
-            intervalMinutes: int.tryParse(_intervalController.text.trim()) ?? 5,
-            failSafe: _failSafe,
-            proxy: proxyEnabled
-                ? SyncProxyConfig(
-                    type: _proxyType,
-                    host: proxyHost,
-                    port: proxyPort,
-                    username: _proxyUsernameController.text.trim(),
-                  )
-                : SyncProxyConfig.initial(),
-          );
-
-      if (syncConfig != null) {
-        await ref
-            .read(settingsControllerProvider.notifier)
-            .saveSyncConfig(
-              syncConfig,
-              password: _passwordController.text.trim().isEmpty
-                  ? null
-                  : _passwordController.text.trim(),
-              proxyPassword:
-                  proxyEnabled &&
-                      _proxyPasswordController.text.trim().isNotEmpty
-                  ? _proxyPasswordController.text.trim()
-                  : null,
-              clearProxyPassword: !proxyEnabled,
+      var bootstrapAction = _BootstrapSyncAction.none;
+      if (_shouldAssessBootstrap(
+        currentSettings: currentSettings,
+        nextConfig: syncConfig,
+        nextStorageRootPath: storageRootPath,
+      )) {
+        final assessment = await ref
+            .read(syncRepositoryProvider)
+            .assessBootstrap(
+              config: syncConfig,
+              storageRootPath: storageRootPath,
+              password: password.isEmpty ? null : password,
             );
-
-        await ref
-            .read(syncControllerProvider.notifier)
-            .startAutoSync(syncConfig.intervalMinutes);
+        final resolvedAction = await _resolveBootstrapAction(
+          assessment: assessment,
+        );
+        if (!mounted || resolvedAction == null) {
+          return;
+        }
+        bootstrapAction = resolvedAction;
       }
 
       await ref
           .read(settingsControllerProvider.notifier)
+          .setStorageRootPath(storageRootPath);
+
+      await ref
+          .read(settingsControllerProvider.notifier)
+          .saveSyncConfig(
+            syncConfig,
+            password: password.isEmpty ? null : password,
+            proxyPassword:
+                proxyEnabled && _proxyPasswordController.text.trim().isNotEmpty
+                ? _proxyPasswordController.text.trim()
+                : null,
+            clearProxyPassword: !proxyEnabled,
+          );
+
+      await ref
+          .read(syncControllerProvider.notifier)
+          .startAutoSync(syncConfig.intervalMinutes);
+
+      await ref
+          .read(settingsControllerProvider.notifier)
           .setLocaleTag(_localeTag);
+
+      if (storageRootPath != (currentSettings.storageRootPath?.trim() ?? '') ||
+          bootstrapAction != _BootstrapSyncAction.none) {
+        await _reloadStorageBoundState();
+      }
+
+      if (syncConfig.type == SyncTargetType.webdav &&
+          bootstrapAction != _BootstrapSyncAction.none) {
+        await _runBootstrapSync(bootstrapAction);
+        await _reloadStorageBoundState();
+      }
 
       if (context.mounted) {
         Navigator.of(context).pop();

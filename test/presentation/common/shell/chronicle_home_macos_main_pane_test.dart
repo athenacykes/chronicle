@@ -13,6 +13,7 @@ import 'package:chronicle/domain/entities/notebook_folder.dart';
 import 'package:chronicle/domain/entities/note_search_hit.dart';
 import 'package:chronicle/domain/entities/phase.dart';
 import 'package:chronicle/domain/entities/search_query.dart';
+import 'package:chronicle/domain/entities/sync_bootstrap_assessment.dart';
 import 'package:chronicle/domain/entities/sync_blocker.dart';
 import 'package:chronicle/domain/entities/sync_conflict.dart';
 import 'package:chronicle/domain/entities/sync_conflict_detail.dart';
@@ -5209,6 +5210,63 @@ void main() {
     expect(find.text('Sync complete'), findsOneWidget);
   });
 
+  testWidgets('recover local wins requires double confirmation', (
+    tester,
+  ) async {
+    _setDesktopViewport(tester);
+    final repos = _TestRepos(
+      matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+      noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+      linkRepository: _MemoryLinkRepository(),
+    );
+    final syncRepository = _NoopSyncRepository(
+      nextAssessment: SyncBootstrapAssessment.fromCounts(
+        localItemCount: 2,
+        remoteItemCount: 3,
+      ),
+    );
+
+    await tester.pumpWidget(
+      _buildApp(
+        useMacOSNativeUI: false,
+        repos: repos,
+        overrides: [
+          syncRepositoryProvider.overrideWithValue(syncRepository),
+          selectedMatterIdProvider.overrideWithBuild(
+            (ref, notifier) => 'matter-1',
+          ),
+          selectedPhaseIdProvider.overrideWithBuild(
+            (ref, notifier) => 'phase-start',
+          ),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('sidebar_sync_advanced_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Re-upload local to remote').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Local Wins Recovery'), findsOneWidget);
+    expect(
+      find.textContaining('Local items: 2. Remote items: 3.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Continue').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Clear Remote And Replace It?'), findsOneWidget);
+    expect(syncRepository.lastOptions, isNull);
+
+    await tester.tap(find.text('Continue').last);
+    await tester.pumpAndSettle();
+
+    expect(syncRepository.lastOptions?.mode, SyncRunMode.recoverLocalWins);
+  });
+
   testWidgets('sync now button is disabled while sync is running', (
     tester,
   ) async {
@@ -5859,11 +5917,21 @@ class _MemorySearchRepository implements SearchRepository {
 }
 
 class _NoopSyncRepository implements SyncRepository {
-  _NoopSyncRepository({SyncResult? nextResult, this.onSyncCall})
-    : _nextResult = nextResult;
+  _NoopSyncRepository({
+    SyncResult? nextResult,
+    this.onSyncCall,
+    SyncBootstrapAssessment? nextAssessment,
+  }) : _nextResult = nextResult,
+       _nextAssessment =
+           nextAssessment ??
+           SyncBootstrapAssessment.fromCounts(
+             localItemCount: 0,
+             remoteItemCount: 0,
+           );
 
   SyncConfig _config = SyncConfig.initial();
   final SyncResult? _nextResult;
+  final SyncBootstrapAssessment _nextAssessment;
   final Future<SyncResult> Function(
     SyncRunOptions options,
     SyncProgressCallback? onProgress,
@@ -5878,6 +5946,15 @@ class _NoopSyncRepository implements SyncRepository {
 
   @override
   Future<String?> getPassword() async => null;
+
+  @override
+  Future<SyncBootstrapAssessment> assessBootstrap({
+    required SyncConfig config,
+    required String storageRootPath,
+    String? password,
+  }) async {
+    return _nextAssessment;
+  }
 
   @override
   Future<void> saveConfig(SyncConfig config, {String? password}) async {

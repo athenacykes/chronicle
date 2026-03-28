@@ -8,6 +8,7 @@ import '../../core/clock.dart';
 import '../../core/file_hash.dart';
 import '../../core/file_system_utils.dart';
 import '../../core/json_utils.dart';
+import '../../domain/entities/sync_bootstrap_assessment.dart';
 import '../../domain/entities/sync_blocker.dart';
 import '../../domain/entities/sync_conflict.dart';
 import '../../domain/entities/sync_progress.dart';
@@ -56,8 +57,28 @@ class WebDavSyncEngine {
   static const _syncProtocolVersion = 1;
   static const _manifestPath = '.sync/manifest.json';
   static const _pendingSyncPath = '.sync/pending_sync.json';
+  static const _infoPath = 'info.json';
+  static const _notebookFoldersIndexPath = 'notebook/folders.json';
   static const _auditMaxRuns = 20;
   static final Duration _auditMaxAge = const Duration(hours: 24);
+
+  Future<SyncBootstrapAssessment> assessBootstrap({
+    required WebDavClient client,
+    required String storageRootPath,
+  }) async {
+    final layout = ChronicleLayout(Directory(storageRootPath));
+    final localEntries = await _listLocalFiles(layout);
+    final remoteEntries = await _listRemoteFiles(client);
+    final localItemCount = await _countMeaningfulLocalEntries(localEntries);
+    final remoteItemCount = await _countMeaningfulRemoteEntries(
+      client,
+      remoteEntries,
+    );
+    return SyncBootstrapAssessment.fromCounts(
+      localItemCount: localItemCount,
+      remoteItemCount: remoteItemCount,
+    );
+  }
 
   Future<SyncResult> run({
     required WebDavClient client,
@@ -1169,6 +1190,86 @@ class WebDavSyncEngine {
       }
     }
     return out;
+  }
+
+  Future<int> _countMeaningfulLocalEntries(
+    Map<String, _LocalSyncEntry> entries,
+  ) async {
+    var count = 0;
+    for (final entry in entries.entries) {
+      if (await _isMeaningfulLocalEntry(
+        canonicalPath: entry.key,
+        entry: entry.value,
+      )) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  Future<int> _countMeaningfulRemoteEntries(
+    WebDavClient client,
+    Map<String, _RemoteSyncEntry> entries,
+  ) async {
+    var count = 0;
+    for (final entry in entries.entries) {
+      if (await _isMeaningfulRemoteEntry(
+        client: client,
+        canonicalPath: entry.key,
+        entry: entry.value,
+      )) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  Future<bool> _isMeaningfulLocalEntry({
+    required String canonicalPath,
+    required _LocalSyncEntry entry,
+  }) async {
+    if (canonicalPath == _infoPath) {
+      return false;
+    }
+    if (canonicalPath != _notebookFoldersIndexPath) {
+      return true;
+    }
+    try {
+      final raw = await entry.file.readAsString();
+      return _hasNonEmptyFolderIndex(raw);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> _isMeaningfulRemoteEntry({
+    required WebDavClient client,
+    required String canonicalPath,
+    required _RemoteSyncEntry entry,
+  }) async {
+    if (canonicalPath == _infoPath) {
+      return false;
+    }
+    if (canonicalPath != _notebookFoldersIndexPath) {
+      return true;
+    }
+    try {
+      final bytes = await client.downloadFile(entry.sourcePath);
+      final raw = utf8.decode(bytes, allowMalformed: true);
+      return _hasNonEmptyFolderIndex(raw);
+    } catch (_) {
+      return true;
+    }
+  }
+
+  bool _hasNonEmptyFolderIndex(String raw) {
+    try {
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      final folders = decoded['folders'];
+      return folders is List && folders.isNotEmpty;
+    } catch (_) {
+      return true;
+    }
   }
 
   String _canonicalSyncPath(String path) {
