@@ -4802,17 +4802,16 @@ void main() {
       expect(codeField.wrap, isTrue);
       expect(codeField.gutterStyle.showLineNumbers, isFalse);
 
-      await tester.tap(find.byKey(const Key('note_editor_toggle_line_numbers')));
+      await tester.tap(
+        find.byKey(const Key('note_editor_toggle_line_numbers')),
+      );
       await tester.pumpAndSettle();
 
       codeField = tester.widget<CodeField>(
         find.byKey(const Key('macos_note_editor_content')),
       );
       expect(codeField.gutterStyle.showLineNumbers, isTrue);
-      expect(
-        settingsRepository._settings.editorLineNumbersEnabled,
-        isTrue,
-      );
+      expect(settingsRepository._settings.editorLineNumbersEnabled, isTrue);
 
       await tester.tap(find.byKey(const Key('note_editor_toggle_word_wrap')));
       await tester.pumpAndSettle();
@@ -4918,7 +4917,9 @@ void main() {
         'Alt',
       );
       await tester.enterText(
-        find.byKey(const Key('note_editor_markdown_toolbar_field_image_source')),
+        find.byKey(
+          const Key('note_editor_markdown_toolbar_field_image_source'),
+        ),
         'assets/example.png',
       );
       await tester.tap(
@@ -5109,9 +5110,13 @@ void main() {
       find.descendant(of: dialog, matching: find.byType(TextField)).at(1),
       'Color + icon picker',
     );
-    await tester.tap(find.byTooltip('#EF4444'));
+    await tester.tap(find.byKey(const Key('matter_color_dropdown')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Science'));
+    await tester.tap(find.text('#EF4444').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('matter_icon_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Science').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create').last);
     await tester.pumpAndSettle();

@@ -17,6 +17,7 @@ import 'package:chronicle/presentation/settings/settings_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:macos_ui/macos_ui.dart';
 
 void main() {
   testWidgets('settings dialog uses narrow left nav and wider right pane', (
@@ -76,12 +77,20 @@ void main() {
     final contentSize = tester.getSize(contentPane);
     final navTopLeft = tester.getTopLeft(navPane);
     final contentTopLeft = tester.getTopLeft(contentPane);
+    final contentRight = tester.getTopRight(contentPane).dx;
+    final dialogContentWidth = contentRight - navTopLeft.dx;
 
+    expect(dialogContentWidth, greaterThanOrEqualTo(520));
+    expect(dialogContentWidth, lessThanOrEqualTo(600));
     expect(navSize.width, greaterThanOrEqualTo(130));
     expect(navSize.width, lessThanOrEqualTo(170));
     expect(contentSize.width, greaterThan(navSize.width));
     expect(navTopLeft.dx, lessThan(contentTopLeft.dx));
     expect((navTopLeft.dy - contentTopLeft.dy).abs(), lessThan(12));
+
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsOneWidget);
   });
 
   testWidgets('sync settings show proxy controls for webdav sync', (
@@ -258,6 +267,70 @@ void main() {
       expect(find.text('Settings'), findsOneWidget);
       expect(syncRepository.lastSavedConfig, isNull);
       expect(syncRepository.lastOptions, isNull);
+    },
+  );
+
+  testWidgets(
+    'native settings dialog shows explicit labels and ignores backdrop taps',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            settingsRepositoryProvider.overrideWithValue(
+              _FakeSettingsRepository(
+                AppSettings(
+                  storageRootPath: '/tmp/chronicle-test',
+                  clientId: 'settings-layout-client',
+                  syncConfig: SyncConfig.initial(),
+                  lastSyncAt: null,
+                ),
+              ),
+            ),
+          ],
+          child: MacosApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Builder(
+              builder: (context) => Center(
+                child: PushButton(
+                  controlSize: ControlSize.large,
+                  onPressed: () {
+                    showChronicleSettingsDialog(
+                      context: context,
+                      useMacOSNativeUI: true,
+                    );
+                  },
+                  child: const Text('Open settings'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open settings'));
+      await tester.pumpAndSettle();
+
+      final storageLabel = find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            widget.data == 'Storage root path' &&
+            widget.style?.fontWeight == FontWeight.w600,
+      );
+      expect(storageLabel, findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
+
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Settings'), findsOneWidget);
+      expect(storageLabel, findsOneWidget);
     },
   );
 }

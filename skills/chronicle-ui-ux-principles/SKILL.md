@@ -47,3 +47,46 @@ Guide UI and interaction changes so Chronicle stays platform-consistent, localiz
 - No unintended golden or interaction regressions remain.
 - Refactor-only changes do not alter UX behavior.
 - Navigation/view interactions remain read-only for note title/content persistence.
+
+## Dialog Design Guidelines
+
+Dialogs should have fixed widths (not relative to main window size) and fit their content naturally:
+
+### Sizing Principles
+1. **Fixed width**: Use constant width values that don't change based on main window size:
+   - Small forms (Category): 380px
+   - Medium forms (Matter): 420px
+   - Large forms (Settings with two-pane): 580px
+   - Content dialogs (Note): 560px
+2. **Content-fit height**: Do not use fixed `maxHeight` constraints that leave blank space at the bottom. Let dialogs size to their content naturally using `mainAxisSize: MainAxisSize.min` on Column widgets.
+3. **Main window minimum size**: Set the main window minimum size larger than the largest dialog (e.g., 800x700) to prevent dialogs from overflowing.
+
+### Implementation Pattern
+```dart
+// Fixed width - not relative to viewport
+const dialogWidth = 420.0;
+
+// Content without height constraint - fits content naturally
+final content = SizedBox(
+  width: dialogWidth,
+  child: SingleChildScrollView(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [...],
+    ),
+  ),
+);
+```
+
+### macOS Window Configuration
+Set minimum window size in `macos/Runner/MainFlutterWindow.swift`:
+```swift
+// Set minimum window size to accommodate largest dialog plus margins
+self.minSize = NSSize(width: 800, height: 700)
+```
+
+### Platform Consistency
+- Apply the same sizing rules to both macOS native (`MacosSheet`) and Material (`AlertDialog`) variants
+- Keep internal padding consistent (typically 16-20px)
+- Use `CrossAxisAlignment.start` instead of `stretch` to prevent fields from expanding to fill width

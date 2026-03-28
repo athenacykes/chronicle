@@ -40,6 +40,7 @@ import 'chronicle_conflict_review.dart';
 import 'chronicle_graph_canvas.dart';
 import 'chronicle_macos_context_menu.dart';
 import 'chronicle_macos_widgets.dart';
+import 'chronicle_modal_dialog.dart';
 import 'chronicle_note_editor_utilities.dart';
 import 'chronicle_note_title_header.dart';
 import 'chronicle_root_shell.dart';
@@ -63,7 +64,7 @@ Future<void> showChronicleSettingsDialog({
   required BuildContext context,
   required bool useMacOSNativeUI,
 }) {
-  return showDialog<void>(
+  return showChronicleModalDialog<void>(
     context: context,
     builder: (_) => ChronicleSettingsDialog(useMacOSNativeUI: useMacOSNativeUI),
   );

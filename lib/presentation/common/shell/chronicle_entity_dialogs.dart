@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:macos_ui/macos_ui.dart';
@@ -7,10 +5,35 @@ import 'package:macos_ui/macos_ui.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
+import 'chronicle_modal_dialog.dart';
 import '../markdown/markdown_edit_formatter.dart';
 import '../markdown/markdown_format_toolbar.dart';
 
 enum ChronicleMatterDialogMode { create, edit }
+
+Future<ChronicleMatterDialogResult?> showChronicleMatterDialog({
+  required BuildContext context,
+  required ChronicleMatterDialogMode mode,
+  String initialTitle = '',
+  String initialDescription = '',
+  MatterStatus initialStatus = MatterStatus.active,
+  String initialColor = '#4C956C',
+  String initialIcon = 'description',
+  bool initialPinned = false,
+}) {
+  return showChronicleModalDialog<ChronicleMatterDialogResult>(
+    context: context,
+    builder: (_) => ChronicleMatterDialog(
+      mode: mode,
+      initialTitle: initialTitle,
+      initialDescription: initialDescription,
+      initialStatus: initialStatus,
+      initialColor: initialColor,
+      initialIcon: initialIcon,
+      initialPinned: initialPinned,
+    ),
+  );
+}
 
 class ChronicleMatterDialog extends StatefulWidget {
   const ChronicleMatterDialog({
@@ -70,7 +93,7 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
   Future<void> _pickCustomColor(BuildContext context) async {
     var draftColor = _colorFromHex(_selectedColorHex);
     final l10n = context.l10n;
-    final selectedColor = await showDialog<Color>(
+    final selectedColor = await showChronicleModalDialog<Color>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.matterCustomColorAction),
@@ -115,125 +138,42 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
         ? l10n.createMatterTitle
         : l10n.editMatterTitle;
     final isMacOSNativeUI = _isMacOSNativeUI(context);
-    final viewportSize = MediaQuery.sizeOf(context);
-    final macSheetBodyWidth = math.min(
-      1400.0,
-      math.max(820.0, viewportSize.width - 80),
-    );
-    final macFormMaxHeight = math.min(
-      680.0,
-      math.max(340.0, viewportSize.height - 220),
-    );
+    const dialogWidth = 420.0;
+    final colorOptions = _colorOptionsForSelection(_selectedColorHex);
+    final selectedIconOption = _matterIconOptionForKey(_selectedIconKey);
 
-    Widget buildColorSwatch(String hexColor) {
-      final selected = _selectedColorHex == hexColor;
-      return Tooltip(
-        message: hexColor,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () {
-              setState(() {
-                _selectedColorHex = hexColor;
-                _colorPreviewController.text = _selectedColorHex;
-              });
-            },
-            child: Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: _colorFromHex(hexColor),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: selected
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.outlineVariant,
-                  width: selected ? 2.5 : 1.2,
-                ),
-              ),
-            ),
-          ),
-        ),
+    Widget buildColorOption(String hexColor) {
+      return Row(
+        children: <Widget>[
+          _ColorSwatch(hexColor: hexColor),
+          const SizedBox(width: 10),
+          Text(hexColor),
+        ],
       );
     }
 
     Widget buildIconOption(_MatterIconOption option) {
-      final selected = _selectedIconKey == option.key;
-      return Tooltip(
-        message: _matterIconLabel(l10n, option.key),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => setState(() => _selectedIconKey = option.key),
-            child: Container(
-              height: 58,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: selected
-                    ? Theme.of(context).colorScheme.primary.withAlpha(24)
-                    : null,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: selected
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.outlineVariant,
-                ),
-              ),
-              child: Row(
-                children: <Widget>[
-                  Icon(option.iconData, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _matterIconLabel(l10n, option.key),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget buildIconGrid() {
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final gridWidth = constraints.maxWidth.isFinite
-              ? constraints.maxWidth
-              : (isMacOSNativeUI ? macSheetBodyWidth : 660.0);
-          final columns = math.max(3, math.min(6, (gridWidth / 170).floor()));
-          final iconTileWidth = math.max(
-            112.0,
-            (gridWidth - ((columns - 1) * 8)) / columns,
-          );
-          return Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _kMatterIconOptions
-                .map(
-                  (option) => SizedBox(
-                    width: iconTileWidth,
-                    child: buildIconOption(option),
-                  ),
-                )
-                .toList(),
-          );
-        },
+      return Row(
+        children: <Widget>[
+          Icon(option.iconData, size: 18),
+          const SizedBox(width: 10),
+          Text(_matterIconLabel(l10n, option.key)),
+        ],
       );
     }
 
     final formFields = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         isMacOSNativeUI
-            ? MacosTextField(
-                controller: _titleController,
-                placeholder: l10n.titleLabel,
+            ? _MacosLabeledField(
+                label: l10n.titleLabel,
+                child: MacosTextField(
+                  controller: _titleController,
+                  placeholder: l10n.titleLabel,
+                  placeholderStyle: _macosPlaceholderStyle(context),
+                ),
               )
             : TextField(
                 controller: _titleController,
@@ -241,9 +181,13 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
               ),
         const SizedBox(height: 8),
         isMacOSNativeUI
-            ? MacosTextField(
-                controller: _descriptionController,
-                placeholder: l10n.descriptionLabel,
+            ? _MacosLabeledField(
+                label: l10n.descriptionLabel,
+                child: MacosTextField(
+                  controller: _descriptionController,
+                  placeholder: l10n.descriptionLabel,
+                  placeholderStyle: _macosPlaceholderStyle(context),
+                ),
               )
             : TextField(
                 controller: _descriptionController,
@@ -251,32 +195,27 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
               ),
         const SizedBox(height: 8),
         isMacOSNativeUI
-            ? Row(
-                children: <Widget>[
-                  Text(l10n.statusLabel),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: MacosPopupButton<MatterStatus>(
-                      value: _status,
-                      onChanged: (value) {
-                        if (value == null) {
-                          return;
-                        }
-                        setState(() {
-                          _status = value;
-                        });
-                      },
-                      items: MatterStatus.values
-                          .map(
-                            (value) => MacosPopupMenuItem<MatterStatus>(
-                              value: value,
-                              child: Text(_matterStatusLabel(l10n, value)),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  ),
-                ],
+            ? _MacosLabeledField(
+                label: l10n.statusLabel,
+                child: MacosPopupButton<MatterStatus>(
+                  value: _status,
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() {
+                      _status = value;
+                    });
+                  },
+                  items: MatterStatus.values
+                      .map(
+                        (value) => MacosPopupMenuItem<MatterStatus>(
+                          value: value,
+                          child: Text(_matterStatusLabel(l10n, value)),
+                        ),
+                      )
+                      .toList(),
+                ),
               )
             : DropdownButtonFormField<MatterStatus>(
                 initialValue: _status,
@@ -299,36 +238,80 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
                 },
               ),
         const SizedBox(height: 8),
-        Text(l10n.matterPresetColorsLabel),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _kMatterPresetColors
-              .map((hexColor) => buildColorSwatch(hexColor))
-              .toList(),
-        ),
+        isMacOSNativeUI
+            ? _MacosLabeledField(
+                label: l10n.matterPresetColorsLabel,
+                child: MacosPopupButton<String>(
+                  key: _kMatterColorDropdownKey,
+                  value: _selectedColorHex,
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() {
+                      _selectedColorHex = value;
+                      _colorPreviewController.text = value;
+                    });
+                  },
+                  items: colorOptions
+                      .map(
+                        (hexColor) => MacosPopupMenuItem<String>(
+                          value: hexColor,
+                          child: buildColorOption(hexColor),
+                        ),
+                      )
+                      .toList(),
+                ),
+              )
+            : DropdownButtonFormField<String>(
+                key: _kMatterColorDropdownKey,
+                initialValue: _selectedColorHex,
+                decoration: InputDecoration(
+                  labelText: l10n.matterPresetColorsLabel,
+                ),
+                items: colorOptions
+                    .map(
+                      (hexColor) => DropdownMenuItem<String>(
+                        value: hexColor,
+                        child: buildColorOption(hexColor),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) {
+                    return;
+                  }
+                  setState(() {
+                    _selectedColorHex = value;
+                    _colorPreviewController.text = value;
+                  });
+                },
+              ),
         const SizedBox(height: 10),
         isMacOSNativeUI
-            ? Row(
-                children: <Widget>[
-                  PushButton(
-                    key: _kMatterColorCustomButtonKey,
-                    controlSize: ControlSize.regular,
-                    secondary: true,
-                    onPressed: () => _pickCustomColor(context),
-                    child: Text(l10n.matterCustomColorAction),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: MacosTextField(
-                      key: _kMatterColorPreviewFieldKey,
-                      controller: _colorPreviewController,
-                      readOnly: true,
-                      placeholder: l10n.colorHexLabel,
+            ? _MacosLabeledField(
+                label: l10n.colorHexLabel,
+                child: Row(
+                  children: <Widget>[
+                    PushButton(
+                      key: _kMatterColorCustomButtonKey,
+                      controlSize: ControlSize.regular,
+                      secondary: true,
+                      onPressed: () => _pickCustomColor(context),
+                      child: Text(l10n.matterCustomColorAction),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: MacosTextField(
+                        key: _kMatterColorPreviewFieldKey,
+                        controller: _colorPreviewController,
+                        readOnly: true,
+                        placeholder: l10n.colorHexLabel,
+                        placeholderStyle: _macosPlaceholderStyle(context),
+                      ),
+                    ),
+                  ],
+                ),
               )
             : Row(
                 children: <Widget>[
@@ -352,9 +335,49 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
                 ],
               ),
         const SizedBox(height: 12),
-        Text(l10n.matterIconPickerLabel),
-        const SizedBox(height: 8),
-        buildIconGrid(),
+        isMacOSNativeUI
+            ? _MacosLabeledField(
+                label: l10n.matterIconPickerLabel,
+                child: MacosPopupButton<String>(
+                  key: _kMatterIconDropdownKey,
+                  value: selectedIconOption.key,
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() => _selectedIconKey = value);
+                  },
+                  items: _kMatterIconOptions
+                      .map(
+                        (option) => MacosPopupMenuItem<String>(
+                          value: option.key,
+                          child: buildIconOption(option),
+                        ),
+                      )
+                      .toList(),
+                ),
+              )
+            : DropdownButtonFormField<String>(
+                key: _kMatterIconDropdownKey,
+                initialValue: selectedIconOption.key,
+                decoration: InputDecoration(
+                  labelText: l10n.matterIconPickerLabel,
+                ),
+                items: _kMatterIconOptions
+                    .map(
+                      (option) => DropdownMenuItem<String>(
+                        value: option.key,
+                        child: buildIconOption(option),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) {
+                    return;
+                  }
+                  setState(() => _selectedIconKey = value);
+                },
+              ),
         const SizedBox(height: 12),
         isMacOSNativeUI
             ? Row(
@@ -377,10 +400,8 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
     );
 
     final content = SizedBox(
-      width: isMacOSNativeUI ? double.infinity : 660,
-      child: isMacOSNativeUI
-          ? formFields
-          : SingleChildScrollView(child: formFields),
+      width: dialogWidth,
+      child: SingleChildScrollView(child: formFields),
     );
 
     void onSave() {
@@ -399,46 +420,39 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
     if (isMacOSNativeUI) {
       return MacosSheet(
         child: SafeArea(
-          child: SingleChildScrollView(
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: macSheetBodyWidth),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Text(title, style: const TextStyle(fontSize: 18)),
-                    const SizedBox(height: 12),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(maxHeight: macFormMaxHeight),
-                      child: SingleChildScrollView(child: content),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: <Widget>[
-                        PushButton(
-                          controlSize: ControlSize.large,
-                          secondary: true,
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(l10n.cancelAction),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(title, style: const TextStyle(fontSize: 18)),
+                  const SizedBox(height: 12),
+                  content,
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: <Widget>[
+                      PushButton(
+                        controlSize: ControlSize.large,
+                        secondary: true,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(l10n.cancelAction),
+                      ),
+                      const SizedBox(width: 8),
+                      PushButton(
+                        controlSize: ControlSize.large,
+                        onPressed: onSave,
+                        child: Text(
+                          widget.mode == ChronicleMatterDialogMode.create
+                              ? l10n.createAction
+                              : l10n.saveAction,
                         ),
-                        const SizedBox(width: 8),
-                        PushButton(
-                          controlSize: ControlSize.large,
-                          onPressed: onSave,
-                          child: Text(
-                            widget.mode == ChronicleMatterDialogMode.create
-                                ? l10n.createAction
-                                : l10n.saveAction,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -487,6 +501,24 @@ class ChronicleMatterDialogResult {
 
 enum ChronicleCategoryDialogMode { create, edit }
 
+Future<ChronicleCategoryDialogResult?> showChronicleCategoryDialog({
+  required BuildContext context,
+  required ChronicleCategoryDialogMode mode,
+  String initialName = '',
+  String initialColor = '#4C956C',
+  String initialIcon = 'folder',
+}) {
+  return showChronicleModalDialog<ChronicleCategoryDialogResult>(
+    context: context,
+    builder: (_) => ChronicleCategoryDialog(
+      mode: mode,
+      initialName: initialName,
+      initialColor: initialColor,
+      initialIcon: initialIcon,
+    ),
+  );
+}
+
 class ChronicleCategoryDialog extends StatefulWidget {
   const ChronicleCategoryDialog({
     super.key,
@@ -532,100 +564,144 @@ class _ChronicleCategoryDialogState extends State<ChronicleCategoryDialog> {
     final title = widget.mode == ChronicleCategoryDialogMode.create
         ? l10n.createCategoryTitle
         : l10n.editCategoryTitle;
+    const dialogWidth = 380.0;
+    final colorOptions = _colorOptionsForSelection(_selectedColorHex);
+    final selectedIconOption = _matterIconOptionForKey(_selectedIconKey);
 
-    Widget iconOption(_MatterIconOption option) {
-      final selected = _selectedIconKey == option.key;
-      return GestureDetector(
-        onTap: () => setState(() => _selectedIconKey = option.key),
-        child: Container(
-          width: 108,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected
-                ? Theme.of(context).colorScheme.primary.withAlpha(18)
-                : null,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: selected
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.outlineVariant,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Icon(option.iconData, size: 18),
-              const SizedBox(height: 4),
-              Text(
-                _matterIconLabel(l10n, option.key),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
+    Widget buildColorOption(String hexColor) {
+      return Row(
+        children: <Widget>[
+          _ColorSwatch(hexColor: hexColor),
+          const SizedBox(width: 10),
+          Text(hexColor),
+        ],
       );
     }
 
-    Widget colorSwatch(String colorHex) {
-      final selected = _selectedColorHex == colorHex;
-      return GestureDetector(
-        onTap: () => setState(() => _selectedColorHex = colorHex),
-        child: Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            color: _colorFromHex(colorHex),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: selected
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.outlineVariant,
-              width: selected ? 2 : 1,
-            ),
-          ),
-        ),
+    Widget buildIconOption(_MatterIconOption option) {
+      return Row(
+        children: <Widget>[
+          Icon(option.iconData, size: 18),
+          const SizedBox(width: 10),
+          Text(_matterIconLabel(l10n, option.key)),
+        ],
       );
     }
 
     final content = SizedBox(
-      width: 540,
+      width: dialogWidth,
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            isMacOSNativeUI
-                ? MacosTextField(
-                    controller: _nameController,
-                    placeholder: l10n.categoryNameLabel,
-                  )
-                : TextField(
-                    controller: _nameController,
-                    decoration: InputDecoration(
-                      labelText: l10n.categoryNameLabel,
+              isMacOSNativeUI
+                  ? _MacosLabeledField(
+                      label: l10n.categoryNameLabel,
+                      child: MacosTextField(
+                        controller: _nameController,
+                        placeholder: l10n.categoryNameLabel,
+                        placeholderStyle: _macosPlaceholderStyle(context),
+                      ),
+                    )
+                  : TextField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: l10n.categoryNameLabel,
+                      ),
                     ),
-                  ),
-            const SizedBox(height: 10),
-            Text(l10n.matterPresetColorsLabel),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _kMatterPresetColors.map(colorSwatch).toList(),
-            ),
-            const SizedBox(height: 12),
-            Text(l10n.categoryIconLabel),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _kMatterIconOptions.map(iconOption).toList(),
-            ),
-          ],
+              const SizedBox(height: 10),
+              isMacOSNativeUI
+                  ? _MacosLabeledField(
+                      label: l10n.matterPresetColorsLabel,
+                      child: MacosPopupButton<String>(
+                        key: _kCategoryColorDropdownKey,
+                        value: _selectedColorHex,
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setState(() => _selectedColorHex = value);
+                        },
+                        items: colorOptions
+                            .map(
+                              (hexColor) => MacosPopupMenuItem<String>(
+                                value: hexColor,
+                                child: buildColorOption(hexColor),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    )
+                  : DropdownButtonFormField<String>(
+                      key: _kCategoryColorDropdownKey,
+                      initialValue: _selectedColorHex,
+                      decoration: InputDecoration(
+                        labelText: l10n.matterPresetColorsLabel,
+                      ),
+                      items: colorOptions
+                          .map(
+                            (hexColor) => DropdownMenuItem<String>(
+                              value: hexColor,
+                              child: buildColorOption(hexColor),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() => _selectedColorHex = value);
+                      },
+                    ),
+              const SizedBox(height: 12),
+              isMacOSNativeUI
+                  ? _MacosLabeledField(
+                      label: l10n.categoryIconLabel,
+                      child: MacosPopupButton<String>(
+                        key: _kCategoryIconDropdownKey,
+                        value: selectedIconOption.key,
+                        onChanged: (value) {
+                          if (value == null) {
+                            return;
+                          }
+                          setState(() => _selectedIconKey = value);
+                        },
+                        items: _kMatterIconOptions
+                            .map(
+                              (option) => MacosPopupMenuItem<String>(
+                                value: option.key,
+                                child: buildIconOption(option),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    )
+                  : DropdownButtonFormField<String>(
+                      key: _kCategoryIconDropdownKey,
+                      initialValue: selectedIconOption.key,
+                      decoration: InputDecoration(
+                        labelText: l10n.categoryIconLabel,
+                      ),
+                      items: _kMatterIconOptions
+                          .map(
+                            (option) => DropdownMenuItem<String>(
+                              value: option.key,
+                              child: buildIconOption(option),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() => _selectedIconKey = value);
+                      },
+                    ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
 
     void onSave() {
       Navigator.of(context).pop(
@@ -778,9 +854,10 @@ class _ChronicleNoteDialogState extends State<ChronicleNoteDialog> {
         ? l10n.createNoteTitle
         : l10n.editNoteTitle;
     final isMacOSNativeUI = _isMacOSNativeUI(context);
+    const dialogWidth = 560.0;
 
     final content = SizedBox(
-      width: 620,
+      width: dialogWidth,
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -950,6 +1027,10 @@ class ChronicleNoteDialogResult {
 const Key _kNoteDialogMarkdownToolbarKey = Key('note_dialog_markdown_toolbar');
 const Key _kMatterColorCustomButtonKey = Key('matter_color_custom_button');
 const Key _kMatterColorPreviewFieldKey = Key('matter_color_preview_field');
+const Key _kMatterColorDropdownKey = Key('matter_color_dropdown');
+const Key _kMatterIconDropdownKey = Key('matter_icon_dropdown');
+const Key _kCategoryColorDropdownKey = Key('category_color_dropdown');
+const Key _kCategoryIconDropdownKey = Key('category_icon_dropdown');
 
 const List<String> _kMatterPresetColors = <String>[
   '#EF4444',
@@ -1000,8 +1081,66 @@ const List<_MatterIconOption> _kMatterIconOptions = <_MatterIconOption>[
   _MatterIconOption(key: 'terminal', iconData: Icons.terminal_outlined),
 ];
 
+class _MacosLabeledField extends StatelessWidget {
+  const _MacosLabeledField({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final labelStyle = MacosTheme.of(
+      context,
+    ).typography.body.copyWith(fontWeight: FontWeight.w600);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(label, style: labelStyle),
+        const SizedBox(height: 6),
+        child,
+      ],
+    );
+  }
+}
+
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({required this.hexColor});
+
+  final String hexColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(
+        color: _colorFromHex(hexColor),
+        shape: BoxShape.circle,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+    );
+  }
+}
+
 bool _isMacOSNativeUI(BuildContext context) {
   return MacosTheme.maybeOf(context) != null;
+}
+
+TextStyle _macosPlaceholderStyle(BuildContext context) {
+  final color = MacosTheme.brightnessOf(
+    context,
+  ).resolve(const Color(0x8A000000), const Color(0xCCEBEBF5));
+  return MacosTheme.of(
+    context,
+  ).typography.body.copyWith(fontWeight: FontWeight.w400, color: color);
+}
+
+List<String> _colorOptionsForSelection(String selectedColorHex) {
+  final normalized = _normalizeHexColor(selectedColorHex);
+  if (_kMatterPresetColors.contains(normalized)) {
+    return _kMatterPresetColors;
+  }
+  return <String>[normalized, ..._kMatterPresetColors];
 }
 
 String _normalizeHexColor(String value, {String fallback = '#4C956C'}) {

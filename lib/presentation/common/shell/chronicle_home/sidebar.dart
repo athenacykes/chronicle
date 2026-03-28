@@ -1676,11 +1676,9 @@ class _MatterSidebar extends ConsumerWidget {
     required BuildContext context,
     required WidgetRef ref,
   }) async {
-    final result = await showDialog<ChronicleCategoryDialogResult>(
+    final result = await showChronicleCategoryDialog(
       context: context,
-      builder: (_) => const ChronicleCategoryDialog(
-        mode: ChronicleCategoryDialogMode.create,
-      ),
+      mode: ChronicleCategoryDialogMode.create,
     );
     if (result == null || result.name.trim().isEmpty) {
       return;
@@ -1699,14 +1697,12 @@ class _MatterSidebar extends ConsumerWidget {
     required WidgetRef ref,
     required Category category,
   }) async {
-    final result = await showDialog<ChronicleCategoryDialogResult>(
+    final result = await showChronicleCategoryDialog(
       context: context,
-      builder: (_) => ChronicleCategoryDialog(
-        mode: ChronicleCategoryDialogMode.edit,
-        initialName: category.name,
-        initialColor: category.color,
-        initialIcon: category.icon,
-      ),
+      mode: ChronicleCategoryDialogMode.edit,
+      initialName: category.name,
+      initialColor: category.color,
+      initialIcon: category.icon,
     );
     if (result == null || result.name.trim().isEmpty) {
       return;
@@ -1785,10 +1781,9 @@ class _MatterSidebar extends ConsumerWidget {
     required WidgetRef ref,
   }) async {
     final defaultCategoryId = _defaultCategoryIdForNewMatter(ref);
-    final result = await showDialog<ChronicleMatterDialogResult>(
+    final result = await showChronicleMatterDialog(
       context: context,
-      builder: (_) =>
-          const ChronicleMatterDialog(mode: ChronicleMatterDialogMode.create),
+      mode: ChronicleMatterDialogMode.create,
     );
 
     if (result == null || result.title.trim().isEmpty) {
@@ -1820,17 +1815,15 @@ class _MatterSidebar extends ConsumerWidget {
 
     switch (action) {
       case _MatterAction.edit:
-        final result = await showDialog<ChronicleMatterDialogResult>(
+        final result = await showChronicleMatterDialog(
           context: context,
-          builder: (_) => ChronicleMatterDialog(
-            mode: ChronicleMatterDialogMode.edit,
-            initialTitle: matter.title,
-            initialDescription: matter.description,
-            initialStatus: matter.status,
-            initialColor: matter.color,
-            initialIcon: matter.icon,
-            initialPinned: matter.isPinned,
-          ),
+          mode: ChronicleMatterDialogMode.edit,
+          initialTitle: matter.title,
+          initialDescription: matter.description,
+          initialStatus: matter.status,
+          initialColor: matter.color,
+          initialIcon: matter.icon,
+          initialPinned: matter.isPinned,
         );
 
         if (result == null || result.title.trim().isEmpty) {

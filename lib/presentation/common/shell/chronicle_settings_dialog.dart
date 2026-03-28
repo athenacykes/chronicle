@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
@@ -17,6 +15,7 @@ import '../../notes/notes_controller.dart';
 import '../../settings/settings_controller.dart';
 import '../../sync/conflicts_controller.dart';
 import '../../sync/sync_controller.dart';
+import 'chronicle_modal_dialog.dart';
 
 const Key _kSettingsDialogNavPaneKey = Key('settings_dialog_nav_pane');
 const Key _kSettingsDialogContentPaneKey = Key('settings_dialog_content_pane');
@@ -107,7 +106,7 @@ class _ChronicleSettingsDialogState
     String? continueLabel,
   }) async {
     final l10n = context.l10n;
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showChronicleModalDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(title),
@@ -177,7 +176,7 @@ class _ChronicleSettingsDialogState
         );
         return confirmed ? _BootstrapSyncAction.normal : null;
       case SyncBootstrapScenario.both:
-        final selection = await showDialog<_BootstrapSyncAction>(
+        final selection = await showChronicleModalDialog<_BootstrapSyncAction>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(l10n.syncBootstrapConflictTitle),
@@ -268,10 +267,15 @@ class _ChronicleSettingsDialogState
     final localeItems = AppLocalizations.supportedLocales
         .map((locale) => appLocaleTag(locale))
         .toList(growable: false);
-    final viewportSize = MediaQuery.sizeOf(context);
-    final sheetBodyWidth = useMacOSNativeUI
-        ? math.min(1400.0, math.max(760.0, viewportSize.width - 80))
-        : math.min(960.0, math.max(360.0, viewportSize.width - 64));
+    const dialogWidth = 580.0;
+    final macosPlaceholderStyle = _macosPlaceholderStyle(context);
+
+    Widget buildMacosLabeledField({
+      required String label,
+      required Widget child,
+    }) {
+      return _MacosLabeledField(label: label, child: child);
+    }
 
     String localeDisplayName(String localeTag) {
       final locale = resolveAppLocale(localeTag);
@@ -318,9 +322,13 @@ class _ChronicleSettingsDialogState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           useMacOSNativeUI
-              ? MacosTextField(
-                  controller: _rootPathController,
-                  placeholder: l10n.storageRootPathLabel,
+              ? buildMacosLabeledField(
+                  label: l10n.storageRootPathLabel,
+                  child: MacosTextField(
+                    controller: _rootPathController,
+                    placeholder: l10n.storageRootPathLabel,
+                    placeholderStyle: macosPlaceholderStyle,
+                  ),
                 )
               : TextField(
                   controller: _rootPathController,
@@ -337,32 +345,27 @@ class _ChronicleSettingsDialogState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           useMacOSNativeUI
-              ? Row(
-                  children: <Widget>[
-                    Text(l10n.languageLabel),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: MacosPopupButton<String>(
-                        value: _localeTag,
-                        onChanged: (value) {
-                          if (value == null || value.isEmpty) {
-                            return;
-                          }
-                          setState(() {
-                            _localeTag = value;
-                          });
-                        },
-                        items: localeItems
-                            .map(
-                              (localeTag) => MacosPopupMenuItem<String>(
-                                value: localeTag,
-                                child: Text(localeDisplayName(localeTag)),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-                  ],
+              ? buildMacosLabeledField(
+                  label: l10n.languageLabel,
+                  child: MacosPopupButton<String>(
+                    value: _localeTag,
+                    onChanged: (value) {
+                      if (value == null || value.isEmpty) {
+                        return;
+                      }
+                      setState(() {
+                        _localeTag = value;
+                      });
+                    },
+                    items: localeItems
+                        .map(
+                          (localeTag) => MacosPopupMenuItem<String>(
+                            value: localeTag,
+                            child: Text(localeDisplayName(localeTag)),
+                          ),
+                        )
+                        .toList(),
+                  ),
                 )
               : DropdownButtonFormField<String>(
                   initialValue: _localeTag,
@@ -415,32 +418,27 @@ class _ChronicleSettingsDialogState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           useMacOSNativeUI
-              ? Row(
-                  children: <Widget>[
-                    Text(l10n.syncTargetTypeLabel),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: MacosPopupButton<SyncTargetType>(
-                        value: _type,
-                        onChanged: (value) {
-                          if (value == null) {
-                            return;
-                          }
-                          setState(() {
-                            _type = value;
-                          });
-                        },
-                        items: SyncTargetType.values
-                            .map(
-                              (value) => MacosPopupMenuItem<SyncTargetType>(
-                                value: value,
-                                child: Text(_syncTargetTypeLabel(value, l10n)),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-                  ],
+              ? buildMacosLabeledField(
+                  label: l10n.syncTargetTypeLabel,
+                  child: MacosPopupButton<SyncTargetType>(
+                    value: _type,
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() {
+                        _type = value;
+                      });
+                    },
+                    items: SyncTargetType.values
+                        .map(
+                          (value) => MacosPopupMenuItem<SyncTargetType>(
+                            value: value,
+                            child: Text(_syncTargetTypeLabel(value, l10n)),
+                          ),
+                        )
+                        .toList(),
+                  ),
                 )
               : DropdownButtonFormField<SyncTargetType>(
                   initialValue: _type,
@@ -466,9 +464,13 @@ class _ChronicleSettingsDialogState
                 ),
           const SizedBox(height: 8),
           useMacOSNativeUI
-              ? MacosTextField(
-                  controller: _urlController,
-                  placeholder: l10n.webDavUrlLabel,
+              ? buildMacosLabeledField(
+                  label: l10n.webDavUrlLabel,
+                  child: MacosTextField(
+                    controller: _urlController,
+                    placeholder: l10n.webDavUrlLabel,
+                    placeholderStyle: macosPlaceholderStyle,
+                  ),
                 )
               : TextField(
                   controller: _urlController,
@@ -476,9 +478,13 @@ class _ChronicleSettingsDialogState
                 ),
           const SizedBox(height: 8),
           useMacOSNativeUI
-              ? MacosTextField(
-                  controller: _usernameController,
-                  placeholder: l10n.webDavUsernameLabel,
+              ? buildMacosLabeledField(
+                  label: l10n.webDavUsernameLabel,
+                  child: MacosTextField(
+                    controller: _usernameController,
+                    placeholder: l10n.webDavUsernameLabel,
+                    placeholderStyle: macosPlaceholderStyle,
+                  ),
                 )
               : TextField(
                   controller: _usernameController,
@@ -488,10 +494,14 @@ class _ChronicleSettingsDialogState
                 ),
           const SizedBox(height: 8),
           useMacOSNativeUI
-              ? MacosTextField(
-                  controller: _passwordController,
-                  placeholder: l10n.webDavPasswordLabel,
-                  obscureText: true,
+              ? buildMacosLabeledField(
+                  label: l10n.webDavPasswordLabel,
+                  child: MacosTextField(
+                    controller: _passwordController,
+                    placeholder: l10n.webDavPasswordLabel,
+                    placeholderStyle: macosPlaceholderStyle,
+                    obscureText: true,
+                  ),
                 )
               : TextField(
                   controller: _passwordController,
@@ -502,10 +512,14 @@ class _ChronicleSettingsDialogState
                 ),
           const SizedBox(height: 8),
           useMacOSNativeUI
-              ? MacosTextField(
-                  controller: _intervalController,
-                  placeholder: l10n.autoSyncIntervalMinutesLabel,
-                  keyboardType: TextInputType.number,
+              ? buildMacosLabeledField(
+                  label: l10n.autoSyncIntervalMinutesLabel,
+                  child: MacosTextField(
+                    controller: _intervalController,
+                    placeholder: l10n.autoSyncIntervalMinutesLabel,
+                    placeholderStyle: macosPlaceholderStyle,
+                    keyboardType: TextInputType.number,
+                  ),
                 )
               : TextField(
                   controller: _intervalController,
@@ -540,36 +554,31 @@ class _ChronicleSettingsDialogState
             ),
             const SizedBox(height: 8),
             useMacOSNativeUI
-                ? Row(
-                    children: <Widget>[
-                      Text(l10n.syncProxyTypeLabel),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: MacosPopupButton<SyncProxyType>(
-                          value: _proxyType,
-                          onChanged: (value) {
-                            if (value == null) {
-                              return;
-                            }
-                            setState(() {
-                              _proxyType = value;
-                              if (_proxyType == SyncProxyType.none) {
-                                _proxyHostError = null;
-                                _proxyPortError = null;
-                              }
-                            });
-                          },
-                          items: SyncProxyType.values
-                              .map(
-                                (value) => MacosPopupMenuItem<SyncProxyType>(
-                                  value: value,
-                                  child: Text(_syncProxyTypeLabel(value, l10n)),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ),
-                    ],
+                ? buildMacosLabeledField(
+                    label: l10n.syncProxyTypeLabel,
+                    child: MacosPopupButton<SyncProxyType>(
+                      value: _proxyType,
+                      onChanged: (value) {
+                        if (value == null) {
+                          return;
+                        }
+                        setState(() {
+                          _proxyType = value;
+                          if (_proxyType == SyncProxyType.none) {
+                            _proxyHostError = null;
+                            _proxyPortError = null;
+                          }
+                        });
+                      },
+                      items: SyncProxyType.values
+                          .map(
+                            (value) => MacosPopupMenuItem<SyncProxyType>(
+                              value: value,
+                              child: Text(_syncProxyTypeLabel(value, l10n)),
+                            ),
+                          )
+                          .toList(),
+                    ),
                   )
                 : DropdownButtonFormField<SyncProxyType>(
                     initialValue: _proxyType,
@@ -600,15 +609,19 @@ class _ChronicleSettingsDialogState
             if (proxyFieldsVisible) ...<Widget>[
               const SizedBox(height: 8),
               useMacOSNativeUI
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        MacosTextField(
-                          controller: _proxyHostController,
-                          placeholder: l10n.syncProxyHostLabel,
-                        ),
-                        buildMacosErrorText(_proxyHostError),
-                      ],
+                  ? buildMacosLabeledField(
+                      label: l10n.syncProxyHostLabel,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          MacosTextField(
+                            controller: _proxyHostController,
+                            placeholder: l10n.syncProxyHostLabel,
+                            placeholderStyle: macosPlaceholderStyle,
+                          ),
+                          buildMacosErrorText(_proxyHostError),
+                        ],
+                      ),
                     )
                   : TextField(
                       controller: _proxyHostController,
@@ -619,16 +632,20 @@ class _ChronicleSettingsDialogState
                     ),
               const SizedBox(height: 8),
               useMacOSNativeUI
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        MacosTextField(
-                          controller: _proxyPortController,
-                          placeholder: l10n.syncProxyPortLabel,
-                          keyboardType: TextInputType.number,
-                        ),
-                        buildMacosErrorText(_proxyPortError),
-                      ],
+                  ? buildMacosLabeledField(
+                      label: l10n.syncProxyPortLabel,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          MacosTextField(
+                            controller: _proxyPortController,
+                            placeholder: l10n.syncProxyPortLabel,
+                            placeholderStyle: macosPlaceholderStyle,
+                            keyboardType: TextInputType.number,
+                          ),
+                          buildMacosErrorText(_proxyPortError),
+                        ],
+                      ),
                     )
                   : TextField(
                       controller: _proxyPortController,
@@ -640,9 +657,13 @@ class _ChronicleSettingsDialogState
                     ),
               const SizedBox(height: 8),
               useMacOSNativeUI
-                  ? MacosTextField(
-                      controller: _proxyUsernameController,
-                      placeholder: l10n.syncProxyUsernameLabel,
+                  ? buildMacosLabeledField(
+                      label: l10n.syncProxyUsernameLabel,
+                      child: MacosTextField(
+                        controller: _proxyUsernameController,
+                        placeholder: l10n.syncProxyUsernameLabel,
+                        placeholderStyle: macosPlaceholderStyle,
+                      ),
                     )
                   : TextField(
                       controller: _proxyUsernameController,
@@ -652,10 +673,14 @@ class _ChronicleSettingsDialogState
                     ),
               const SizedBox(height: 8),
               useMacOSNativeUI
-                  ? MacosTextField(
-                      controller: _proxyPasswordController,
-                      placeholder: l10n.syncProxyPasswordLabel,
-                      obscureText: true,
+                  ? buildMacosLabeledField(
+                      label: l10n.syncProxyPasswordLabel,
+                      child: MacosTextField(
+                        controller: _proxyPasswordController,
+                        placeholder: l10n.syncProxyPasswordLabel,
+                        placeholderStyle: macosPlaceholderStyle,
+                        obscureText: true,
+                      ),
                     )
                   : TextField(
                       controller: _proxyPasswordController,
@@ -686,13 +711,13 @@ class _ChronicleSettingsDialogState
     );
 
     final content = SizedBox(
-      width: sheetBodyWidth,
+      width: dialogWidth,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(
             key: _kSettingsDialogNavPaneKey,
-            width: 146,
+            width: 136,
             child: Align(alignment: Alignment.topLeft, child: sectionNav),
           ),
           const SizedBox(width: 14),
@@ -712,12 +737,7 @@ class _ChronicleSettingsDialogState
       ),
     );
 
-    final scrollableContent = SingleChildScrollView(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: sheetBodyWidth),
-        child: content,
-      ),
-    );
+    final scrollableContent = SingleChildScrollView(child: content);
 
     Future<void> saveSettings() async {
       final currentSettings = ref
@@ -837,43 +857,39 @@ class _ChronicleSettingsDialogState
     if (useMacOSNativeUI) {
       return MacosSheet(
         child: SafeArea(
-          child: SingleChildScrollView(
+          child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: sheetBodyWidth),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Text(
-                      l10n.settingsTitle,
-                      style: const TextStyle(fontSize: 18),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    scrollableContent,
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: <Widget>[
-                        PushButton(
-                          controlSize: ControlSize.large,
-                          secondary: true,
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(l10n.cancelAction),
-                        ),
-                        const SizedBox(width: 8),
-                        PushButton(
-                          controlSize: ControlSize.large,
-                          onPressed: saveSettings,
-                          child: Text(l10n.saveAction),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    l10n.settingsTitle,
+                    style: const TextStyle(fontSize: 18),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  scrollableContent,
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: <Widget>[
+                      PushButton(
+                        controlSize: ControlSize.large,
+                        secondary: true,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(l10n.cancelAction),
+                      ),
+                      const SizedBox(width: 8),
+                      PushButton(
+                        controlSize: ControlSize.large,
+                        onPressed: saveSettings,
+                        child: Text(l10n.saveAction),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -893,6 +909,37 @@ class _ChronicleSettingsDialogState
       ],
     );
   }
+}
+
+class _MacosLabeledField extends StatelessWidget {
+  const _MacosLabeledField({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final labelStyle = MacosTheme.of(
+      context,
+    ).typography.body.copyWith(fontWeight: FontWeight.w600);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(label, style: labelStyle),
+        const SizedBox(height: 6),
+        child,
+      ],
+    );
+  }
+}
+
+TextStyle _macosPlaceholderStyle(BuildContext context) {
+  final color = MacosTheme.brightnessOf(
+    context,
+  ).resolve(const Color(0x8A000000), const Color(0xCCEBEBF5));
+  return MacosTheme.of(
+    context,
+  ).typography.body.copyWith(fontWeight: FontWeight.w400, color: color);
 }
 
 String _syncTargetTypeLabel(SyncTargetType type, AppLocalizations l10n) {

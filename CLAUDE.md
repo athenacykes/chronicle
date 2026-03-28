@@ -1,165 +1,116 @@
-# CLAUDE.md
+# Repository Guidelines
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Project Structure & Module Organization
+- `lib/` contains production code, organized by layer:
+  - `lib/domain/` for entities, repository contracts, and use cases.
+  - `lib/data/` for implementations (`local_fs/`, `cache_sqlite/`, `sync_webdav/`).
+  - `lib/presentation/` for UI/controllers, with platform-specific shell code under `presentation/common/shell/`.
+  - `lib/app/` and `lib/main.dart` wire app bootstrap and providers.
+- `test/` holds unit/widget/golden tests; goldens live in `test/golden/goldens/`.
+- `integration_test/` contains end-to-end widget flows.
+- `macos/` includes desktop runner and native macOS project files.
 
-## Project Overview
+## Build, Test, and Development Commands
+- `flutter pub get` installs dependencies.
+- `flutter analyze` runs static analysis with `flutter_lints`.
+- `flutter test` runs unit/widget tests.
+- `flutter test integration_test/app_test.dart` runs the integration test.
+- `flutter test test/golden/platform_shell_golden_test.dart` validates shell goldens.
+- `flutter test test/golden/platform_shell_golden_test.dart --update-goldens` refreshes golden baselines after intentional UI changes.
+- `flutter run -d macos` runs locally on macOS.
+- `flutter run -d macos --dart-define=CHRONICLE_MACOS_NATIVE_UI=true` enables the native macOS shell.
 
-Chronicle is a timeline-centric, local-first note app organized around **Matters** (projects with lifecycle phases). It's a desktop-first Flutter application targeting macOS, with plans to extend to other platforms.
+## Coding Style & Naming Conventions
+- Follow Dart/Flutter defaults: 2-space indentation and trailing commas for stable formatting.
+- File names use `snake_case.dart`; classes/types use `PascalCase`; fields/methods use `camelCase`.
+- Keep layer boundaries explicit: `presentation` depends on `domain` contracts, `data` implements repositories.
+- Run `dart format .` before opening a PR.
 
-## Tech Stack
+## Testing Guidelines
+- Use `flutter_test` for unit/widget tests and `integration_test` for app flows; `mocktail` is available for mocks.
+- Test files must end with `_test.dart` and mirror source paths where practical (example: `lib/presentation/settings/...` -> `test/presentation/settings/...`).
+- Add regression tests for bug fixes and update goldens when UI behavior intentionally changes.
 
-- **Flutter**: 3.38.3
-- **Dart**: 3.10.1
-- **State Management**: Riverpod (flutter_riverpod)
-- **DI**: Riverpod providers (`lib/app/app_providers.dart`)
-- **Local Storage**: File-based (JSON + Markdown with YAML front matter)
-- **Search Cache**: SQLite with FTS
-- **Sync**: WebDAV with conflict detection
-- **UI**: Adaptive (Material Design / macOS native via `macos_ui`)
+## Commit & Pull Request Guidelines
+- Prefer Conventional Commit style seen in history (examples: `feat(ui): ...`, `refactor(presentation): ...`).
+- Keep commits focused and include tests with code changes.
+- PRs should include: concise summary, linked issue (if any), test commands run, and screenshots for UI changes (especially golden-impacting updates).
 
-## Common Commands
+## Security & Configuration Tips
+- Do not commit real sync credentials or local absolute paths.
+- Keep WebDAV secrets in secure storage (`flutter_secure_storage`), not in source-controlled config.
 
-```bash
-# Install dependencies
-flutter pub get
+## Chronicle Home Shell Refactor Status (Phase 1/2)
+- The large home shell has been split from a single monolith into a staged architecture.
+- Public API is intentionally unchanged:
+  - `ChronicleHomeScreen`
+  - `showChronicleSettingsDialog`
+- `lib/presentation/common/shell/chronicle_home_coordinator.dart` is now the library entrypoint plus orchestration state (`_ChronicleHomeScreenState`).
+- Remaining `part` files (still coupled to coordinator internals):
+  - `lib/presentation/common/shell/chronicle_home/helpers.dart`
+  - `lib/presentation/common/shell/chronicle_home/sidebar.dart`
+  - `lib/presentation/common/shell/chronicle_home/workspace.dart`
+  - `lib/presentation/common/shell/chronicle_home/graph.dart`
+  - `lib/presentation/common/shell/chronicle_home/editor.dart`
+- Promoted standalone modules (Phase 2 so far):
+  - `lib/presentation/common/shell/chronicle_root_shell.dart`
+  - `lib/presentation/common/shell/chronicle_search_results_view.dart`
+  - `lib/presentation/common/shell/chronicle_settings_dialog.dart`
+  - `lib/presentation/common/shell/chronicle_entity_dialogs.dart`
+  - `lib/presentation/common/shell/chronicle_manage_phases_dialog.dart`
+  - `lib/presentation/common/shell/chronicle_graph_canvas.dart`
+  - `lib/presentation/common/shell/chronicle_note_editor_utilities.dart`
+  - `lib/presentation/common/shell/chronicle_note_title_header.dart`
+  - `lib/presentation/common/shell/chronicle_macos_widgets.dart`
+  - `lib/presentation/common/shell/chronicle_top_bar_controls.dart`
+  - `lib/presentation/common/shell/chronicle_sidebar_sync_panel.dart`
+  - `lib/presentation/common/shell/chronicle_sidebar_matter_actions.dart`
 
-# Run analysis
-flutter analyze
+### Refactor Guardrails
+- Prefer promoting reusable/leaf UI from `part` files into standalone imported files with explicit constructor contracts.
+- Keep orchestration and provider wiring centralized in coordinator unless a promotion clearly reduces coupling.
+- Avoid functional/UX changes during this refactor; target maintainability only.
+- After each extraction, run:
+  - `flutter analyze`
+  - `flutter test test/presentation/common/shell/chronicle_home_macos_main_pane_test.dart`
+  - `flutter test`
 
-# Run all tests
-flutter test
+### Note Integrity Invariant
+- Treat note title/content and on-disk note files as integrity-critical state.
+- Selection/view/navigation actions are read-only:
+  - Clicking or opening a note/matter/phase/notebook folder/search result/time view must never mutate note content/title on disk.
+  - State hydration while loading/switching views must never copy content/title across notes or draft sessions.
+- Mutations are allowed only from explicit write-intent actions:
+  - Direct user editing input, explicit save, create, move, delete, rename, attachment add/remove, or equivalent explicit operations.
+- Autosave is allowed only for active user edits of the same note/draft session; never from passive viewing/navigation.
 
-# Run single test file
-flutter test test/domain/entities/matter_test.dart
+## Skills
 
-# Run tests matching a pattern
-flutter test --name "createMatter"
+### Available project skills
+- `chronicle-architecture-principles`: architecture boundary, provider wiring, and refactor guardrail skill. (`/Users/serenity/Workspace/startup/chronicle/skills/chronicle-architecture-principles/SKILL.md`)
+- `chronicle-ui-ux-principles`: adaptive shell and interaction consistency skill for Material/macOS UI. (`/Users/serenity/Workspace/startup/chronicle/skills/chronicle-ui-ux-principles/SKILL.md`)
+- `chronicle-testing-playbook`: test planning, execution, and regression-safety skill. (`/Users/serenity/Workspace/startup/chronicle/skills/chronicle-testing-playbook/SKILL.md`)
+- `chronicle-sync-safety-recovery`: WebDAV sync blocker/recovery/safety skill. (`/Users/serenity/Workspace/startup/chronicle/skills/chronicle-sync-safety-recovery/SKILL.md`)
+- `chronicle-storage-schema-evolution`: local storage layout/schema compatibility skill. (`/Users/serenity/Workspace/startup/chronicle/skills/chronicle-storage-schema-evolution/SKILL.md`)
+- `chronicle-localization-workflow`: ARB, locale resolution, and l10n generation skill. (`/Users/serenity/Workspace/startup/chronicle/skills/chronicle-localization-workflow/SKILL.md`)
+- `chronicle-markdown-editor-extensions`: markdown parser/renderer/editor extension skill. (`/Users/serenity/Workspace/startup/chronicle/skills/chronicle-markdown-editor-extensions/SKILL.md`)
 
-# Run golden tests
-flutter test test/golden/platform_shell_golden_test.dart
+### Trigger rules for AI coding agents
+- Architecture/refactor/provider/repository contract changes -> `chronicle-architecture-principles`.
+- UI/layout/interaction/platform shell work -> `chronicle-ui-ux-principles`.
+- Any code change or review -> `chronicle-testing-playbook`.
+- Sync flow, blockers, recovery, or conflict behavior -> `chronicle-sync-safety-recovery`.
+- Local storage layout/schema/repository path evolution -> `chronicle-storage-schema-evolution`.
+- String copy, locale behavior, or ARB changes -> `chronicle-localization-workflow`.
+- Markdown parsing/rendering/editor feature work -> `chronicle-markdown-editor-extensions`.
 
-# Update golden baselines (after intentional UI changes)
-flutter test test/golden/platform_shell_golden_test.dart --update-goldens
+### Skill application order
+- First: `chronicle-architecture-principles`.
+- Second: domain-specific skill for task (`sync`, `storage`, `l10n`, `markdown`, or `ui/ux`).
+- Third: `chronicle-testing-playbook`.
 
-# Run integration test
-flutter test integration_test/app_test.dart
-
-# Run on macOS (Material shell)
-flutter run -d macos
-
-# Run on macOS with native macOS UI
-flutter run -d macos --dart-define=CHRONICLE_MACOS_NATIVE_UI=true
-
-# Build release macOS app
-flutter build macos --release
-# Output: build/macos/Build/Products/Release/chronicle.app
-
-# Format code
-dart format .
-
-# Generate localization files (after editing ARB files)
-flutter gen-l10n
-```
-
-## Architecture
-
-### Layer Structure
-
-```
-lib/
-├── domain/           # Entities, repository contracts, use cases
-│   ├── entities/     # Immutable data classes (Matter, Note, Phase, etc.)
-│   ├── repositories/ # Abstract repository interfaces
-│   └── usecases/     # Business logic operations
-├── data/             # Repository implementations
-│   ├── local_fs/     # File-based storage implementation
-│   ├── cache_sqlite/ # SQLite search index
-│   └── sync_webdav/  # WebDAV sync engine
-├── presentation/     # UI layer
-│   ├── common/shell/ # Main app shell (being refactored)
-│   ├── settings/     # Settings UI
-│   ├── notes/        # Note editing UI
-│   ├── matters/      # Matter management UI
-│   └── sync/         # Sync status UI
-├── app/              # App bootstrap and providers
-│   ├── app.dart      # ChronicleApp widget
-│   └── app_providers.dart  # Riverpod provider definitions
-└── main.dart         # Entry point
-```
-
-### Key Architectural Patterns
-
-**Repository Pattern**: Abstract contracts in `domain/repositories/`, implementations in `data/`. Repositories handle data persistence and retrieval.
-
-**Use Cases**: Located in `domain/usecases/`, encapsulate single business operations. Use `lib/domain/usecases/usecases.dart` as barrel export.
-
-**Riverpod Providers**: All dependencies wired in `lib/app/app_providers.dart`. Repositories are provided as singletons via `Provider<T>`, controllers use `StateNotifierProvider` or `AsyncNotifier`.
-
-**File-Based Storage**: Notes stored as Markdown files with YAML front matter. Matters stored as JSON. Repository implementations in `data/local_fs/` use codec pattern (`MatterFileCodec`, `NoteFileCodec`).
-
-**Platform Abstraction**: macOS native UI enabled via `--dart-define=CHRONICLE_MACOS_NATIVE_UI=true`. Checked via `PlatformInfo.useMacOSNativeUI` (`lib/presentation/common/platform/platform_info.dart`).
-
-**Localization**: ARB files in `lib/l10n/`. Access via `context.l10n` extension (`lib/l10n/localization.dart`). Run `flutter gen-l10n` after editing ARB files.
-
-### Core Entities
-
-- **Matter**: A project with lifecycle phases (`start`, `process`, `end`)
-- **Note**: Markdown note with YAML front matter, belongs to either a Matter phase or Notebook folder
-- **Phase**: Stage within a Matter (e.g., "Planning", "Execution")
-- **Category**: Optional grouping for Matters
-- **NotebookFolder**: Folder structure for notes not in Matters
-- **NoteLink**: Bi-directional links between notes
-
-### Storage Layout
-
-```
-<storage_root>/
-├── info.json              # App metadata
-├── matters/
-│   └── <matter_id>/
-│       ├── matter.json    # Matter metadata
-│       └── notes/
-│           └── <phase_id>/
-│               └── <note_id>.md
-├── notebook/              # Notes not in matters
-│   └── <folder_id>/
-│       └── <note_id>.md
-├── links/
-│   └── <note_id>.json     # Outgoing links from note
-└── resources/             # Attachments
-```
-
-### Shell Architecture (In Progress)
-
-The home shell is undergoing staged refactoring:
-
-- **Public API**: `ChronicleHomeScreen`, `showChronicleSettingsDialog`
-- **Coordinator**: `lib/presentation/common/shell/chronicle_home_coordinator.dart` (orchestration state)
-- **Part Files** (still coupled): `chronicle_home/helpers.dart`, `sidebar.dart`, `workspace.dart`, `graph.dart`, `editor.dart`
-- **Extracted Modules**: Standalone widgets in `lib/presentation/common/shell/chronicle_*.dart`
-
-After extraction changes, validate with:
-```bash
-flutter analyze
-flutter test test/presentation/common/shell/chronicle_home_macos_main_pane_test.dart
-flutter test
-```
-
-## Testing
-
-- **Unit/Widget Tests**: Mirror source path structure in `test/`
-- **Golden Tests**: `test/golden/` - run with `--update-goldens` to update baselines
-- **Integration Tests**: `integration_test/`
-- **Mocking**: Uses `mocktail`
-
-Test files must end with `_test.dart`.
-
-## Code Style
-
-- 2-space indentation
-- Trailing commas for stable formatting
-- File names: `snake_case.dart`
-- Classes: `PascalCase`
-- Methods/fields: `camelCase`
-- Lint rules: `package:flutter_lints/flutter.yaml`
-
+### Minimum execution checklist
+- Identify and load all relevant skills before editing code.
+- Follow architecture and domain guardrails from loaded skills during implementation.
+- Run verification commands defined by the testing skill (and domain skill when applicable).
+- Report which skills were applied, commands run, and outcomes.

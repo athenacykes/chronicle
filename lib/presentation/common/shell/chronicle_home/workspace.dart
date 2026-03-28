@@ -69,10 +69,9 @@ class _WelcomeTourWorkspace extends ConsumerWidget {
               .read(mattersControllerProvider.notifier)
               .findMatter(selectedMatterId)
               ?.categoryId;
-    final result = await showDialog<ChronicleMatterDialogResult>(
+    final result = await showChronicleMatterDialog(
       context: context,
-      builder: (_) =>
-          const ChronicleMatterDialog(mode: ChronicleMatterDialogMode.create),
+      mode: ChronicleMatterDialogMode.create,
     );
 
     if (result == null || result.title.trim().isEmpty) {
