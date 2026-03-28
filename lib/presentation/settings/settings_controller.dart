@@ -140,6 +140,22 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     state = AsyncData(updated);
   }
 
+  Future<void> setEditorLineNumbersEnabled(bool enabled) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final updated = settings.copyWith(editorLineNumbersEnabled: enabled);
+    await repository.saveSettings(updated);
+    state = AsyncData(updated);
+  }
+
+  Future<void> setEditorWordWrapEnabled(bool enabled) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final updated = settings.copyWith(editorWordWrapEnabled: enabled);
+    await repository.saveSettings(updated);
+    state = AsyncData(updated);
+  }
+
   Future<void> refresh() async {
     final settings = await ref.read(settingsRepositoryProvider).loadSettings();
     state = AsyncData(settings);

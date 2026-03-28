@@ -4704,6 +4704,14 @@ void main() {
         find.byKey(const Key('note_editor_markdown_toolbar')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('note_editor_toggle_line_numbers')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('note_editor_toggle_word_wrap')),
+        findsOneWidget,
+      );
 
       await tester.tap(
         find.byKey(const Key('note_editor_markdown_toolbar_action_code_block')),
@@ -4720,6 +4728,10 @@ void main() {
         find.byKey(const Key('note_editor_markdown_toolbar_dialog_insert')),
       );
       await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
 
       final codeField = tester.widget<CodeField>(
         find.byKey(const Key('macos_note_editor_content')),
@@ -4733,6 +4745,196 @@ void main() {
         find.byKey(const Key('note_editor_markdown_toolbar')),
         findsNothing,
       );
+      expect(
+        find.byKey(const Key('note_editor_toggle_line_numbers')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('note_editor_toggle_word_wrap')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'editor view toggles honor persisted settings and update CodeField behavior',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+      final settingsRepository = _FakeSettingsRepository(
+        AppSettings(
+          storageRootPath: '/tmp/chronicle-test',
+          clientId: 'test-client',
+          syncConfig: SyncConfig.initial(),
+          lastSyncAt: null,
+          editorLineNumbersEnabled: false,
+          editorWordWrapEnabled: true,
+        ),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          settingsRepository: settingsRepository,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      CodeField codeField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(codeField.wrap, isTrue);
+      expect(codeField.gutterStyle.showLineNumbers, isFalse);
+
+      await tester.tap(find.byKey(const Key('note_editor_toggle_line_numbers')));
+      await tester.pumpAndSettle();
+
+      codeField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(codeField.gutterStyle.showLineNumbers, isTrue);
+      expect(
+        settingsRepository._settings.editorLineNumbersEnabled,
+        isTrue,
+      );
+
+      await tester.tap(find.byKey(const Key('note_editor_toggle_word_wrap')));
+      await tester.pumpAndSettle();
+
+      codeField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(codeField.wrap, isFalse);
+      expect(settingsRepository._settings.editorWordWrapEnabled, isFalse);
+    },
+  );
+
+  testWidgets(
+    'table link and image toolbar actions use anchored popups and still insert markdown',
+    (tester) async {
+      _setDesktopViewport(tester);
+      final repos = _TestRepos(
+        matterRepository: _MemoryMatterRepository(<Matter>[matter]),
+        noteRepository: _MemoryNoteRepository(<Note>[noteOne, noteTwo]),
+        linkRepository: _MemoryLinkRepository(),
+      );
+
+      await tester.pumpWidget(
+        _buildApp(
+          useMacOSNativeUI: false,
+          repos: repos,
+          overrides: [
+            selectedMatterIdProvider.overrideWithBuild(
+              (ref, notifier) => 'matter-1',
+            ),
+            selectedPhaseIdProvider.overrideWithBuild(
+              (ref, notifier) => 'phase-start',
+            ),
+            selectedNoteIdProvider.overrideWithBuild(
+              (ref, notifier) => 'note-1',
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_action_table')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('note_editor_markdown_toolbar_popup_table')),
+        findsOneWidget,
+      );
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('note_editor_markdown_toolbar_field_table_rows')),
+        '2',
+      );
+      await tester.enterText(
+        find.byKey(
+          const Key('note_editor_markdown_toolbar_field_table_columns'),
+        ),
+        '2',
+      );
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_dialog_insert')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('note_editor_markdown_toolbar_popup_table')),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_action_link')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('note_editor_markdown_toolbar_popup_link')),
+        findsOneWidget,
+      );
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('note_editor_markdown_toolbar_field_link_text')),
+        'Chronicle',
+      );
+      await tester.enterText(
+        find.byKey(const Key('note_editor_markdown_toolbar_field_link_url')),
+        'https://example.com',
+      );
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_dialog_insert')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_action_image')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('note_editor_markdown_toolbar_popup_image')),
+        findsOneWidget,
+      );
+      expect(find.byType(AlertDialog), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('note_editor_markdown_toolbar_field_image_alt')),
+        'Alt',
+      );
+      await tester.enterText(
+        find.byKey(const Key('note_editor_markdown_toolbar_field_image_source')),
+        'assets/example.png',
+      );
+      await tester.tap(
+        find.byKey(const Key('note_editor_markdown_toolbar_dialog_insert')),
+      );
+      await tester.pumpAndSettle();
+
+      final codeField = tester.widget<CodeField>(
+        find.byKey(const Key('macos_note_editor_content')),
+      );
+      expect(codeField.controller.text, contains('| Column 1 | Column 2 |'));
+      expect(
+        codeField.controller.text,
+        contains('[Chronicle](https://example.com)'),
+      );
+      expect(codeField.controller.text, contains('![Alt](assets/example.png)'));
     },
   );
 

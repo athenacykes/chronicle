@@ -12,6 +12,8 @@ class AppSettings {
     this.collapsedSidebarSectionIds = const <String>[],
     this.matterNoteListPaneWidth = 380,
     this.notebookNoteListPaneWidth = 380,
+    this.editorLineNumbersEnabled = true,
+    this.editorWordWrapEnabled = false,
   });
 
   final String? storageRootPath;
@@ -23,6 +25,8 @@ class AppSettings {
   final List<String> collapsedSidebarSectionIds;
   final double matterNoteListPaneWidth;
   final double notebookNoteListPaneWidth;
+  final bool editorLineNumbersEnabled;
+  final bool editorWordWrapEnabled;
 
   AppSettings copyWith({
     String? storageRootPath,
@@ -36,6 +40,8 @@ class AppSettings {
     List<String>? collapsedSidebarSectionIds,
     double? matterNoteListPaneWidth,
     double? notebookNoteListPaneWidth,
+    bool? editorLineNumbersEnabled,
+    bool? editorWordWrapEnabled,
   }) {
     return AppSettings(
       storageRootPath: clearStorageRootPath
@@ -52,6 +58,10 @@ class AppSettings {
           matterNoteListPaneWidth ?? this.matterNoteListPaneWidth,
       notebookNoteListPaneWidth:
           notebookNoteListPaneWidth ?? this.notebookNoteListPaneWidth,
+      editorLineNumbersEnabled:
+          editorLineNumbersEnabled ?? this.editorLineNumbersEnabled,
+      editorWordWrapEnabled:
+          editorWordWrapEnabled ?? this.editorWordWrapEnabled,
     );
   }
 
@@ -66,6 +76,8 @@ class AppSettings {
       'collapsedSidebarSectionIds': collapsedSidebarSectionIds,
       'matterNoteListPaneWidth': matterNoteListPaneWidth,
       'notebookNoteListPaneWidth': notebookNoteListPaneWidth,
+      'editorLineNumbersEnabled': editorLineNumbersEnabled,
+      'editorWordWrapEnabled': editorWordWrapEnabled,
     };
   }
 
@@ -99,6 +111,9 @@ class AppSettings {
               .toList(growable: false),
       matterNoteListPaneWidth: parsePaneWidth('matterNoteListPaneWidth'),
       notebookNoteListPaneWidth: parsePaneWidth('notebookNoteListPaneWidth'),
+      editorLineNumbersEnabled:
+          json['editorLineNumbersEnabled'] as bool? ?? true,
+      editorWordWrapEnabled: json['editorWordWrapEnabled'] as bool? ?? false,
     );
   }
 
@@ -113,6 +128,8 @@ class AppSettings {
       collapsedSidebarSectionIds: const <String>[],
       matterNoteListPaneWidth: 380,
       notebookNoteListPaneWidth: 380,
+      editorLineNumbersEnabled: true,
+      editorWordWrapEnabled: false,
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:macos_ui/macos_ui.dart';
@@ -14,6 +16,7 @@ class MarkdownFormatToolbar extends StatefulWidget {
     required this.keyPrefix,
     this.showImageAction = true,
     this.onPickAndAttachImagePath,
+    this.trailingActions = const <Widget>[],
     MarkdownEditFormatter? formatter,
   }) : formatter = formatter ?? MarkdownEditFormatter();
 
@@ -22,6 +25,7 @@ class MarkdownFormatToolbar extends StatefulWidget {
   final String keyPrefix;
   final bool showImageAction;
   final Future<String?> Function()? onPickAndAttachImagePath;
+  final List<Widget> trailingActions;
   final MarkdownEditFormatter formatter;
 
   @override
@@ -29,6 +33,17 @@ class MarkdownFormatToolbar extends StatefulWidget {
 }
 
 class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
+  final Map<String, LayerLink> _actionLinks = <String, LayerLink>{};
+  OverlayEntry? _popupEntry;
+  Completer<Object?>? _popupCompleter;
+  String? _popupAction;
+
+  @override
+  void dispose() {
+    _dismissPopup();
+    super.dispose();
+  }
+
   void _apply(TextEditingValue Function(TextEditingValue value) update) {
     widget.controller.value = update(widget.controller.value);
   }
@@ -37,6 +52,34 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _disposeControllersAfterFrame(
+    Iterable<TextEditingController> controllers,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    });
+  }
+
+  LayerLink _linkForAction(String action) =>
+      _actionLinks.putIfAbsent(action, LayerLink.new);
+
+  void _dismissPopup([Object? result]) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final entry = _popupEntry;
+    _popupEntry = null;
+    final completer = _popupCompleter;
+    _popupCompleter = null;
+    _popupAction = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      entry?.remove();
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(result);
+      }
+    });
   }
 
   Key _actionKey(String action) =>
@@ -48,19 +91,28 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
   Key _dialogInsertKey() =>
       Key('${widget.keyPrefix}_markdown_toolbar_dialog_insert');
 
+  Key _popupKey(String action) =>
+      Key('${widget.keyPrefix}_markdown_toolbar_popup_$action');
+
   Future<void> _showCodeBlockDialog() async {
     final l10n = context.l10n;
     final languageController = TextEditingController();
-    final result = await _showSingleFieldDialog(
-      title: l10n.markdownToolbarInsertCodeBlockTitle,
-      fieldLabel: l10n.markdownToolbarLanguageOptionalLabel,
-      controller: languageController,
-      fieldKey: _dialogFieldKey('code_language'),
-    );
-    if (result == null) {
-      return;
+    try {
+      final result = await _showSingleFieldDialog(
+        title: l10n.markdownToolbarInsertCodeBlockTitle,
+        fieldLabel: l10n.markdownToolbarLanguageOptionalLabel,
+        controller: languageController,
+        fieldKey: _dialogFieldKey('code_language'),
+      );
+      if (result == null) {
+        return;
+      }
+      _apply(
+        (value) => widget.formatter.applyCodeBlock(value, language: result),
+      );
+    } finally {
+      _disposeControllersAfterFrame(<TextEditingController>[languageController]);
     }
-    _apply((value) => widget.formatter.applyCodeBlock(value, language: result));
   }
 
   Future<void> _showTableDialog() async {
@@ -68,29 +120,37 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     final rowsController = TextEditingController(text: '2');
     final columnsController = TextEditingController(text: '3');
 
-    final result = await _showTwoFieldDialog(
-      title: l10n.markdownToolbarInsertTableTitle,
-      firstLabel: l10n.markdownToolbarTableRowsLabel,
-      secondLabel: l10n.markdownToolbarTableColumnsLabel,
-      firstController: rowsController,
-      secondController: columnsController,
-      firstFieldKey: _dialogFieldKey('table_rows'),
-      secondFieldKey: _dialogFieldKey('table_columns'),
-    );
-    if (result == null) {
-      return;
-    }
+    try {
+      final result = await _showTwoFieldPopup(
+        action: 'table',
+        title: l10n.markdownToolbarInsertTableTitle,
+        firstLabel: l10n.markdownToolbarTableRowsLabel,
+        secondLabel: l10n.markdownToolbarTableColumnsLabel,
+        firstController: rowsController,
+        secondController: columnsController,
+        firstFieldKey: _dialogFieldKey('table_rows'),
+        secondFieldKey: _dialogFieldKey('table_columns'),
+      );
+      if (result == null) {
+        return;
+      }
 
-    final rows = int.tryParse(result.first.trim()) ?? 0;
-    final columns = int.tryParse(result.second.trim()) ?? 0;
-    if (rows < 1 || columns < 1) {
-      _showMessage(l10n.markdownToolbarInvalidPositiveNumberMessage);
-      return;
+      final rows = int.tryParse(result.first.trim()) ?? 0;
+      final columns = int.tryParse(result.second.trim()) ?? 0;
+      if (rows < 1 || columns < 1) {
+        _showMessage(l10n.markdownToolbarInvalidPositiveNumberMessage);
+        return;
+      }
+      _apply(
+        (value) =>
+            widget.formatter.applyTable(value, rows: rows, columns: columns),
+      );
+    } finally {
+      _disposeControllersAfterFrame(<TextEditingController>[
+        rowsController,
+        columnsController,
+      ]);
     }
-    _apply(
-      (value) =>
-          widget.formatter.applyTable(value, rows: rows, columns: columns),
-    );
   }
 
   Future<void> _showLinkDialog() async {
@@ -99,34 +159,43 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     final urlController = TextEditingController();
     final titleController = TextEditingController();
 
-    final result = await _showThreeFieldDialog(
-      title: l10n.markdownToolbarInsertLinkTitle,
-      firstLabel: l10n.markdownToolbarLinkTextLabel,
-      secondLabel: l10n.markdownToolbarLinkUrlLabel,
-      thirdLabel: l10n.markdownToolbarLinkTitleOptionalLabel,
-      firstController: textController,
-      secondController: urlController,
-      thirdController: titleController,
-      firstFieldKey: _dialogFieldKey('link_text'),
-      secondFieldKey: _dialogFieldKey('link_url'),
-      thirdFieldKey: _dialogFieldKey('link_title'),
-    );
-    if (result == null) {
-      return;
-    }
-    if (result.second.trim().isEmpty) {
-      _showMessage(l10n.markdownToolbarUrlRequiredMessage);
-      return;
-    }
+    try {
+      final result = await _showThreeFieldPopup(
+        action: 'link',
+        title: l10n.markdownToolbarInsertLinkTitle,
+        firstLabel: l10n.markdownToolbarLinkTextLabel,
+        secondLabel: l10n.markdownToolbarLinkUrlLabel,
+        thirdLabel: l10n.markdownToolbarLinkTitleOptionalLabel,
+        firstController: textController,
+        secondController: urlController,
+        thirdController: titleController,
+        firstFieldKey: _dialogFieldKey('link_text'),
+        secondFieldKey: _dialogFieldKey('link_url'),
+        thirdFieldKey: _dialogFieldKey('link_title'),
+      );
+      if (result == null) {
+        return;
+      }
+      if (result.second.trim().isEmpty) {
+        _showMessage(l10n.markdownToolbarUrlRequiredMessage);
+        return;
+      }
 
-    _apply(
-      (value) => widget.formatter.applyLink(
-        value,
-        text: result.first,
-        url: result.second,
-        title: result.third,
-      ),
-    );
+      _apply(
+        (value) => widget.formatter.applyLink(
+          value,
+          text: result.first,
+          url: result.second,
+          title: result.third,
+        ),
+      );
+    } finally {
+      _disposeControllersAfterFrame(<TextEditingController>[
+        textController,
+        urlController,
+        titleController,
+      ]);
+    }
   }
 
   Future<void> _showImageDialog() async {
@@ -135,31 +204,40 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     final srcController = TextEditingController();
     final titleController = TextEditingController();
 
-    final result = await _showImageFieldDialog(
-      title: l10n.markdownToolbarInsertImageTitle,
-      altController: altController,
-      srcController: srcController,
-      titleController: titleController,
-      altFieldKey: _dialogFieldKey('image_alt'),
-      srcFieldKey: _dialogFieldKey('image_source'),
-      titleFieldKey: _dialogFieldKey('image_title'),
-    );
-    if (result == null) {
-      return;
-    }
-    if (result.src.trim().isEmpty) {
-      _showMessage(l10n.markdownToolbarImageSourceRequiredMessage);
-      return;
-    }
+    try {
+      final result = await _showImageFieldPopup(
+        action: 'image',
+        title: l10n.markdownToolbarInsertImageTitle,
+        altController: altController,
+        srcController: srcController,
+        titleController: titleController,
+        altFieldKey: _dialogFieldKey('image_alt'),
+        srcFieldKey: _dialogFieldKey('image_source'),
+        titleFieldKey: _dialogFieldKey('image_title'),
+      );
+      if (result == null) {
+        return;
+      }
+      if (result.src.trim().isEmpty) {
+        _showMessage(l10n.markdownToolbarImageSourceRequiredMessage);
+        return;
+      }
 
-    _apply(
-      (value) => widget.formatter.applyImage(
-        value,
-        alt: result.alt,
-        src: result.src,
-        title: result.title,
-      ),
-    );
+      _apply(
+        (value) => widget.formatter.applyImage(
+          value,
+          alt: result.alt,
+          src: result.src,
+          title: result.title,
+        ),
+      );
+    } finally {
+      _disposeControllersAfterFrame(<TextEditingController>[
+        altController,
+        srcController,
+        titleController,
+      ]);
+    }
   }
 
   String _selectedText() {
@@ -181,6 +259,7 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     required String tooltip,
     required IconData icon,
     required VoidCallback onPressed,
+    bool selected = false,
   }) {
     if (widget.isMacOSNativeUI) {
       return MacosTooltip(
@@ -189,7 +268,9 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
           key: key,
           semanticLabel: tooltip,
           icon: Icon(icon, size: 16),
-          backgroundColor: MacosColors.transparent,
+          backgroundColor: selected
+              ? MacosTheme.of(context).canvasColor.withAlpha(180)
+              : MacosColors.transparent,
           boxConstraints: const BoxConstraints(
             minHeight: 30,
             minWidth: 30,
@@ -211,8 +292,18 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
         padding: const EdgeInsets.all(6),
         minimumSize: const Size(30, 30),
         maximumSize: const Size(30, 30),
+        backgroundColor: selected
+            ? Theme.of(context).colorScheme.surfaceContainerHighest
+            : null,
       ),
     );
+  }
+
+  Widget _anchoredActionButton({
+    required String action,
+    required Widget child,
+  }) {
+    return CompositedTransformTarget(link: _linkForAction(action), child: child);
   }
 
   Widget _headingSelector() {
@@ -255,79 +346,97 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final children = <Widget>[
+      _actionButton(
+        key: _actionKey('bold'),
+        tooltip: l10n.markdownToolbarBoldAction,
+        icon: Icons.format_bold,
+        onPressed: () => _apply(widget.formatter.applyBold),
+      ),
+      const SizedBox(width: 6),
+      _actionButton(
+        key: _actionKey('italic'),
+        tooltip: l10n.markdownToolbarItalicAction,
+        icon: Icons.format_italic,
+        onPressed: () => _apply(widget.formatter.applyItalic),
+      ),
+      const SizedBox(width: 6),
+      _headingSelector(),
+      const SizedBox(width: 6),
+      _actionButton(
+        key: _actionKey('unordered_list'),
+        tooltip: l10n.markdownToolbarUnorderedListAction,
+        icon: Icons.format_list_bulleted,
+        onPressed: () => _apply(widget.formatter.applyUnorderedList),
+      ),
+      const SizedBox(width: 6),
+      _actionButton(
+        key: _actionKey('ordered_list'),
+        tooltip: l10n.markdownToolbarOrderedListAction,
+        icon: Icons.format_list_numbered,
+        onPressed: () => _apply(widget.formatter.applyOrderedList),
+      ),
+      const SizedBox(width: 6),
+      _actionButton(
+        key: _actionKey('code_block'),
+        tooltip: l10n.markdownToolbarCodeBlockAction,
+        icon: Icons.code,
+        onPressed: _showCodeBlockDialog,
+      ),
+      const SizedBox(width: 6),
+      _anchoredActionButton(
+        action: 'table',
+        child: _actionButton(
+          key: _actionKey('table'),
+          tooltip: l10n.markdownToolbarTableAction,
+          icon: Icons.table_chart_outlined,
+          onPressed: _showTableDialog,
+        ),
+      ),
+      const SizedBox(width: 6),
+      _anchoredActionButton(
+        action: 'link',
+        child: _actionButton(
+          key: _actionKey('link'),
+          tooltip: l10n.markdownToolbarLinkAction,
+          icon: Icons.link,
+          onPressed: _showLinkDialog,
+        ),
+      ),
+    ];
+    if (widget.showImageAction) {
+      children.addAll(<Widget>[
+        const SizedBox(width: 6),
+        _anchoredActionButton(
+          action: 'image',
+          child: _actionButton(
+            key: _actionKey('image'),
+            tooltip: l10n.markdownToolbarImageAction,
+            icon: Icons.image_outlined,
+            onPressed: _showImageDialog,
+          ),
+        ),
+      ]);
+    }
+    children.addAll(<Widget>[
+      const SizedBox(width: 6),
+      _actionButton(
+        key: _actionKey('date'),
+        tooltip: l10n.markdownToolbarInsertDateAction,
+        icon: Icons.calendar_today_outlined,
+        onPressed: () => _apply(widget.formatter.applyCurrentDate),
+      ),
+    ]);
+    if (widget.trailingActions.isNotEmpty) {
+      for (final action in widget.trailingActions) {
+        children.add(const SizedBox(width: 6));
+        children.add(action);
+      }
+    }
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Row(
-        children: <Widget>[
-          _actionButton(
-            key: _actionKey('bold'),
-            tooltip: l10n.markdownToolbarBoldAction,
-            icon: Icons.format_bold,
-            onPressed: () => _apply(widget.formatter.applyBold),
-          ),
-          const SizedBox(width: 6),
-          _actionButton(
-            key: _actionKey('italic'),
-            tooltip: l10n.markdownToolbarItalicAction,
-            icon: Icons.format_italic,
-            onPressed: () => _apply(widget.formatter.applyItalic),
-          ),
-          const SizedBox(width: 6),
-          _headingSelector(),
-          const SizedBox(width: 6),
-          _actionButton(
-            key: _actionKey('unordered_list'),
-            tooltip: l10n.markdownToolbarUnorderedListAction,
-            icon: Icons.format_list_bulleted,
-            onPressed: () => _apply(widget.formatter.applyUnorderedList),
-          ),
-          const SizedBox(width: 6),
-          _actionButton(
-            key: _actionKey('ordered_list'),
-            tooltip: l10n.markdownToolbarOrderedListAction,
-            icon: Icons.format_list_numbered,
-            onPressed: () => _apply(widget.formatter.applyOrderedList),
-          ),
-          const SizedBox(width: 6),
-          _actionButton(
-            key: _actionKey('code_block'),
-            tooltip: l10n.markdownToolbarCodeBlockAction,
-            icon: Icons.code,
-            onPressed: _showCodeBlockDialog,
-          ),
-          const SizedBox(width: 6),
-          _actionButton(
-            key: _actionKey('table'),
-            tooltip: l10n.markdownToolbarTableAction,
-            icon: Icons.table_chart_outlined,
-            onPressed: _showTableDialog,
-          ),
-          const SizedBox(width: 6),
-          _actionButton(
-            key: _actionKey('link'),
-            tooltip: l10n.markdownToolbarLinkAction,
-            icon: Icons.link,
-            onPressed: _showLinkDialog,
-          ),
-          if (widget.showImageAction) ...<Widget>[
-            const SizedBox(width: 6),
-            _actionButton(
-              key: _actionKey('image'),
-              tooltip: l10n.markdownToolbarImageAction,
-              icon: Icons.image_outlined,
-              onPressed: _showImageDialog,
-            ),
-          ],
-          const SizedBox(width: 6),
-          _actionButton(
-            key: _actionKey('date'),
-            tooltip: l10n.markdownToolbarInsertDateAction,
-            icon: Icons.calendar_today_outlined,
-            onPressed: () => _apply(widget.formatter.applyCurrentDate),
-          ),
-        ],
-      ),
+      child: Row(children: children),
     );
   }
 
@@ -343,12 +452,14 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
         controller: controller,
         label: fieldLabel,
         fieldKey: fieldKey,
+        autofocus: true,
       ),
       onInsert: () => controller.text,
     );
   }
 
-  Future<({String first, String second})?> _showTwoFieldDialog({
+  Future<({String first, String second})?> _showTwoFieldPopup({
+    required String action,
     required String title,
     required String firstLabel,
     required String secondLabel,
@@ -357,7 +468,8 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     required Key firstFieldKey,
     required Key secondFieldKey,
   }) {
-    return _showDialogShell<({String first, String second})>(
+    return _showAnchoredPopupShell<({String first, String second})>(
+      action: action,
       title: title,
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -366,6 +478,7 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
             controller: firstController,
             label: firstLabel,
             fieldKey: firstFieldKey,
+            autofocus: true,
           ),
           const SizedBox(height: 8),
           _dialogField(
@@ -380,7 +493,8 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     );
   }
 
-  Future<({String first, String second, String third})?> _showThreeFieldDialog({
+  Future<({String first, String second, String third})?> _showThreeFieldPopup({
+    required String action,
     required String title,
     required String firstLabel,
     required String secondLabel,
@@ -392,7 +506,8 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     required Key secondFieldKey,
     required Key thirdFieldKey,
   }) {
-    return _showDialogShell<({String first, String second, String third})>(
+    return _showAnchoredPopupShell<({String first, String second, String third})>(
+      action: action,
       title: title,
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -401,6 +516,7 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
             controller: firstController,
             label: firstLabel,
             fieldKey: firstFieldKey,
+            autofocus: true,
           ),
           const SizedBox(height: 8),
           _dialogField(
@@ -424,7 +540,8 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     );
   }
 
-  Future<_ImageDialogResult?> _showImageFieldDialog({
+  Future<_ImageDialogResult?> _showImageFieldPopup({
+    required String action,
     required String title,
     required TextEditingController altController,
     required TextEditingController srcController,
@@ -434,9 +551,10 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     required Key titleFieldKey,
   }) {
     final l10n = context.l10n;
-    return _showDialogShell<_ImageDialogResult>(
+    return _showAnchoredPopupShell<_ImageDialogResult>(
+      action: action,
       title: title,
-      contentBuilder: (dialogContext, setState) {
+      contentBuilder: (popupContext, setState) {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
@@ -444,6 +562,7 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
               controller: altController,
               label: l10n.markdownToolbarImageAltTextLabel,
               fieldKey: altFieldKey,
+              autofocus: true,
             ),
             const SizedBox(height: 8),
             _dialogField(
@@ -464,7 +583,7 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
                 child: _pickImageButton(
                   onPressed: () async {
                     final path = await widget.onPickAndAttachImagePath!.call();
-                    if (!dialogContext.mounted || path == null) {
+                    if (!popupContext.mounted || path == null) {
                       return;
                     }
                     setState(() {
@@ -522,22 +641,100 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
     required TextEditingController controller,
     required String label,
     required Key fieldKey,
+    bool autofocus = false,
   }) {
     if (widget.isMacOSNativeUI) {
       return MacosTextField(
         key: fieldKey,
         controller: controller,
+        autofocus: autofocus,
         placeholder: label,
       );
     }
     return TextField(
       key: fieldKey,
       controller: controller,
+      autofocus: autofocus,
       decoration: InputDecoration(
+        isDense: true,
         labelText: label,
         border: const OutlineInputBorder(),
       ),
     );
+  }
+
+  Future<T?> _showAnchoredPopupShell<T>({
+    required String action,
+    required String title,
+    Widget? content,
+    Widget Function(
+      BuildContext context,
+      void Function(VoidCallback fn) setState,
+    )?
+    contentBuilder,
+    required T Function() onInsert,
+  }) async {
+    if (_popupAction == action && _popupEntry != null) {
+      _dismissPopup();
+      setState(() {});
+      return null;
+    }
+
+    _dismissPopup();
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) {
+      return null;
+    }
+
+    final completer = Completer<T?>();
+    _popupCompleter = completer;
+    _popupAction = action;
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (overlayContext) => Material(
+        color: Colors.transparent,
+        child: Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _dismissPopup,
+              ),
+            ),
+            CompositedTransformFollower(
+              link: _linkForAction(action),
+              targetAnchor: Alignment.bottomLeft,
+              followerAnchor: Alignment.topLeft,
+              offset: const Offset(0, 8),
+              showWhenUnlinked: false,
+              child: StatefulBuilder(
+                builder: (popupContext, setState) {
+                  final body =
+                      contentBuilder?.call(popupContext, setState) ??
+                      content ??
+                      const SizedBox.shrink();
+                  return _AnchoredToolbarPopup(
+                    key: _popupKey(action),
+                    isMacOSNativeUI: widget.isMacOSNativeUI,
+                    title: title,
+                    insertButtonKey: _dialogInsertKey(),
+                    onInsert: () => _dismissPopup(onInsert()),
+                    onCancel: _dismissPopup,
+                    child: body,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    _popupEntry = entry;
+    overlay.insert(entry);
+    final result = await completer.future;
+    return result;
   }
 
   Future<T?> _showDialogShell<T>({
@@ -625,6 +822,110 @@ class _MarkdownFormatToolbarState extends State<MarkdownFormatToolbar> {
           },
         );
       },
+    );
+  }
+}
+
+class _AnchoredToolbarPopup extends StatelessWidget {
+  const _AnchoredToolbarPopup({
+    required super.key,
+    required this.isMacOSNativeUI,
+    required this.title,
+    required this.insertButtonKey,
+    required this.onInsert,
+    required this.onCancel,
+    required this.child,
+  });
+
+  final bool isMacOSNativeUI;
+  final String title;
+  final Key insertButtonKey;
+  final VoidCallback onInsert;
+  final VoidCallback onCancel;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final cardChild = ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 320),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              title,
+              style: isMacOSNativeUI
+                  ? MacosTheme.of(context).typography.title3
+                  : Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 10),
+            child,
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                if (isMacOSNativeUI)
+                  PushButton(
+                    controlSize: ControlSize.small,
+                    secondary: true,
+                    onPressed: onCancel,
+                    child: Text(l10n.cancelAction),
+                  )
+                else
+                  TextButton(
+                    onPressed: onCancel,
+                    child: Text(l10n.cancelAction),
+                  ),
+                const SizedBox(width: 8),
+                if (isMacOSNativeUI)
+                  PushButton(
+                    key: insertButtonKey,
+                    controlSize: ControlSize.small,
+                    onPressed: onInsert,
+                    child: Text(l10n.markdownToolbarInsertAction),
+                  )
+                else
+                  FilledButton(
+                    key: insertButtonKey,
+                    onPressed: onInsert,
+                    child: Text(l10n.markdownToolbarInsertAction),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (isMacOSNativeUI) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: MacosTheme.of(context).canvasColor,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: MacosTheme.of(context).dividerColor.withAlpha(140),
+          ),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              blurRadius: 18,
+              color: Color(0x22000000),
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: cardChild,
+      );
+    }
+
+    return Material(
+      elevation: 10,
+      color: Theme.of(context).colorScheme.surface,
+      shadowColor: Colors.black26,
+      borderRadius: BorderRadius.circular(12),
+      child: cardChild,
     );
   }
 }

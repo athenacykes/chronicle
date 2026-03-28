@@ -16,6 +16,8 @@ void main() {
     expect(settings.collapsedSidebarSectionIds, isEmpty);
     expect(settings.matterNoteListPaneWidth, 380);
     expect(settings.notebookNoteListPaneWidth, 380);
+    expect(settings.editorLineNumbersEnabled, isTrue);
+    expect(settings.editorWordWrapEnabled, isFalse);
   });
 
   test('toJson/fromJson roundtrip preserves localeTag', () {
@@ -62,5 +64,21 @@ void main() {
 
     expect(restored.matterNoteListPaneWidth, 244);
     expect(restored.notebookNoteListPaneWidth, 312);
+  });
+
+  test('toJson/fromJson roundtrip preserves editor view options', () {
+    final original = AppSettings(
+      storageRootPath: '/tmp/chronicle',
+      clientId: 'client-id',
+      syncConfig: SyncConfig.initial(),
+      lastSyncAt: null,
+      editorLineNumbersEnabled: false,
+      editorWordWrapEnabled: true,
+    );
+
+    final restored = AppSettings.fromJson(original.toJson());
+
+    expect(restored.editorLineNumbersEnabled, isFalse);
+    expect(restored.editorWordWrapEnabled, isTrue);
   });
 }

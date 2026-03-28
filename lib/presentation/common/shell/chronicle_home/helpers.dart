@@ -553,6 +553,10 @@ const Key _kMacosNoteEditorContentFieldKey = Key('macos_note_editor_content');
 const Key _kMacosNoteEditorSaveButtonKey = Key('macos_note_editor_save');
 const Key _kNoteEditorMarkdownToolbarKey = Key('note_editor_markdown_toolbar');
 const Key _kNoteEditorModeToggleKey = Key('note_editor_mode_toggle');
+const Key _kNoteEditorLineNumbersToggleKey = Key(
+  'note_editor_toggle_line_numbers',
+);
+const Key _kNoteEditorWordWrapToggleKey = Key('note_editor_toggle_word_wrap');
 const Key _kNoteEditorUtilityTagsKey = Key('note_editor_utility_tags');
 const Key _kNoteEditorUtilityAttachmentsKey = Key(
   'note_editor_utility_attachments',

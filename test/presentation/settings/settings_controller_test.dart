@@ -95,6 +95,36 @@ void main() {
     expect((await repository.loadSettings()).matterNoteListPaneWidth, 226);
     expect((await repository.loadSettings()).notebookNoteListPaneWidth, 294);
   });
+
+  test('editor view toggles persist in settings repository', () async {
+    final repository = _InMemorySettingsRepository(
+      AppSettings(
+        storageRootPath: null,
+        clientId: 'settings-test',
+        syncConfig: SyncConfig.initial(),
+        lastSyncAt: null,
+      ),
+    );
+
+    final container = ProviderContainer(
+      overrides: [settingsRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+
+    await container.read(settingsControllerProvider.future);
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setEditorLineNumbersEnabled(false);
+    await container
+        .read(settingsControllerProvider.notifier)
+        .setEditorWordWrapEnabled(true);
+
+    final state = container.read(settingsControllerProvider).asData?.value;
+    expect(state?.editorLineNumbersEnabled, isFalse);
+    expect(state?.editorWordWrapEnabled, isTrue);
+    expect((await repository.loadSettings()).editorLineNumbersEnabled, isFalse);
+    expect((await repository.loadSettings()).editorWordWrapEnabled, isTrue);
+  });
 }
 
 class _InMemorySettingsRepository implements SettingsRepository {

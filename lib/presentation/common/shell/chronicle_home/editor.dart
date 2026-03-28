@@ -254,6 +254,65 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  GutterStyle _editorGutterStyle({required bool showLineNumbers}) {
+    if (!showLineNumbers) {
+      return GutterStyle.none;
+    }
+    return const GutterStyle(
+      width: 60,
+      margin: 4,
+      showErrors: false,
+      showFoldingHandles: false,
+      showLineNumbers: true,
+    );
+  }
+
+  Widget _editorToolbarToggleButton({
+    required bool isMacOSNativeUI,
+    required Key key,
+    required String tooltip,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    if (isMacOSNativeUI) {
+      return MacosTooltip(
+        message: tooltip,
+        child: MacosIconButton(
+          key: key,
+          semanticLabel: tooltip,
+          icon: Icon(icon, size: 16),
+          backgroundColor: selected
+              ? MacosTheme.of(context).canvasColor.withAlpha(180)
+              : MacosColors.transparent,
+          boxConstraints: const BoxConstraints(
+            minHeight: 30,
+            minWidth: 30,
+            maxHeight: 30,
+            maxWidth: 30,
+          ),
+          padding: const EdgeInsets.all(6),
+          onPressed: onPressed,
+        ),
+      );
+    }
+    return IconButton(
+      key: key,
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 18),
+      style: IconButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.all(6),
+        minimumSize: const Size(30, 30),
+        maximumSize: const Size(30, 30),
+        backgroundColor: selected
+            ? Theme.of(context).colorScheme.surfaceContainerHighest
+            : null,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -262,13 +321,47 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     final editorViewMode = ref.watch(noteEditorViewModeProvider);
     final notebookDraft = ref.watch(notebookDraftSessionProvider);
     final isResolvingWorkspace = ref.watch(isResolvingWorkspaceNoteProvider);
-    final storageRootPath = ref
-        .watch(settingsControllerProvider)
-        .asData
-        ?.value
-        .storageRootPath;
+    final settings = ref.watch(settingsControllerProvider).asData?.value;
+    final storageRootPath = settings?.storageRootPath;
+    final lineNumbersEnabled = settings?.editorLineNumbersEnabled ?? true;
+    final wordWrapEnabled = settings?.editorWordWrapEnabled ?? false;
     final note = noteAsync.value;
     final noteError = noteAsync.asError?.error;
+
+    final editorToolbarTrailingActions = <Widget>[
+      _editorToolbarToggleButton(
+        isMacOSNativeUI: isMacOSNativeUI,
+        key: _kNoteEditorLineNumbersToggleKey,
+        tooltip: lineNumbersEnabled
+            ? l10n.hideLineNumbersAction
+            : l10n.showLineNumbersAction,
+        icon: Icons.format_list_numbered,
+        selected: lineNumbersEnabled,
+        onPressed: () {
+          unawaited(
+            ref
+                .read(settingsControllerProvider.notifier)
+                .setEditorLineNumbersEnabled(!lineNumbersEnabled),
+          );
+        },
+      ),
+      _editorToolbarToggleButton(
+        isMacOSNativeUI: isMacOSNativeUI,
+        key: _kNoteEditorWordWrapToggleKey,
+        tooltip: wordWrapEnabled
+            ? l10n.disableWordWrapAction
+            : l10n.enableWordWrapAction,
+        icon: Icons.wrap_text,
+        selected: wordWrapEnabled,
+        onPressed: () {
+          unawaited(
+            ref
+                .read(settingsControllerProvider.notifier)
+                .setEditorWordWrapEnabled(!wordWrapEnabled),
+          );
+        },
+      ),
+    ];
 
     if (noteError != null && note == null) {
       return Center(child: Text(l10n.editorError(noteError.toString())));
@@ -338,6 +431,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                         keyPrefix: 'note_editor',
                         formatter: _markdownFormatter,
                         showImageAction: false,
+                        trailingActions: editorToolbarTrailingActions,
                       ),
                       const SizedBox(height: 8),
                       Expanded(
@@ -347,6 +441,10 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                             key: _kMacosNoteEditorContentFieldKey,
                             controller: _contentController,
                             expands: true,
+                            wrap: wordWrapEnabled,
+                            gutterStyle: _editorGutterStyle(
+                              showLineNumbers: lineNumbersEnabled,
+                            ),
                             textStyle: TextStyle(
                               fontFamily: isMacOSNativeUI
                                   ? 'Menlo'
@@ -992,6 +1090,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                           showImageAction: true,
                           onPickAndAttachImagePath: () =>
                               _pickAndAttachImageForMarkdown(context, note),
+                          trailingActions: editorToolbarTrailingActions,
                         ),
                         const SizedBox(height: 8),
                         Expanded(
@@ -1001,6 +1100,10 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
                               key: _kMacosNoteEditorContentFieldKey,
                               controller: _contentController,
                               expands: true,
+                              wrap: wordWrapEnabled,
+                              gutterStyle: _editorGutterStyle(
+                                showLineNumbers: lineNumbersEnabled,
+                              ),
                               textStyle: TextStyle(
                                 fontFamily: isMacOSNativeUI
                                     ? 'Menlo'
