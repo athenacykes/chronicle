@@ -27,6 +27,38 @@ final selectedNotebookFolderIdProvider =
       () => ValueNotifierController<String?>(null),
     );
 
+final noteEditorFlushBridgeProvider = Provider<NoteEditorFlushBridge>((ref) {
+  final bridge = NoteEditorFlushBridge();
+  ref.onDispose(bridge.clear);
+  return bridge;
+});
+
+class NoteEditorFlushBridge {
+  Future<void> Function()? _flushCallback;
+
+  void register(Future<void> Function() callback) {
+    _flushCallback = callback;
+  }
+
+  void unregister(Future<void> Function() callback) {
+    if (identical(_flushCallback, callback)) {
+      _flushCallback = null;
+    }
+  }
+
+  Future<void> flush() async {
+    final callback = _flushCallback;
+    if (callback == null) {
+      return;
+    }
+    await callback();
+  }
+
+  void clear() {
+    _flushCallback = null;
+  }
+}
+
 class NotebookDraftSession {
   const NotebookDraftSession({
     required this.folderId,

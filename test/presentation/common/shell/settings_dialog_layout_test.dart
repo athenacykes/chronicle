@@ -72,6 +72,16 @@ void main() {
     final contentPane = find.byKey(const Key('settings_dialog_content_pane'));
     expect(navPane, findsOneWidget);
     expect(contentPane, findsOneWidget);
+    expect(
+      find.byKey(const Key('settings_export_backup_button')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('settings_import_backup_button')),
+      findsOneWidget,
+    );
+    expect(find.text('Export backup'), findsOneWidget);
+    expect(find.text('Import backup'), findsOneWidget);
 
     final navSize = tester.getSize(navPane);
     final contentSize = tester.getSize(contentPane);

@@ -9,6 +9,107 @@
   "settingsTitle": "设置",
   "fileMenuLabel": "文件",
   "importNotebookActionEllipsis": "导入...",
+  "backupExportAction": "导出备份",
+  "backupImportAction": "导入备份",
+  "backupStorageScopeDescription": "备份仅包含当前配置的 Chronicle 存储根目录。",
+  "backupImportModeTitle": "导入备份",
+  "backupImportModeMessage": "选择要替换当前存储，还是将备份合并到现有存储中。",
+  "backupImportMergeAction": "与现有存储合并",
+  "backupImportBlankRestoreAction": "恢复到空白存储",
+  "backupImportBlankRestoreConfirmTitle": "替换当前存储？",
+  "backupImportBlankRestoreConfirmMessage": "这会先删除当前 Chronicle 存储根目录中的内容，再从备份归档恢复。",
+  "backupOperationBlockedTitle": "无法执行备份操作",
+  "backupOperationBlockedSyncRunningMessage": "请先停止当前同步，再导出或导入 Chronicle 备份。",
+  "backupExportDialogTitle": "备份导出",
+  "backupExportSuccessSummary": "已将 {files} 个文件导出到备份归档。",
+  "@backupExportSuccessSummary": {
+    "placeholders": {
+      "files": {
+        "type": "int"
+      }
+    }
+  },
+  "backupExportPartialSummary": "备份导出完成，但有警告。已导出 {files} 个文件。警告：{warnings}。",
+  "@backupExportPartialSummary": {
+    "placeholders": {
+      "files": {
+        "type": "int"
+      },
+      "warnings": {
+        "type": "int"
+      }
+    }
+  },
+  "backupExportFailed": "备份导出失败：{error}",
+  "@backupExportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "backupImportDialogTitle": "备份导入",
+  "backupImportSuccessSummary": "已导入 {categories} 个分类、{matters} 个 Matter、{folders} 个笔记本文件夹、{notes} 条笔记、{links} 条链接和 {resources} 个资源。",
+  "@backupImportSuccessSummary": {
+    "placeholders": {
+      "categories": {
+        "type": "int"
+      },
+      "matters": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "notes": {
+        "type": "int"
+      },
+      "links": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      }
+    }
+  },
+  "backupImportPartialSummary": "备份导入完成，但有警告。已导入 {categories} 个分类、{matters} 个 Matter、{folders} 个笔记本文件夹、{notes} 条笔记、{links} 条链接和 {resources} 个资源。警告：{warnings}。",
+  "@backupImportPartialSummary": {
+    "placeholders": {
+      "categories": {
+        "type": "int"
+      },
+      "matters": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "notes": {
+        "type": "int"
+      },
+      "links": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      },
+      "warnings": {
+        "type": "int"
+      }
+    }
+  },
+  "backupImportFailed": "备份导入失败：{error}",
+  "@backupImportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "backupWarningsTitle": "警告（{count}）",
+  "@backupWarningsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "notebookImportDialogTitle": "笔记本导入",
   "notebookImportSuccessSummary": "已导入 {notes} 条笔记、{folders} 个文件夹和 {resources} 个资源。",
   "@notebookImportSuccessSummary": {

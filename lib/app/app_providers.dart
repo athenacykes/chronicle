@@ -5,6 +5,7 @@ import '../core/clock.dart';
 import '../core/file_system_utils.dart';
 import '../core/id_generator.dart';
 import '../data/cache_sqlite/sqlite_search_repository.dart';
+import '../data/local_fs/local_chronicle_backup_repository.dart';
 import '../data/local_fs/chronicle_storage_initializer.dart';
 import '../data/local_fs/conflict_service.dart';
 import '../data/local_fs/link_file_codec.dart';
@@ -26,6 +27,7 @@ import '../data/sync_webdav/webdav_client_factory.dart';
 import '../data/sync_webdav/webdav_sync_engine.dart';
 import '../data/sync_webdav/webdav_sync_repository.dart';
 import '../domain/repositories/category_repository.dart';
+import '../domain/repositories/chronicle_backup_repository.dart';
 import '../domain/repositories/link_repository.dart';
 import '../domain/repositories/matter_repository.dart';
 import '../domain/repositories/note_repository.dart';
@@ -83,6 +85,13 @@ final syncLocalMetadataTrackerProvider = Provider<SyncLocalMetadataTracker>((
     fileSystemUtils: ref.watch(fileSystemUtilsProvider),
     clock: ref.watch(clockProvider),
     metadataStore: ref.watch(localSyncMetadataStoreProvider),
+  );
+});
+
+final localSyncStateStoreProvider = Provider<LocalSyncStateStore>((ref) {
+  return LocalSyncStateStore(
+    appDirectories: ref.watch(appDirectoriesProvider),
+    fileSystemUtils: ref.watch(fileSystemUtilsProvider),
   );
 });
 
@@ -171,6 +180,22 @@ final searchRepositoryProvider = Provider<SearchRepository>((ref) {
   );
 });
 
+final chronicleBackupRepositoryProvider = Provider<ChronicleBackupRepository>((
+  ref,
+) {
+  return LocalChronicleBackupRepository(
+    storageRootLocator: ref.watch(storageRootLocatorProvider),
+    storageInitializer: ref.watch(storageInitializerProvider),
+    fileSystemUtils: ref.watch(fileSystemUtilsProvider),
+    noteCodec: const NoteFileCodec(),
+    matterCodec: const MatterFileCodec(),
+    linkCodec: const LinkFileCodec(),
+    idGenerator: ref.watch(idGeneratorProvider),
+    clock: ref.watch(clockProvider),
+    syncMetadataTracker: ref.watch(syncLocalMetadataTrackerProvider),
+  );
+});
+
 final syncRepositoryProvider = Provider<SyncRepository>((ref) {
   return WebDavSyncRepository(
     settingsRepository: ref.watch(settingsRepositoryProvider),
@@ -181,10 +206,7 @@ final syncRepositoryProvider = Provider<SyncRepository>((ref) {
       fileSystemUtils: ref.watch(fileSystemUtilsProvider),
       clock: ref.watch(clockProvider),
       localSyncMetadataStore: ref.watch(localSyncMetadataStoreProvider),
-      syncStateStore: LocalSyncStateStore(
-        appDirectories: ref.watch(appDirectoriesProvider),
-        fileSystemUtils: ref.watch(fileSystemUtilsProvider),
-      ),
+      syncStateStore: ref.watch(localSyncStateStoreProvider),
       conflictService: ref.watch(conflictServiceProvider),
       conflictHistoryStore: ref.watch(conflictHistoryStoreProvider),
     ),

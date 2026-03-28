@@ -34,6 +34,30 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     await setStorageRootPath(selected);
   }
 
+  Future<String?> chooseBackupExportPath({String? suggestedFileName}) {
+    return FilePicker.platform.saveFile(
+      fileName: suggestedFileName == null || suggestedFileName.trim().isEmpty
+          ? 'chronicle-backup.zip'
+          : suggestedFileName.trim(),
+      type: FileType.custom,
+      allowedExtensions: const <String>['zip'],
+    );
+  }
+
+  Future<String?> pickBackupArchivePath() async {
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      withData: false,
+      type: FileType.custom,
+      allowedExtensions: const <String>['zip'],
+    );
+    final path = picked?.files.singleOrNull?.path?.trim();
+    if (path == null || path.isEmpty) {
+      return null;
+    }
+    return path;
+  }
+
   Future<String> suggestedDefaultRootPath() async {
     final appDirs = ref.read(appDirectoriesProvider);
     final home = await appDirs.homeDirectory();

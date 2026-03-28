@@ -1,25 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:macos_ui/macos_ui.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../app/app_providers.dart';
 import '../../../domain/entities/app_settings.dart';
+import '../../../domain/entities/chronicle_backup_result.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../domain/entities/sync_bootstrap_assessment.dart';
 import '../../../domain/entities/sync_config.dart';
 import '../../../domain/entities/sync_proxy_config.dart';
+import '../../../data/local_fs/chronicle_layout.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
+import '../../links/links_controller.dart';
 import '../../matters/matters_controller.dart';
 import '../../notes/notes_controller.dart';
+import '../../search/search_controller.dart';
 import '../../settings/settings_controller.dart';
 import '../../sync/conflicts_controller.dart';
 import '../../sync/sync_controller.dart';
+import 'chronicle_time_views_controller.dart';
 import 'chronicle_macos_fixed_dialog.dart';
 import 'chronicle_modal_dialog.dart';
 
 const Key _kSettingsDialogNavPaneKey = Key('settings_dialog_nav_pane');
 const Key _kSettingsDialogContentPaneKey = Key('settings_dialog_content_pane');
+const Key _kExportBackupButtonKey = Key('settings_export_backup_button');
+const Key _kImportBackupButtonKey = Key('settings_import_backup_button');
 
 class ChronicleSettingsDialog extends ConsumerStatefulWidget {
   const ChronicleSettingsDialog({super.key, required this.useMacOSNativeUI});
@@ -53,6 +61,7 @@ class _ChronicleSettingsDialogState
   _SettingsSection _selectedSection = _SettingsSection.storage;
   String? _proxyHostError;
   String? _proxyPortError;
+  bool _storageTaskInProgress = false;
 
   @override
   void initState() {
@@ -261,6 +270,328 @@ class _ChronicleSettingsDialogState
     }
   }
 
+  Future<void> _showStorageMessageDialog({
+    required String title,
+    required String message,
+  }) {
+    return showChronicleModalDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(context.l10n.closeAction),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<ChronicleBackupImportMode?> _showBackupImportModeDialog() {
+    final l10n = context.l10n;
+    return showChronicleModalDialog<ChronicleBackupImportMode>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.backupImportModeTitle),
+        content: Text(l10n.backupImportModeMessage),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancelAction),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(
+              dialogContext,
+            ).pop(ChronicleBackupImportMode.mergeExisting),
+            child: Text(l10n.backupImportMergeAction),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(
+              dialogContext,
+            ).pop(ChronicleBackupImportMode.blankRestore),
+            child: Text(l10n.backupImportBlankRestoreAction),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBackupResultDialog({
+    required String title,
+    required String summary,
+    required List<ChronicleBackupWarning> warnings,
+  }) async {
+    final l10n = context.l10n;
+    final warningLines = warnings
+        .take(12)
+        .map((warning) {
+          final entry = warning.entryPath?.trim() ?? '';
+          if (entry.isEmpty) {
+            return '- ${warning.message}';
+          }
+          return '- ${p.basename(entry)}: ${warning.message}';
+        })
+        .join('\n');
+    final hasExtraWarnings = warnings.length > 12;
+
+    await showChronicleModalDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(summary),
+              if (warnings.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 10),
+                Text(l10n.backupWarningsTitle(warnings.length)),
+                const SizedBox(height: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      hasExtraWarnings ? '$warningLines\n...' : warningLines,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.closeAction),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _defaultBackupFileName() {
+    final now = DateTime.now().toUtc();
+    final date =
+        '${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final time =
+        '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+    return 'chronicle-backup-$date-$time.zip';
+  }
+
+  Future<bool> _ensureSyncIsIdleForStorageTask() async {
+    final syncStatus = ref.read(syncControllerProvider).asData?.value;
+    if (syncStatus?.isRunning == true) {
+      await _showStorageMessageDialog(
+        title: context.l10n.backupOperationBlockedTitle,
+        message: context.l10n.backupOperationBlockedSyncRunningMessage,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _prepareForStorageMutation() async {
+    await ref.read(noteEditorFlushBridgeProvider).flush();
+    await ref
+        .read(noteEditorControllerProvider.notifier)
+        .flushAndClearNotebookDraftSession();
+    ref.read(syncControllerProvider.notifier).stopAutoSync();
+  }
+
+  Future<void> _clearSyncBookkeepingAfterImport() async {
+    await ref.read(localSyncStateStoreProvider).clear();
+    await ref.read(localSyncMetadataStoreProvider).clear();
+
+    try {
+      final root = await ref
+          .read(storageRootLocatorProvider)
+          .requireRootDirectory();
+      await ref
+          .read(conflictHistoryStoreProvider)
+          .clear(layout: ChronicleLayout(root));
+    } catch (_) {
+      // Ignore missing storage root while resetting import bookkeeping.
+    }
+  }
+
+  Future<void> _reloadStateAfterImport() async {
+    ref.read(selectedNoteIdProvider.notifier).set(null);
+    ref.read(selectedConflictPathProvider.notifier).set(null);
+    ref.read(selectedMatterIdProvider.notifier).set(null);
+    ref.read(selectedPhaseIdProvider.notifier).set(null);
+    ref.read(selectedNotebookFolderIdProvider.notifier).set(null);
+    ref.read(selectedTimeViewProvider.notifier).set(null);
+    ref.read(showNotebookProvider.notifier).set(false);
+    ref.read(showConflictsProvider.notifier).set(false);
+    ref.read(searchResultsVisibleProvider.notifier).set(false);
+
+    await ref.read(mattersControllerProvider.notifier).reload();
+    await ref.read(conflictsControllerProvider.notifier).reload();
+    ref.invalidate(noteListProvider);
+    ref.invalidate(notebookNoteListProvider);
+    ref.invalidate(notebookFoldersProvider);
+    ref.invalidate(notebookFolderTreeProvider);
+    ref.invalidate(orphanNotesProvider);
+    ref.invalidate(timeViewSummaryProvider);
+    await ref.read(searchRepositoryProvider).rebuildIndex();
+    ref.invalidate(searchControllerProvider);
+    ref.read(linksControllerProvider).invalidateAll();
+  }
+
+  Future<void> _exportBackup() async {
+    if (_storageTaskInProgress) {
+      return;
+    }
+    if (!await _ensureSyncIsIdleForStorageTask()) {
+      return;
+    }
+
+    final outputPath = await ref
+        .read(settingsControllerProvider.notifier)
+        .chooseBackupExportPath(suggestedFileName: _defaultBackupFileName());
+    if (!mounted || outputPath == null || outputPath.trim().isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _storageTaskInProgress = true;
+    });
+    try {
+      await ref.read(noteEditorFlushBridgeProvider).flush();
+      final result = await ref
+          .read(chronicleBackupRepositoryProvider)
+          .exportToArchive(outputPath: outputPath);
+      if (!mounted) {
+        return;
+      }
+      final l10n = context.l10n;
+      await _showBackupResultDialog(
+        title: l10n.backupExportDialogTitle,
+        summary: result.hasWarnings
+            ? l10n.backupExportPartialSummary(
+                result.exportedFileCount,
+                result.warningCount,
+              )
+            : l10n.backupExportSuccessSummary(result.exportedFileCount),
+        warnings: result.warnings,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      await _showStorageMessageDialog(
+        title: context.l10n.backupExportDialogTitle,
+        message: context.l10n.backupExportFailed(error.toString()),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _storageTaskInProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _importBackup() async {
+    if (_storageTaskInProgress) {
+      return;
+    }
+    if (!await _ensureSyncIsIdleForStorageTask()) {
+      return;
+    }
+
+    final archivePath = await ref
+        .read(settingsControllerProvider.notifier)
+        .pickBackupArchivePath();
+    if (!mounted || archivePath == null || archivePath.trim().isEmpty) {
+      return;
+    }
+
+    final mode = await _showBackupImportModeDialog();
+    if (!mounted || mode == null) {
+      return;
+    }
+
+    if (mode == ChronicleBackupImportMode.blankRestore) {
+      final confirmed = await _confirmDialog(
+        title: context.l10n.backupImportBlankRestoreConfirmTitle,
+        message: context.l10n.backupImportBlankRestoreConfirmMessage,
+        continueLabel: context.l10n.backupImportBlankRestoreAction,
+      );
+      if (!confirmed || !mounted) {
+        return;
+      }
+    }
+
+    setState(() {
+      _storageTaskInProgress = true;
+    });
+    final currentSettings = ref.read(settingsControllerProvider).asData?.value;
+    try {
+      await _prepareForStorageMutation();
+      final result = await ref
+          .read(chronicleBackupRepositoryProvider)
+          .importFromArchive(archivePath: archivePath, mode: mode);
+      await _clearSyncBookkeepingAfterImport();
+      await _reloadStateAfterImport();
+      if (currentSettings != null) {
+        await ref
+            .read(syncControllerProvider.notifier)
+            .startAutoSync(currentSettings.syncConfig.intervalMinutes);
+      }
+
+      if (!mounted) {
+        return;
+      }
+      final l10n = context.l10n;
+      await _showBackupResultDialog(
+        title: l10n.backupImportDialogTitle,
+        summary: result.hasWarnings
+            ? l10n.backupImportPartialSummary(
+                result.importedCategoryCount,
+                result.importedMatterCount,
+                result.importedNotebookFolderCount,
+                result.importedNoteCount,
+                result.importedLinkCount,
+                result.importedResourceCount,
+                result.warningCount,
+              )
+            : l10n.backupImportSuccessSummary(
+                result.importedCategoryCount,
+                result.importedMatterCount,
+                result.importedNotebookFolderCount,
+                result.importedNoteCount,
+                result.importedLinkCount,
+                result.importedResourceCount,
+              ),
+        warnings: result.warnings,
+      );
+    } catch (error) {
+      if (currentSettings != null) {
+        await ref
+            .read(syncControllerProvider.notifier)
+            .startAutoSync(currentSettings.syncConfig.intervalMinutes);
+      }
+      if (!mounted) {
+        return;
+      }
+      await _showStorageMessageDialog(
+        title: context.l10n.backupImportDialogTitle,
+        message: context.l10n.backupImportFailed(error.toString()),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _storageTaskInProgress = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -337,6 +668,43 @@ class _ChronicleSettingsDialogState
                     labelText: l10n.storageRootPathLabel,
                   ),
                 ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              useMacOSNativeUI
+                  ? PushButton(
+                      key: _kExportBackupButtonKey,
+                      controlSize: ControlSize.large,
+                      onPressed: _storageTaskInProgress ? null : _exportBackup,
+                      child: Text(l10n.backupExportAction),
+                    )
+                  : FilledButton.tonal(
+                      key: _kExportBackupButtonKey,
+                      onPressed: _storageTaskInProgress ? null : _exportBackup,
+                      child: Text(l10n.backupExportAction),
+                    ),
+              useMacOSNativeUI
+                  ? PushButton(
+                      key: _kImportBackupButtonKey,
+                      controlSize: ControlSize.large,
+                      secondary: true,
+                      onPressed: _storageTaskInProgress ? null : _importBackup,
+                      child: Text(l10n.backupImportAction),
+                    )
+                  : OutlinedButton(
+                      key: _kImportBackupButtonKey,
+                      onPressed: _storageTaskInProgress ? null : _importBackup,
+                      child: Text(l10n.backupImportAction),
+                    ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            l10n.backupStorageScopeDescription,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
       );
     }
@@ -738,11 +1106,12 @@ class _ChronicleSettingsDialogState
       ),
     );
 
-    final scrollableContent = SingleChildScrollView(
-      child: content,
-    );
+    final scrollableContent = SingleChildScrollView(child: content);
 
     Future<void> saveSettings() async {
+      if (_storageTaskInProgress) {
+        return;
+      }
       final currentSettings = ref
           .read(settingsControllerProvider)
           .asData
@@ -880,13 +1249,15 @@ class _ChronicleSettingsDialogState
                     PushButton(
                       controlSize: ControlSize.large,
                       secondary: true,
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: _storageTaskInProgress
+                          ? null
+                          : () => Navigator.of(context).pop(),
                       child: Text(l10n.cancelAction),
                     ),
                     const SizedBox(width: 8),
                     PushButton(
                       controlSize: ControlSize.large,
-                      onPressed: saveSettings,
+                      onPressed: _storageTaskInProgress ? null : saveSettings,
                       child: Text(l10n.saveAction),
                     ),
                   ],
@@ -903,10 +1274,15 @@ class _ChronicleSettingsDialogState
       content: scrollableContent,
       actions: <Widget>[
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _storageTaskInProgress
+              ? null
+              : () => Navigator.of(context).pop(),
           child: Text(l10n.cancelAction),
         ),
-        FilledButton(onPressed: saveSettings, child: Text(l10n.saveAction)),
+        FilledButton(
+          onPressed: _storageTaskInProgress ? null : saveSettings,
+          child: Text(l10n.saveAction),
+        ),
       ],
     );
   }

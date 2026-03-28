@@ -17,6 +17,7 @@ class _NoteEditorPane extends ConsumerStatefulWidget {
 class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   final TextEditingController _titleController = TextEditingController();
   late final CodeController _contentController;
+  late final NoteEditorFlushBridge _noteEditorFlushBridge;
   final TextEditingController _tagsController = TextEditingController();
   final MarkdownEditFormatter _markdownFormatter = MarkdownEditFormatter();
   String? _loadedNoteId;
@@ -29,13 +30,16 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
   @override
   void initState() {
     super.initState();
+    _noteEditorFlushBridge = ref.read(noteEditorFlushBridgeProvider);
     _contentController = MarkdownCodeController(text: '');
     _lastObservedContentText = _contentController.text;
     _contentController.addListener(_handleEditorContentChanged);
+    _noteEditorFlushBridge.register(_flushEditorState);
   }
 
   @override
   void dispose() {
+    _noteEditorFlushBridge.unregister(_flushEditorState);
     _contentController.removeListener(_handleEditorContentChanged);
     _cancelPendingNotebookNoteAutosave();
     _titleController.dispose();
@@ -75,8 +79,11 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     }
     // Verify the loaded note still matches the controller's current note
     // to guard against deferred listener callbacks firing after a note switch.
-    final controllerNoteId =
-        ref.read(noteEditorControllerProvider).asData?.value?.id;
+    final controllerNoteId = ref
+        .read(noteEditorControllerProvider)
+        .asData
+        ?.value
+        ?.id;
     if (controllerNoteId != loadedNoteId) {
       return;
     }
@@ -120,6 +127,49 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
     await ref
         .read(noteEditorControllerProvider.notifier)
         .updateNoteById(noteId: pending.noteId, content: pending.content);
+  }
+
+  Future<void> _flushEditorState() async {
+    final notebookDraft = ref.read(notebookDraftSessionProvider);
+    if (notebookDraft != null) {
+      ref
+          .read(noteEditorControllerProvider.notifier)
+          .updateNotebookDraft(
+            title: _titleController.text.trim(),
+            content: _contentController.text,
+            tags: _parsedTags(_tagsController.text),
+          );
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .flushNotebookDraftAutosave();
+      return;
+    }
+
+    final note = ref.read(noteEditorControllerProvider).asData?.value;
+    if (note == null) {
+      await _flushPendingNotebookNoteAutosave();
+      return;
+    }
+
+    final currentTags = _parsedTags(_tagsController.text);
+    final hasPendingChanges =
+        _titleController.text.trim() != note.title ||
+        _contentController.text != note.content ||
+        !_stringListsEqual(currentTags, note.tags);
+    if (!hasPendingChanges) {
+      await _flushPendingNotebookNoteAutosave();
+      return;
+    }
+
+    _cancelPendingNotebookNoteAutosave();
+    _pendingNotebookNoteAutosave = null;
+    await ref
+        .read(noteEditorControllerProvider.notifier)
+        .updateCurrent(
+          title: _titleController.text.trim(),
+          content: _contentController.text,
+          tags: currentTags,
+        );
   }
 
   List<String> _parsedTags(String value) {

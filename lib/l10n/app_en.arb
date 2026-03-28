@@ -10,6 +10,107 @@
   "settingsTitle": "Settings",
   "fileMenuLabel": "File",
   "importNotebookActionEllipsis": "Import...",
+  "backupExportAction": "Export backup",
+  "backupImportAction": "Import backup",
+  "backupStorageScopeDescription": "Backups include the configured Chronicle storage root only.",
+  "backupImportModeTitle": "Import backup",
+  "backupImportModeMessage": "Choose whether to replace the current storage root or merge the backup into the existing storage.",
+  "backupImportMergeAction": "Merge with existing storage",
+  "backupImportBlankRestoreAction": "Restore to blank storage",
+  "backupImportBlankRestoreConfirmTitle": "Replace current storage?",
+  "backupImportBlankRestoreConfirmMessage": "This will delete the current Chronicle storage root contents before restoring the backup archive.",
+  "backupOperationBlockedTitle": "Backup unavailable",
+  "backupOperationBlockedSyncRunningMessage": "Stop the current sync run before exporting or importing a Chronicle backup.",
+  "backupExportDialogTitle": "Backup Export",
+  "backupExportSuccessSummary": "Exported {files} files to the backup archive.",
+  "@backupExportSuccessSummary": {
+    "placeholders": {
+      "files": {
+        "type": "int"
+      }
+    }
+  },
+  "backupExportPartialSummary": "Backup export completed with warnings. Exported {files} files. Warnings: {warnings}.",
+  "@backupExportPartialSummary": {
+    "placeholders": {
+      "files": {
+        "type": "int"
+      },
+      "warnings": {
+        "type": "int"
+      }
+    }
+  },
+  "backupExportFailed": "Backup export failed: {error}",
+  "@backupExportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "backupImportDialogTitle": "Backup Import",
+  "backupImportSuccessSummary": "Imported {categories} categories, {matters} matters, {folders} notebook folders, {notes} notes, {links} links, and {resources} resources.",
+  "@backupImportSuccessSummary": {
+    "placeholders": {
+      "categories": {
+        "type": "int"
+      },
+      "matters": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "notes": {
+        "type": "int"
+      },
+      "links": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      }
+    }
+  },
+  "backupImportPartialSummary": "Backup import completed with warnings. Imported {categories} categories, {matters} matters, {folders} notebook folders, {notes} notes, {links} links, and {resources} resources. Warnings: {warnings}.",
+  "@backupImportPartialSummary": {
+    "placeholders": {
+      "categories": {
+        "type": "int"
+      },
+      "matters": {
+        "type": "int"
+      },
+      "folders": {
+        "type": "int"
+      },
+      "notes": {
+        "type": "int"
+      },
+      "links": {
+        "type": "int"
+      },
+      "resources": {
+        "type": "int"
+      },
+      "warnings": {
+        "type": "int"
+      }
+    }
+  },
+  "backupImportFailed": "Backup import failed: {error}",
+  "@backupImportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "backupWarningsTitle": "Warnings ({count})",
+  "@backupWarningsTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "notebookImportDialogTitle": "Notebook Import",
   "notebookImportSuccessSummary": "Imported {notes} notes, {folders} folders, and {resources} resources.",
   "@notebookImportSuccessSummary": {
