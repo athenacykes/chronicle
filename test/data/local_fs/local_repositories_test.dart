@@ -131,6 +131,41 @@ void main() {
     expect(await layout.matterJsonFile(matter.id).exists(), isTrue);
   });
 
+  test(
+    'recovers notebook folders from on-disk directories when index is empty',
+    () async {
+      final folder = await notebookRepository.createFolder(name: 'Imported');
+      final note = await noteRepository.createNote(
+        title: 'Recovered note',
+        content: '# Visible again',
+        notebookFolderId: folder.id,
+      );
+
+      final layout = ChronicleLayout(rootDir);
+      await fileSystemUtils.atomicWriteString(
+        layout.notebookFoldersIndexFile,
+        '{"folders":[]}',
+      );
+
+      final recoveredFolders = await notebookRepository.listFolders();
+      expect(recoveredFolders, hasLength(1));
+      expect(recoveredFolders.single.id, folder.id);
+      expect(recoveredFolders.single.name, startsWith('Recovered folder '));
+
+      final folderNotes = await noteRepository.listNotebookNotes(
+        folderId: recoveredFolders.single.id,
+      );
+      expect(folderNotes.map((item) => item.id), contains(note.id));
+
+      final persistedFolders = await notebookRepository.listFolders();
+      expect(persistedFolders.single.id, folder.id);
+      expect(
+        await layout.notebookFoldersIndexFile.readAsString(),
+        contains(folder.id),
+      );
+    },
+  );
+
   test('adds attachment and stores resource-relative path', () async {
     final matter = await matterRepository.createMatter(
       title: 'Matter Attachments',

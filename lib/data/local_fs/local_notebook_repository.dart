@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import '../../core/app_exception.dart';
 import '../../core/clock.dart';
 import '../../core/file_system_utils.dart';
@@ -231,25 +232,32 @@ class LocalNotebookRepository implements NotebookRepository {
   Future<List<NotebookFolder>> _loadFolders() async {
     final layout = await _layout();
     final file = layout.notebookFoldersIndexFile;
-    if (!await file.exists()) {
-      return <NotebookFolder>[];
+    final indexedFolders = <NotebookFolder>[];
+
+    if (await file.exists()) {
+      try {
+        final raw = await file.readAsString();
+        final decoded = json.decode(raw) as Map<String, dynamic>;
+        final items = decoded['folders'] as List<dynamic>? ?? <dynamic>[];
+        for (final item in items) {
+          if (item is! Map<String, dynamic>) {
+            continue;
+          }
+          indexedFolders.add(NotebookFolder.fromJson(item));
+        }
+      } catch (_) {
+        // Fall through to on-disk recovery if the index is missing or malformed.
+      }
     }
 
-    try {
-      final raw = await file.readAsString();
-      final decoded = json.decode(raw) as Map<String, dynamic>;
-      final items = decoded['folders'] as List<dynamic>? ?? <dynamic>[];
-      final folders = <NotebookFolder>[];
-      for (final item in items) {
-        if (item is! Map<String, dynamic>) {
-          continue;
-        }
-        folders.add(NotebookFolder.fromJson(item));
-      }
-      return folders;
-    } catch (_) {
-      return <NotebookFolder>[];
+    final mergedFolders = await _mergeRecoveredFolders(
+      layout: layout,
+      indexedFolders: indexedFolders,
+    );
+    if (mergedFolders.length != indexedFolders.length) {
+      await _saveFolders(mergedFolders);
     }
+    return mergedFolders;
   }
 
   Future<void> _saveFolders(List<NotebookFolder> folders) async {
@@ -265,6 +273,48 @@ class LocalNotebookRepository implements NotebookRepository {
       layout.notebookFoldersIndexFile,
       const JsonEncoder.withIndent('  ').convert(payload),
     );
+  }
+
+  Future<List<NotebookFolder>> _mergeRecoveredFolders({
+    required ChronicleLayout layout,
+    required List<NotebookFolder> indexedFolders,
+  }) async {
+    final mergedById = <String, NotebookFolder>{
+      for (final folder in indexedFolders) folder.id: folder,
+    };
+
+    if (!await layout.notebookFoldersDirectory.exists()) {
+      return mergedById.values.toList();
+    }
+
+    await for (final entity in layout.notebookFoldersDirectory.list()) {
+      if (entity is! Directory) {
+        continue;
+      }
+      final folderId = entity.uri.pathSegments.isEmpty
+          ? ''
+          : entity.uri.pathSegments[entity.uri.pathSegments.length - 2];
+      if (folderId.isEmpty || mergedById.containsKey(folderId)) {
+        continue;
+      }
+
+      final stat = await entity.stat();
+      final recoveredAt = stat.modified.toUtc();
+      mergedById[folderId] = NotebookFolder(
+        id: folderId,
+        name: _recoveredFolderName(folderId),
+        parentId: null,
+        createdAt: recoveredAt,
+        updatedAt: recoveredAt,
+      );
+    }
+
+    return mergedById.values.toList();
+  }
+
+  String _recoveredFolderName(String folderId) {
+    final suffix = folderId.length <= 8 ? folderId : folderId.substring(0, 8);
+    return 'Recovered folder $suffix';
   }
 
   Future<ChronicleLayout> _layout() async {
