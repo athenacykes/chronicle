@@ -15,6 +15,7 @@ import '../../notes/notes_controller.dart';
 import '../../settings/settings_controller.dart';
 import '../../sync/conflicts_controller.dart';
 import '../../sync/sync_controller.dart';
+import 'chronicle_macos_fixed_dialog.dart';
 import 'chronicle_modal_dialog.dart';
 
 const Key _kSettingsDialogNavPaneKey = Key('settings_dialog_nav_pane');
@@ -737,7 +738,9 @@ class _ChronicleSettingsDialogState
       ),
     );
 
-    final scrollableContent = SingleChildScrollView(child: content);
+    final scrollableContent = SingleChildScrollView(
+      child: content,
+    );
 
     Future<void> saveSettings() async {
       final currentSettings = ref
@@ -855,42 +858,40 @@ class _ChronicleSettingsDialogState
     }
 
     if (useMacOSNativeUI) {
-      return MacosSheet(
+      return ChronicleMacosFixedDialog(
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Text(
-                    l10n.settingsTitle,
-                    style: const TextStyle(fontSize: 18),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  scrollableContent,
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: <Widget>[
-                      PushButton(
-                        controlSize: ControlSize.large,
-                        secondary: true,
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text(l10n.cancelAction),
-                      ),
-                      const SizedBox(width: 8),
-                      PushButton(
-                        controlSize: ControlSize.large,
-                        onPressed: saveSettings,
-                        child: Text(l10n.saveAction),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  l10n.settingsTitle,
+                  style: const TextStyle(fontSize: 18),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                scrollableContent,
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: <Widget>[
+                    PushButton(
+                      controlSize: ControlSize.large,
+                      secondary: true,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(l10n.cancelAction),
+                    ),
+                    const SizedBox(width: 8),
+                    PushButton(
+                      controlSize: ControlSize.large,
+                      onPressed: saveSettings,
+                      child: Text(l10n.saveAction),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),

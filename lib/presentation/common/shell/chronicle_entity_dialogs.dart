@@ -5,6 +5,7 @@ import 'package:macos_ui/macos_ui.dart';
 import '../../../domain/entities/enums.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../l10n/localization.dart';
+import 'chronicle_macos_fixed_dialog.dart';
 import 'chronicle_modal_dialog.dart';
 import '../markdown/markdown_edit_formatter.dart';
 import '../markdown/markdown_format_toolbar.dart';
@@ -401,7 +402,13 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
 
     final content = SizedBox(
       width: dialogWidth,
-      child: SingleChildScrollView(child: formFields),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[formFields],
+        ),
+      ),
     );
 
     void onSave() {
@@ -418,42 +425,40 @@ class _ChronicleMatterDialogState extends State<ChronicleMatterDialog> {
     }
 
     if (isMacOSNativeUI) {
-      return MacosSheet(
+      return ChronicleMacosFixedDialog(
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Text(title, style: const TextStyle(fontSize: 18)),
-                  const SizedBox(height: 12),
-                  content,
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: <Widget>[
-                      PushButton(
-                        controlSize: ControlSize.large,
-                        secondary: true,
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text(l10n.cancelAction),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(title, style: const TextStyle(fontSize: 18)),
+                const SizedBox(height: 12),
+                content,
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: <Widget>[
+                    PushButton(
+                      controlSize: ControlSize.large,
+                      secondary: true,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(l10n.cancelAction),
+                    ),
+                    const SizedBox(width: 8),
+                    PushButton(
+                      controlSize: ControlSize.large,
+                      onPressed: onSave,
+                      child: Text(
+                        widget.mode == ChronicleMatterDialogMode.create
+                            ? l10n.createAction
+                            : l10n.saveAction,
                       ),
-                      const SizedBox(width: 8),
-                      PushButton(
-                        controlSize: ControlSize.large,
-                        onPressed: onSave,
-                        child: Text(
-                          widget.mode == ChronicleMatterDialogMode.create
-                              ? l10n.createAction
-                              : l10n.saveAction,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -592,116 +597,116 @@ class _ChronicleCategoryDialogState extends State<ChronicleCategoryDialog> {
       width: dialogWidth,
       child: SingleChildScrollView(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-              isMacOSNativeUI
-                  ? _MacosLabeledField(
-                      label: l10n.categoryNameLabel,
-                      child: MacosTextField(
-                        controller: _nameController,
-                        placeholder: l10n.categoryNameLabel,
-                        placeholderStyle: _macosPlaceholderStyle(context),
-                      ),
-                    )
-                  : TextField(
+            isMacOSNativeUI
+                ? _MacosLabeledField(
+                    label: l10n.categoryNameLabel,
+                    child: MacosTextField(
                       controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: l10n.categoryNameLabel,
-                      ),
+                      placeholder: l10n.categoryNameLabel,
+                      placeholderStyle: _macosPlaceholderStyle(context),
                     ),
-              const SizedBox(height: 10),
-              isMacOSNativeUI
-                  ? _MacosLabeledField(
-                      label: l10n.matterPresetColorsLabel,
-                      child: MacosPopupButton<String>(
-                        key: _kCategoryColorDropdownKey,
-                        value: _selectedColorHex,
-                        onChanged: (value) {
-                          if (value == null) {
-                            return;
-                          }
-                          setState(() => _selectedColorHex = value);
-                        },
-                        items: colorOptions
-                            .map(
-                              (hexColor) => MacosPopupMenuItem<String>(
-                                value: hexColor,
-                                child: buildColorOption(hexColor),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    )
-                  : DropdownButtonFormField<String>(
+                  )
+                : TextField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: l10n.categoryNameLabel,
+                    ),
+                  ),
+            const SizedBox(height: 10),
+            isMacOSNativeUI
+                ? _MacosLabeledField(
+                    label: l10n.matterPresetColorsLabel,
+                    child: MacosPopupButton<String>(
                       key: _kCategoryColorDropdownKey,
-                      initialValue: _selectedColorHex,
-                      decoration: InputDecoration(
-                        labelText: l10n.matterPresetColorsLabel,
-                      ),
-                      items: colorOptions
-                          .map(
-                            (hexColor) => DropdownMenuItem<String>(
-                              value: hexColor,
-                              child: buildColorOption(hexColor),
-                            ),
-                          )
-                          .toList(),
+                      value: _selectedColorHex,
                       onChanged: (value) {
                         if (value == null) {
                           return;
                         }
                         setState(() => _selectedColorHex = value);
                       },
-                    ),
-              const SizedBox(height: 12),
-              isMacOSNativeUI
-                  ? _MacosLabeledField(
-                      label: l10n.categoryIconLabel,
-                      child: MacosPopupButton<String>(
-                        key: _kCategoryIconDropdownKey,
-                        value: selectedIconOption.key,
-                        onChanged: (value) {
-                          if (value == null) {
-                            return;
-                          }
-                          setState(() => _selectedIconKey = value);
-                        },
-                        items: _kMatterIconOptions
-                            .map(
-                              (option) => MacosPopupMenuItem<String>(
-                                value: option.key,
-                                child: buildIconOption(option),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    )
-                  : DropdownButtonFormField<String>(
-                      key: _kCategoryIconDropdownKey,
-                      initialValue: selectedIconOption.key,
-                      decoration: InputDecoration(
-                        labelText: l10n.categoryIconLabel,
-                      ),
-                      items: _kMatterIconOptions
+                      items: colorOptions
                           .map(
-                            (option) => DropdownMenuItem<String>(
-                              value: option.key,
-                              child: buildIconOption(option),
+                            (hexColor) => MacosPopupMenuItem<String>(
+                              value: hexColor,
+                              child: buildColorOption(hexColor),
                             ),
                           )
                           .toList(),
+                    ),
+                  )
+                : DropdownButtonFormField<String>(
+                    key: _kCategoryColorDropdownKey,
+                    initialValue: _selectedColorHex,
+                    decoration: InputDecoration(
+                      labelText: l10n.matterPresetColorsLabel,
+                    ),
+                    items: colorOptions
+                        .map(
+                          (hexColor) => DropdownMenuItem<String>(
+                            value: hexColor,
+                            child: buildColorOption(hexColor),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() => _selectedColorHex = value);
+                    },
+                  ),
+            const SizedBox(height: 12),
+            isMacOSNativeUI
+                ? _MacosLabeledField(
+                    label: l10n.categoryIconLabel,
+                    child: MacosPopupButton<String>(
+                      key: _kCategoryIconDropdownKey,
+                      value: selectedIconOption.key,
                       onChanged: (value) {
                         if (value == null) {
                           return;
                         }
                         setState(() => _selectedIconKey = value);
                       },
+                      items: _kMatterIconOptions
+                          .map(
+                            (option) => MacosPopupMenuItem<String>(
+                              value: option.key,
+                              child: buildIconOption(option),
+                            ),
+                          )
+                          .toList(),
                     ),
-            ],
-          ),
+                  )
+                : DropdownButtonFormField<String>(
+                    key: _kCategoryIconDropdownKey,
+                    initialValue: selectedIconOption.key,
+                    decoration: InputDecoration(
+                      labelText: l10n.categoryIconLabel,
+                    ),
+                    items: _kMatterIconOptions
+                        .map(
+                          (option) => DropdownMenuItem<String>(
+                            value: option.key,
+                            child: buildIconOption(option),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) {
+                        return;
+                      }
+                      setState(() => _selectedIconKey = value);
+                    },
+                  ),
+          ],
         ),
-      );
+      ),
+    );
 
     void onSave() {
       Navigator.of(context).pop(
@@ -714,7 +719,7 @@ class _ChronicleCategoryDialogState extends State<ChronicleCategoryDialog> {
     }
 
     if (isMacOSNativeUI) {
-      return MacosSheet(
+      return ChronicleMacosFixedDialog(
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -951,7 +956,7 @@ class _ChronicleNoteDialogState extends State<ChronicleNoteDialog> {
     }
 
     if (isMacOSNativeUI) {
-      return MacosSheet(
+      return ChronicleMacosFixedDialog(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

@@ -1855,7 +1855,7 @@ class _MatterSidebar extends ConsumerWidget {
           context: context,
           builder: (dialogContext) {
             if (_isMacOSNativeUIContext(dialogContext)) {
-              return MacosSheet(
+              return ChronicleMacosFixedDialog(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(

@@ -126,7 +126,7 @@ Future<void> _showGraphNodePreview({
   if (isMacOSNativeUI) {
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => MacosSheet(
+      builder: (dialogContext) => ChronicleMacosFixedDialog(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

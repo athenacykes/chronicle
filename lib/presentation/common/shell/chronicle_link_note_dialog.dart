@@ -3,6 +3,7 @@ import 'package:macos_ui/macos_ui.dart';
 
 import '../../../domain/entities/note.dart';
 import '../../../l10n/localization.dart';
+import 'chronicle_macos_fixed_dialog.dart';
 
 class ChronicleLinkNoteDialogResult {
   const ChronicleLinkNoteDialogResult({
@@ -142,7 +143,7 @@ class _ChronicleLinkNoteDialogState extends State<ChronicleLinkNoteDialog> {
     }
 
     if (useMacOSNativeUI) {
-      return MacosSheet(
+      return ChronicleMacosFixedDialog(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

@@ -502,7 +502,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
         context: context,
         builder: (_) {
           if (isMacOSNativeUI) {
-            return MacosSheet(
+            return ChronicleMacosFixedDialog(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -615,7 +615,7 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
       if (isMacOSNativeUI) {
         await showDialog<void>(
           context: context,
-          builder: (dialogContext) => MacosSheet(
+          builder: (dialogContext) => ChronicleMacosFixedDialog(
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(

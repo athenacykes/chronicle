@@ -19,8 +19,8 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
-    // Set minimum window size to accommodate largest dialog (580x520) plus margins
-    self.minSize = NSSize(width: 800, height: 700)
+    // Set minimum window size to accommodate largest dialog (580x600) plus margins
+    self.minSize = NSSize(width: 900, height: 750)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

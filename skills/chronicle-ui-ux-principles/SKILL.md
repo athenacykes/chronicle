@@ -59,14 +59,16 @@ Dialogs should have fixed widths (not relative to main window size) and fit thei
    - Large forms (Settings with two-pane): 580px
    - Content dialogs (Note): 560px
 2. **Content-fit height**: Do not use fixed `maxHeight` constraints that leave blank space at the bottom. Let dialogs size to their content naturally using `mainAxisSize: MainAxisSize.min` on Column widgets.
-3. **Main window minimum size**: Set the main window minimum size larger than the largest dialog (e.g., 800x700) to prevent dialogs from overflowing.
+3. **Main window minimum size**: Set the main window minimum size larger than the largest dialog (e.g., 900x750) to prevent dialogs from overflowing.
 
 ### Implementation Pattern
-```dart
-// Fixed width - not relative to viewport
-const dialogWidth = 420.0;
 
-// Content without height constraint - fits content naturally
+#### For All Dialogs (Both Material and macOS Native)
+
+```dart
+const dialogWidth = 420.0; // or 380, 560, 580 depending on dialog type
+
+// Content with fixed width - fits content naturally
 final content = SizedBox(
   width: dialogWidth,
   child: SingleChildScrollView(
@@ -79,14 +81,91 @@ final content = SizedBox(
 );
 ```
 
+#### macOS Native UI - Use `ChronicleMacosFixedDialog`
+
+**DO NOT use `MacosSheet`** - it expands to fill the entire window. Instead, use `ChronicleMacosFixedDialog` which provides native macOS styling with fixed sizing:
+
+```dart
+import '../chronicle_macos_fixed_dialog.dart';
+
+if (isMacOSNativeUI) {
+  return ChronicleMacosFixedDialog(
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 18)),
+          const SizedBox(height: 12),
+          content,  // Your SizedBox with fixed width dialog content
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              PushButton(
+                controlSize: ControlSize.large,
+                secondary: true,
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(l10n.cancelAction),
+              ),
+              const SizedBox(width: 8),
+              PushButton(
+                controlSize: ControlSize.large,
+                onPressed: onSave,
+                child: Text(l10n.saveAction),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Fallback to Material AlertDialog for non-macOS platforms
+return AlertDialog(
+  title: Text(title),
+  content: content,
+  actions: [...],
+);
+```
+
+**Why `ChronicleMacosFixedDialog`:**
+- Uses `IntrinsicWidth` to shrink-wrap to content width
+- Centers the dialog in the window
+- Applies native macOS styling (same background, borders, and radius as `MacosSheet`)
+- Respects the fixed width set on the content `SizedBox`
+- Does NOT expand to fill the window
+
+#### Material UI - Use `AlertDialog`
+
+```dart
+return AlertDialog(
+  title: Text(title),
+  content: content,  // Your SizedBox with fixed width
+  actions: [
+    TextButton(
+      onPressed: () => Navigator.of(context).pop(),
+      child: Text(l10n.cancelAction),
+    ),
+    FilledButton(
+      onPressed: onSave,
+      child: Text(l10n.saveAction),
+    ),
+  ],
+);
+```
+
 ### macOS Window Configuration
 Set minimum window size in `macos/Runner/MainFlutterWindow.swift`:
 ```swift
 // Set minimum window size to accommodate largest dialog plus margins
-self.minSize = NSSize(width: 800, height: 700)
+self.minSize = NSSize(width: 900, height: 750)
 ```
 
 ### Platform Consistency
-- Apply the same sizing rules to both macOS native (`MacosSheet`) and Material (`AlertDialog`) variants
+- Apply the same sizing rules to both macOS native (`ChronicleMacosFixedDialog`) and Material (`AlertDialog`) variants
 - Keep internal padding consistent (typically 16-20px)
 - Use `CrossAxisAlignment.start` instead of `stretch` to prevent fields from expanding to fill width
+- Always wrap scrollable content in a fixed-width `SizedBox`

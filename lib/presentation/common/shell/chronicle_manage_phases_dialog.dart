@@ -9,6 +9,7 @@ import '../../../domain/entities/phase.dart';
 import '../../../l10n/localization.dart';
 import '../../matters/matters_controller.dart';
 import '../../notes/notes_controller.dart';
+import 'chronicle_macos_fixed_dialog.dart';
 
 class ChronicleManagePhasesDialog extends ConsumerStatefulWidget {
   const ChronicleManagePhasesDialog({super.key, required this.matterId});
@@ -343,7 +344,7 @@ class _ChronicleManagePhasesDialogState
     );
 
     if (isMacOSNativeUI) {
-      return MacosSheet(
+      return ChronicleMacosFixedDialog(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

@@ -38,6 +38,7 @@ import '../../sync/conflicts_controller.dart';
 import 'chronicle_entity_dialogs.dart';
 import 'chronicle_conflict_review.dart';
 import 'chronicle_graph_canvas.dart';
+import 'chronicle_macos_fixed_dialog.dart';
 import 'chronicle_macos_context_menu.dart';
 import 'chronicle_macos_widgets.dart';
 import 'chronicle_modal_dialog.dart';
