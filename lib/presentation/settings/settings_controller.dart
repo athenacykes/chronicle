@@ -95,6 +95,20 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     state = AsyncData(settings);
   }
 
+  Future<AppSettings> disableSyncAndClearCredentials() async {
+    final repository = ref.read(settingsRepositoryProvider);
+    final settings = await repository.loadSettings();
+    final updated = settings.copyWith(
+      syncConfig: SyncConfig.initial(),
+      clearLastSyncAt: true,
+    );
+    await repository.saveSettings(updated);
+    await repository.clearSyncPassword();
+    await repository.clearSyncProxyPassword();
+    state = AsyncData(updated);
+    return updated;
+  }
+
   Future<void> setLocaleTag(String localeTag) async {
     final repository = ref.read(settingsRepositoryProvider);
     final settings = await repository.loadSettings();

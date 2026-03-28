@@ -11,15 +11,22 @@
   "importNotebookActionEllipsis": "导入...",
   "backupExportAction": "导出备份",
   "backupImportAction": "导入备份",
+  "resetAllAction": "重置全部",
   "backupStorageScopeDescription": "备份仅包含当前配置的 Chronicle 存储根目录。",
+  "resetAllDescription": "清空当前 Chronicle 存储根目录，并在同一位置重新初始化一个全新的空白存储。",
+  "resetAllCriticalWarning": "这会永久删除当前配置存储根目录中的所有 Chronicle 数据，包括 Matters、笔记本笔记、资源、冲突和本地同步记录。同步将被禁用，已保存的同步凭据也会被清除。",
   "backupImportModeTitle": "导入备份",
   "backupImportModeMessage": "选择要替换当前存储，还是将备份合并到现有存储中。",
   "backupImportMergeAction": "与现有存储合并",
   "backupImportBlankRestoreAction": "恢复到空白存储",
   "backupImportBlankRestoreConfirmTitle": "替换当前存储？",
   "backupImportBlankRestoreConfirmMessage": "这会先删除当前 Chronicle 存储根目录中的内容，再从备份归档恢复。",
-  "backupOperationBlockedTitle": "无法执行备份操作",
-  "backupOperationBlockedSyncRunningMessage": "请先停止当前同步，再导出或导入 Chronicle 备份。",
+  "resetAllConfirmTitle": "重置全部 Chronicle 存储？",
+  "resetAllConfirmMessage": "这会永久删除当前 Chronicle 存储中的所有内容，并从头创建一个新的空白存储根目录。",
+  "resetAllSecondConfirmTitle": "此操作无法撤销",
+  "resetAllSecondConfirmMessage": "仅在你完全确认时继续。Chronicle 将清空当前存储根目录、禁用同步，并清除已保存的同步凭据。",
+  "backupOperationBlockedTitle": "无法执行存储操作",
+  "backupOperationBlockedSyncRunningMessage": "请先停止当前同步，再导出、导入或重置 Chronicle 存储。",
   "backupExportDialogTitle": "备份导出",
   "backupExportSuccessSummary": "已将 {files} 个文件导出到备份归档。",
   "@backupExportSuccessSummary": {
@@ -98,6 +105,19 @@
   },
   "backupImportFailed": "备份导入失败：{error}",
   "@backupImportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "resetAllDialogTitle": "重置全部",
+  "resetAllSuccessMessage": "已重置 {rootPath} 中的 Chronicle 存储。新的空白存储已初始化，同步已禁用，已保存的同步凭据也已清除。",
+  "@resetAllSuccessMessage": {
+    "placeholders": {
+      "rootPath": {}
+    }
+  },
+  "resetAllFailed": "重置全部失败：{error}",
+  "@resetAllFailed": {
     "placeholders": {
       "error": {}
     }
@@ -656,6 +676,7 @@
   "settingsSectionStorage": "存储",
   "settingsSectionLanguage": "语言",
   "settingsSectionSync": "同步",
+  "settingsSectionReset": "重置",
   "syncTargetTypeLabel": "同步目标类型",
   "syncTargetTypeNone": "无",
   "syncTargetTypeFilesystem": "文件系统",

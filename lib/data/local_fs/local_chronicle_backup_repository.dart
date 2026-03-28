@@ -189,6 +189,15 @@ class LocalChronicleBackupRepository implements ChronicleBackupRepository {
     }
   }
 
+  @override
+  Future<ChronicleBackupResetResult> resetStorageToBlank() async {
+    final root = await _storageRootLocator.requireRootDirectory();
+    await _wipeRoot(root);
+    await _storageInitializer.ensureInitialized(root);
+    await _syncMetadataTracker?.rebuildFromDisk();
+    return ChronicleBackupResetResult(rootPath: root.path);
+  }
+
   Future<_ExtractedBackup> _extractArchive({
     required File archiveFile,
     required List<ChronicleBackupWarning> warnings,

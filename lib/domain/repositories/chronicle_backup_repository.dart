@@ -9,4 +9,6 @@ abstract class ChronicleBackupRepository {
     required String archivePath,
     required ChronicleBackupImportMode mode,
   });
+
+  Future<ChronicleBackupResetResult> resetStorageToBlank();
 }

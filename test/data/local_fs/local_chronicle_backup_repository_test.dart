@@ -290,6 +290,48 @@ void main() {
       expect(await importedAttachmentFile.readAsString(), 'attachment payload');
     },
   );
+
+  test(
+    'resetStorageToBlank wipes storage and initializes a fresh root',
+    () async {
+      final harness = _Harness(
+        root: targetRoot,
+        fileSystemUtils: fileSystemUtils,
+        storageInitializer: storageInitializer,
+        repositoryClock: DateTime.utc(2026, 3, 28, 14),
+        categoryIdStart: 1,
+        matterIdStart: 1,
+        notebookIdStart: 1000,
+        noteIdStart: 2000,
+        linkIdStart: 3000,
+        backupIdStart: 9000,
+      );
+      await harness.initialize();
+
+      final matter = await harness.matterRepository.createMatter(
+        title: 'Reset Matter',
+      );
+      await harness.noteRepository.createNote(
+        title: 'Reset Note',
+        content: '# Content',
+        matterId: matter.id,
+        phaseId: matter.phases.first.id,
+      );
+      await File('${targetRoot.path}/stale.txt').writeAsString('stale');
+
+      final result = await harness.backupRepository.resetStorageToBlank();
+      final layout = ChronicleLayout(targetRoot);
+
+      expect(result.rootPath, targetRoot.path);
+      expect(await targetRoot.exists(), isTrue);
+      expect(await File('${targetRoot.path}/stale.txt').exists(), isFalse);
+      expect(await layout.infoFile.exists(), isTrue);
+      expect(await layout.notebookFoldersIndexFile.exists(), isTrue);
+      expect(await layout.syncVersionFile.exists(), isTrue);
+      expect(await harness.matterRepository.listMatters(), isEmpty);
+      expect(await harness.noteRepository.listAllNotes(), isEmpty);
+    },
+  );
 }
 
 class _Harness {
@@ -405,6 +447,9 @@ class _InMemorySettingsRepository implements SettingsRepository {
   _InMemorySettingsRepository(this._settings);
 
   AppSettings _settings;
+
+  @override
+  Future<void> clearSyncPassword() async {}
 
   @override
   Future<void> clearSyncProxyPassword() async {}

@@ -28,6 +28,7 @@ const Key _kSettingsDialogNavPaneKey = Key('settings_dialog_nav_pane');
 const Key _kSettingsDialogContentPaneKey = Key('settings_dialog_content_pane');
 const Key _kExportBackupButtonKey = Key('settings_export_backup_button');
 const Key _kImportBackupButtonKey = Key('settings_import_backup_button');
+const Key _kResetAllButtonKey = Key('settings_reset_all_button');
 
 class ChronicleSettingsDialog extends ConsumerStatefulWidget {
   const ChronicleSettingsDialog({super.key, required this.useMacOSNativeUI});
@@ -39,7 +40,7 @@ class ChronicleSettingsDialog extends ConsumerStatefulWidget {
       _ChronicleSettingsDialogState();
 }
 
-enum _SettingsSection { storage, language, sync }
+enum _SettingsSection { storage, language, sync, reset }
 
 enum _BootstrapSyncAction { none, normal, recoverLocalWins, recoverRemoteWins }
 
@@ -63,37 +64,39 @@ class _ChronicleSettingsDialogState
   String? _proxyPortError;
   bool _storageTaskInProgress = false;
 
-  @override
-  void initState() {
-    super.initState();
-    final settings = ref.read(settingsControllerProvider).asData?.value;
-    _rootPathController = TextEditingController(
-      text: settings?.storageRootPath ?? '',
-    );
-    _urlController = TextEditingController(
-      text: settings?.syncConfig.url ?? '',
-    );
-    _usernameController = TextEditingController(
-      text: settings?.syncConfig.username ?? '',
-    );
-    _passwordController = TextEditingController();
-    _proxyHostController = TextEditingController(
-      text: settings?.syncConfig.proxy.host ?? '',
-    );
-    _proxyPortController = TextEditingController(
-      text: settings?.syncConfig.proxy.port?.toString() ?? '',
-    );
-    _proxyUsernameController = TextEditingController(
-      text: settings?.syncConfig.proxy.username ?? '',
-    );
-    _proxyPasswordController = TextEditingController();
-    _intervalController = TextEditingController(
-      text: (settings?.syncConfig.intervalMinutes ?? 5).toString(),
-    );
+  void _applySettingsValues(AppSettings? settings) {
+    _rootPathController.text = settings?.storageRootPath ?? '';
+    _urlController.text = settings?.syncConfig.url ?? '';
+    _usernameController.text = settings?.syncConfig.username ?? '';
+    _passwordController.clear();
+    _proxyHostController.text = settings?.syncConfig.proxy.host ?? '';
+    _proxyPortController.text =
+        settings?.syncConfig.proxy.port?.toString() ?? '';
+    _proxyUsernameController.text = settings?.syncConfig.proxy.username ?? '';
+    _proxyPasswordController.clear();
+    _intervalController.text = (settings?.syncConfig.intervalMinutes ?? 5)
+        .toString();
     _type = settings?.syncConfig.type ?? SyncTargetType.none;
     _failSafe = settings?.syncConfig.failSafe ?? true;
     _proxyType = settings?.syncConfig.proxy.type ?? SyncProxyType.none;
     _localeTag = appLocaleTag(resolveAppLocale(settings?.localeTag));
+    _proxyHostError = null;
+    _proxyPortError = null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _rootPathController = TextEditingController();
+    _urlController = TextEditingController();
+    _usernameController = TextEditingController();
+    _passwordController = TextEditingController();
+    _proxyHostController = TextEditingController();
+    _proxyPortController = TextEditingController();
+    _proxyUsernameController = TextEditingController();
+    _proxyPasswordController = TextEditingController();
+    _intervalController = TextEditingController();
+    _applySettingsValues(ref.read(settingsControllerProvider).asData?.value);
   }
 
   @override
@@ -402,7 +405,7 @@ class _ChronicleSettingsDialogState
     ref.read(syncControllerProvider.notifier).stopAutoSync();
   }
 
-  Future<void> _clearSyncBookkeepingAfterImport() async {
+  Future<void> _clearSyncBookkeepingAfterStorageMutation() async {
     await ref.read(localSyncStateStoreProvider).clear();
     await ref.read(localSyncMetadataStoreProvider).clear();
 
@@ -418,7 +421,7 @@ class _ChronicleSettingsDialogState
     }
   }
 
-  Future<void> _reloadStateAfterImport() async {
+  Future<void> _reloadStateAfterStorageMutation() async {
     ref.read(selectedNoteIdProvider.notifier).set(null);
     ref.read(selectedConflictPathProvider.notifier).set(null);
     ref.read(selectedMatterIdProvider.notifier).set(null);
@@ -536,8 +539,8 @@ class _ChronicleSettingsDialogState
       final result = await ref
           .read(chronicleBackupRepositoryProvider)
           .importFromArchive(archivePath: archivePath, mode: mode);
-      await _clearSyncBookkeepingAfterImport();
-      await _reloadStateAfterImport();
+      await _clearSyncBookkeepingAfterStorageMutation();
+      await _reloadStateAfterStorageMutation();
       if (currentSettings != null) {
         await ref
             .read(syncControllerProvider.notifier)
@@ -592,6 +595,77 @@ class _ChronicleSettingsDialogState
     }
   }
 
+  Future<void> _resetAllStorage() async {
+    if (_storageTaskInProgress) {
+      return;
+    }
+    if (!await _ensureSyncIsIdleForStorageTask()) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+
+    final l10n = context.l10n;
+    final firstConfirmed = await _confirmDialog(
+      title: l10n.resetAllConfirmTitle,
+      message: l10n.resetAllConfirmMessage,
+      continueLabel: l10n.resetAllAction,
+    );
+    if (!firstConfirmed || !mounted) {
+      return;
+    }
+
+    final secondConfirmed = await _confirmDialog(
+      title: l10n.resetAllSecondConfirmTitle,
+      message: l10n.resetAllSecondConfirmMessage,
+      continueLabel: l10n.resetAllAction,
+    );
+    if (!secondConfirmed || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _storageTaskInProgress = true;
+    });
+    try {
+      await _prepareForStorageMutation();
+      final result = await ref
+          .read(chronicleBackupRepositoryProvider)
+          .resetStorageToBlank();
+      await _clearSyncBookkeepingAfterStorageMutation();
+      final updatedSettings = await ref
+          .read(settingsControllerProvider.notifier)
+          .disableSyncAndClearCredentials();
+      await _reloadStateAfterStorageMutation();
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _applySettingsValues(updatedSettings);
+      });
+      await _showStorageMessageDialog(
+        title: l10n.resetAllDialogTitle,
+        message: l10n.resetAllSuccessMessage(result.rootPath),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      await _showStorageMessageDialog(
+        title: l10n.resetAllDialogTitle,
+        message: l10n.resetAllFailed(error.toString()),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _storageTaskInProgress = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -620,6 +694,7 @@ class _ChronicleSettingsDialogState
         _SettingsSection.storage => l10n.settingsSectionStorage,
         _SettingsSection.language => l10n.settingsSectionLanguage,
         _SettingsSection.sync => l10n.settingsSectionSync,
+        _SettingsSection.reset => l10n.settingsSectionReset,
       };
     }
 
@@ -1064,10 +1139,58 @@ class _ChronicleSettingsDialogState
       );
     }
 
+    Widget buildResetSection() {
+      final theme = Theme.of(context);
+      final colorScheme = theme.colorScheme;
+      final warningColor = useMacOSNativeUI
+          ? MacosColors.systemRedColor.withValues(alpha: 0.10)
+          : colorScheme.errorContainer.withValues(alpha: 0.45);
+      final warningBorderColor = useMacOSNativeUI
+          ? MacosColors.systemRedColor.withValues(alpha: 0.45)
+          : colorScheme.error.withValues(alpha: 0.4);
+      final warningTextStyle = theme.textTheme.bodyMedium;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(l10n.resetAllDescription),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: warningColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: warningBorderColor),
+            ),
+            child: Text(l10n.resetAllCriticalWarning, style: warningTextStyle),
+          ),
+          const SizedBox(height: 12),
+          useMacOSNativeUI
+              ? PushButton(
+                  key: _kResetAllButtonKey,
+                  controlSize: ControlSize.large,
+                  secondary: true,
+                  onPressed: _storageTaskInProgress ? null : _resetAllStorage,
+                  child: Text(l10n.resetAllAction),
+                )
+              : FilledButton(
+                  key: _kResetAllButtonKey,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colorScheme.error,
+                    foregroundColor: colorScheme.onError,
+                  ),
+                  onPressed: _storageTaskInProgress ? null : _resetAllStorage,
+                  child: Text(l10n.resetAllAction),
+                ),
+        ],
+      );
+    }
+
     final sectionContent = switch (_selectedSection) {
       _SettingsSection.storage => buildStorageSection(),
       _SettingsSection.language => buildLanguageSection(),
       _SettingsSection.sync => buildSyncSection(),
+      _SettingsSection.reset => buildResetSection(),
     };
 
     final sectionNav = Column(
@@ -1076,6 +1199,7 @@ class _ChronicleSettingsDialogState
         sectionNavItem(_SettingsSection.storage),
         sectionNavItem(_SettingsSection.language),
         sectionNavItem(_SettingsSection.sync),
+        sectionNavItem(_SettingsSection.reset),
       ],
     );
 

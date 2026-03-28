@@ -12,15 +12,22 @@
   "importNotebookActionEllipsis": "Import...",
   "backupExportAction": "Export backup",
   "backupImportAction": "Import backup",
+  "resetAllAction": "Reset all",
   "backupStorageScopeDescription": "Backups include the configured Chronicle storage root only.",
+  "resetAllDescription": "Wipe the current Chronicle storage root and initialize a brand-new empty storage in the same location.",
+  "resetAllCriticalWarning": "This permanently deletes all Chronicle data in the configured storage root, including matters, notebook notes, resources, conflicts, and local sync bookkeeping. Sync will be disabled and saved sync credentials will be cleared.",
   "backupImportModeTitle": "Import backup",
   "backupImportModeMessage": "Choose whether to replace the current storage root or merge the backup into the existing storage.",
   "backupImportMergeAction": "Merge with existing storage",
   "backupImportBlankRestoreAction": "Restore to blank storage",
   "backupImportBlankRestoreConfirmTitle": "Replace current storage?",
   "backupImportBlankRestoreConfirmMessage": "This will delete the current Chronicle storage root contents before restoring the backup archive.",
-  "backupOperationBlockedTitle": "Backup unavailable",
-  "backupOperationBlockedSyncRunningMessage": "Stop the current sync run before exporting or importing a Chronicle backup.",
+  "resetAllConfirmTitle": "Reset all Chronicle storage?",
+  "resetAllConfirmMessage": "This will permanently delete the current Chronicle storage contents and create a new empty storage root from scratch.",
+  "resetAllSecondConfirmTitle": "This cannot be undone",
+  "resetAllSecondConfirmMessage": "Proceed only if you are certain. Chronicle will wipe the current storage root, disable sync, and clear saved sync credentials.",
+  "backupOperationBlockedTitle": "Storage operation unavailable",
+  "backupOperationBlockedSyncRunningMessage": "Stop the current sync run before exporting, importing, or resetting Chronicle storage.",
   "backupExportDialogTitle": "Backup Export",
   "backupExportSuccessSummary": "Exported {files} files to the backup archive.",
   "@backupExportSuccessSummary": {
@@ -99,6 +106,19 @@
   },
   "backupImportFailed": "Backup import failed: {error}",
   "@backupImportFailed": {
+    "placeholders": {
+      "error": {}
+    }
+  },
+  "resetAllDialogTitle": "Reset All",
+  "resetAllSuccessMessage": "Chronicle storage was reset at {rootPath}. A new empty storage has been initialized, sync has been disabled, and saved sync credentials were cleared.",
+  "@resetAllSuccessMessage": {
+    "placeholders": {
+      "rootPath": {}
+    }
+  },
+  "resetAllFailed": "Reset all failed: {error}",
+  "@resetAllFailed": {
     "placeholders": {
       "error": {}
     }
@@ -657,6 +677,7 @@
   "settingsSectionStorage": "Storage",
   "settingsSectionLanguage": "Language",
   "settingsSectionSync": "Sync",
+  "settingsSectionReset": "Reset",
   "syncTargetTypeLabel": "Sync target type",
   "syncTargetTypeNone": "None",
   "syncTargetTypeFilesystem": "File system",

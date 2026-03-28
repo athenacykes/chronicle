@@ -93,6 +93,28 @@ void main() {
     expect(await repository.readSyncPassword(), 'secure-secret');
   });
 
+  test('clears sync password from secure and fallback storage', () async {
+    final entitlementError = PlatformException(
+      code: 'Unexpected security result code',
+      message: "Code: -34018, Message: A required entitlement isn't present.",
+    );
+    secureStorage.writeError = entitlementError;
+    secureStorage.readError = entitlementError;
+    await repository.saveSyncPassword('fallback-secret');
+
+    final fallbackFile = File(
+      '${appSupportDir.path}/chronicle_sync_password.txt',
+    );
+    expect(await fallbackFile.exists(), isTrue);
+
+    secureStorage.writeError = null;
+    secureStorage.readError = null;
+    await repository.clearSyncPassword();
+
+    expect(await repository.readSyncPassword(), isNull);
+    expect(await fallbackFile.exists(), isFalse);
+  });
+
   test('rethrows non-entitlement secure storage errors', () async {
     secureStorage.writeError = PlatformException(
       code: 'io_error',

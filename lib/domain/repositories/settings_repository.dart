@@ -7,6 +7,7 @@ abstract class SettingsRepository {
   Future<void> setLastSyncAt(DateTime value);
   Future<void> saveSyncPassword(String password);
   Future<String?> readSyncPassword();
+  Future<void> clearSyncPassword();
   Future<void> saveSyncProxyPassword(String password);
   Future<String?> readSyncProxyPassword();
   Future<void> clearSyncProxyPassword();

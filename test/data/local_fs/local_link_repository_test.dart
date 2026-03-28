@@ -114,6 +114,9 @@ class _InMemorySettingsRepository implements SettingsRepository {
   Future<void> saveSyncPassword(String password) async {}
 
   @override
+  Future<void> clearSyncPassword() async {}
+
+  @override
   Future<void> saveSyncProxyPassword(String password) async {}
 
   @override

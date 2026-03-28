@@ -108,6 +108,11 @@ class _FakeSettingsRepository implements SettingsRepository {
   }
 
   @override
+  Future<void> clearSyncPassword() async {
+    _password = null;
+  }
+
+  @override
   Future<void> saveSyncProxyPassword(String password) async {
     _proxyPassword = password;
   }

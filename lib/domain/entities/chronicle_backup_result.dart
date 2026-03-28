@@ -55,3 +55,9 @@ class ChronicleBackupImportResult {
   int get warningCount => warnings.length;
   bool get hasWarnings => warnings.isNotEmpty;
 }
+
+class ChronicleBackupResetResult {
+  const ChronicleBackupResetResult({required this.rootPath});
+
+  final String rootPath;
+}

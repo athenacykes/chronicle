@@ -1,6 +1,8 @@
 import 'package:chronicle/app/app_providers.dart';
 import 'package:chronicle/domain/entities/app_settings.dart';
+import 'package:chronicle/domain/entities/enums.dart';
 import 'package:chronicle/domain/entities/sync_config.dart';
+import 'package:chronicle/domain/entities/sync_proxy_config.dart';
 import 'package:chronicle/domain/repositories/settings_repository.dart';
 import 'package:chronicle/presentation/settings/settings_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -125,6 +127,53 @@ void main() {
     expect((await repository.loadSettings()).editorLineNumbersEnabled, isFalse);
     expect((await repository.loadSettings()).editorWordWrapEnabled, isTrue);
   });
+
+  test(
+    'disableSyncAndClearCredentials resets sync state and clears passwords',
+    () async {
+      final repository = _InMemorySettingsRepository(
+        AppSettings(
+          storageRootPath: '/tmp/chronicle-test',
+          clientId: 'settings-test',
+          syncConfig: const SyncConfig(
+            type: SyncTargetType.webdav,
+            url: 'https://example.com/dav/Chronicle',
+            username: 'chronicle-user',
+            intervalMinutes: 15,
+            failSafe: false,
+            proxy: SyncProxyConfig(
+              type: SyncProxyType.http,
+              host: '127.0.0.1',
+              port: 8899,
+              username: 'proxy-user',
+            ),
+          ),
+          lastSyncAt: DateTime.utc(2026, 3, 28, 12),
+        ),
+      );
+      repository
+        .._password = 'secret'
+        .._proxyPassword = 'proxy-secret';
+
+      final container = ProviderContainer(
+        overrides: [settingsRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(settingsControllerProvider.future);
+      final updated = await container
+          .read(settingsControllerProvider.notifier)
+          .disableSyncAndClearCredentials();
+
+      expect(updated.syncConfig.type, SyncTargetType.none);
+      expect(updated.syncConfig.url, isEmpty);
+      expect(updated.syncConfig.username, isEmpty);
+      expect(updated.syncConfig.proxy.type, SyncProxyType.none);
+      expect(updated.lastSyncAt, isNull);
+      expect(repository._password, isNull);
+      expect(repository._proxyPassword, isNull);
+    },
+  );
 }
 
 class _InMemorySettingsRepository implements SettingsRepository {
@@ -151,6 +200,11 @@ class _InMemorySettingsRepository implements SettingsRepository {
   @override
   Future<void> saveSyncPassword(String password) async {
     _password = password;
+  }
+
+  @override
+  Future<void> clearSyncPassword() async {
+    _password = null;
   }
 
   @override

@@ -92,6 +92,18 @@ class LocalSettingsRepository implements SettingsRepository {
   }
 
   @override
+  Future<void> clearSyncPassword() async {
+    try {
+      await _secureStorage.delete(key: _syncPasswordKey);
+    } on PlatformException catch (error) {
+      if (!_isMissingKeychainEntitlement(error)) {
+        rethrow;
+      }
+    }
+    await _deleteSecretFallbackIfExists(_syncPasswordFallbackFileName);
+  }
+
+  @override
   Future<void> saveSyncProxyPassword(String password) async {
     await _saveSecret(
       key: _syncProxyPasswordKey,

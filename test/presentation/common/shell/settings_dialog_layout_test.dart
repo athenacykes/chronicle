@@ -82,6 +82,12 @@ void main() {
     );
     expect(find.text('Export backup'), findsOneWidget);
     expect(find.text('Import backup'), findsOneWidget);
+    expect(find.text('Reset'), findsOneWidget);
+
+    await tester.tap(find.text('Reset'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('settings_reset_all_button')), findsOneWidget);
+    expect(find.text('Reset all'), findsOneWidget);
 
     final navSize = tester.getSize(navPane);
     final contentSize = tester.getSize(contentPane);
@@ -369,6 +375,11 @@ class _FakeSettingsRepository implements SettingsRepository {
   @override
   Future<void> saveSyncPassword(String password) async {
     _password = password;
+  }
+
+  @override
+  Future<void> clearSyncPassword() async {
+    _password = null;
   }
 
   @override
