@@ -565,28 +565,97 @@ class _MatterWorkspace extends ConsumerWidget {
     final matterDraft = draft != null && draft.matterId == matter.id
         ? draft
         : null;
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
 
     // Kanban view doesn't show a title header - it's a board view of all phases
     final showTitleHeader = viewMode != MatterViewMode.kanban;
 
+    Future<void> createNewNote() async {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .createNoteForSelectedMatter();
+      ref
+          .read(noteEditorViewModeProvider.notifier)
+          .set(NoteEditorViewMode.edit);
+    }
+
+    // Build the title row with phase selector and new note button on the right
+    Widget buildTitleRow() {
+      final titleWidget = currentNote == null && matterDraft != null
+          ? _NotebookDraftTitleHeader(draft: matterDraft)
+          : currentNote == null && isResolvingWorkspace
+              ? const _WorkspaceTitleSkeleton()
+              : ChronicleNoteTitleHeader(
+                  note: currentNote,
+                  canEdit:
+                      currentNote != null &&
+                      currentNote.matterId == matter.id &&
+                      currentNote.phaseId != null,
+                );
+
+      // Only show phase selector and new note button in phase (notes) view
+      final showActions = viewMode == MatterViewMode.phase;
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            // Title - takes available space
+            Expanded(child: titleWidget),
+            // Phase selector and new note button - fixed width
+            if (showActions) ...[
+              const SizedBox(width: 16),
+              ChroniclePhaseSelector(
+                matter: matter,
+                buttonKey: const Key('matter_notes_phase_selector'),
+              ),
+              const SizedBox(width: 12),
+              if (isMacOSNativeUI)
+                PushButton(
+                  key: const Key('matter_notes_new_note_button'),
+                  controlSize: ControlSize.regular,
+                  secondary: true,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  onPressed: () {
+                    unawaited(createNewNote());
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const MacosIcon(CupertinoIcons.add, size: 14),
+                      const SizedBox(width: 6),
+                      Text(context.l10n.newNoteAction),
+                    ],
+                  ),
+                )
+              else
+                TextButton.icon(
+                  key: const Key('matter_notes_new_note_button'),
+                  onPressed: () {
+                    unawaited(createNewNote());
+                  },
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: const Size(0, 32),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  label: Text(context.l10n.newNoteAction),
+                  icon: const Icon(Icons.note_add_outlined, size: 18),
+                ),
+            ],
+          ],
+        ),
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (showTitleHeader)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: currentNote == null && matterDraft != null
-                ? _NotebookDraftTitleHeader(draft: matterDraft)
-                : currentNote == null && isResolvingWorkspace
-                ? const _WorkspaceTitleSkeleton()
-                : ChronicleNoteTitleHeader(
-                    note: currentNote,
-                    canEdit:
-                        currentNote != null &&
-                        currentNote.matterId == matter.id &&
-                        currentNote.phaseId != null,
-                  ),
-          ),
+        if (showTitleHeader) buildTitleRow(),
         if (showTitleHeader) const SizedBox(height: 8),
         Expanded(
           child: switch (viewMode) {
@@ -610,6 +679,7 @@ class _MatterNotesWorkspace extends ConsumerWidget {
     final settings = ref.watch(settingsControllerProvider).asData?.value;
 
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final useCompactEditorOnly =
@@ -618,163 +688,171 @@ class _MatterNotesWorkspace extends ConsumerWidget {
           return const _NoteEditorPane();
         }
         return _ResizableNoteEditorSplitPane(
-          listPaneKey: _kMatterNoteListPaneKey,
-          resizeHandleKey: _kMatterNoteListResizeHandleKey,
-          storedPaneWidth:
-              settings?.matterNoteListPaneWidth ?? _kDefaultNoteListPaneWidth,
-          onWidthCommitted: (width) async {
-            await ref
-                .read(settingsControllerProvider.notifier)
-                .setMatterNoteListPaneWidth(width);
-          },
-          listPane: notes.when(
-            loading: () => Center(child: _adaptiveLoadingIndicator(context)),
-            error: (error, _) => Center(child: Text('$error')),
-            data: (items) => _NoteList(
-              notes: items,
-              onEdit: (note) async {
-                final result = await showDialog<ChronicleNoteDialogResult>(
-                  context: context,
-                  builder: (_) => ChronicleNoteDialog(
-                    mode: ChronicleNoteDialogMode.edit,
-                    initialTitle: note.title,
-                    initialContent: note.content,
-                    initialTags: note.tags,
-                    initialPinned: note.isPinned,
-                  ),
-                );
-
-                if (result == null || result.title.trim().isEmpty) {
-                  return;
-                }
-
-                await ref
-                    .read(noteEditorControllerProvider.notifier)
-                    .updateNoteById(
-                      noteId: note.id,
-                      title: result.title,
-                      content: result.content,
-                      tags: result.tags,
-                      isPinned: result.isPinned,
-                    );
-              },
-              onTogglePinned: (note) async {
-                await ref
-                    .read(noteEditorControllerProvider.notifier)
-                    .updateNoteById(noteId: note.id, isPinned: !note.isPinned);
-              },
-              onDelete: (note) async {
-                final confirmed = await showDialog<bool>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: Text(l10n.deleteNoteTitle),
-                    content: Text(l10n.deleteNoteConfirmation(note.title)),
-                    actions: <Widget>[
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: Text(l10n.cancelAction),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        child: Text(l10n.deleteAction),
-                      ),
-                    ],
-                  ),
-                );
-
-                if (confirmed == true) {
+                listPaneKey: _kMatterNoteListPaneKey,
+                resizeHandleKey: _kMatterNoteListResizeHandleKey,
+                storedPaneWidth:
+                    settings?.matterNoteListPaneWidth ??
+                    _kDefaultNoteListPaneWidth,
+                onWidthCommitted: (width) async {
                   await ref
-                      .read(noteEditorControllerProvider.notifier)
-                      .deleteNote(note.id);
-                }
-              },
-              onLink: (note) {
-                return showChronicleLinkNoteDialogFlow(
-                  context: context,
-                  sourceNote: note,
-                  useMacOSNativeUI: _isMacOSNativeUIContext(context),
-                  loadAllNotes: () =>
-                      ref.read(allNotesForLinkPickerProvider.future),
-                  createLink: (result) async {
-                    await ref
-                        .read(linksControllerProvider)
-                        .createLink(
-                          sourceNoteId: note.id,
-                          targetNoteId: result.targetNoteId,
-                          context: result.context,
+                      .read(settingsControllerProvider.notifier)
+                      .setMatterNoteListPaneWidth(width);
+                },
+                listPane: notes.when(
+                  loading: () =>
+                      Center(child: _adaptiveLoadingIndicator(context)),
+                  error: (error, _) => Center(child: Text('$error')),
+                  data: (items) => _NoteList(
+                    notes: items,
+                    onEdit: (note) async {
+                      final result =
+                          await showDialog<ChronicleNoteDialogResult>(
+                            context: context,
+                            builder: (_) => ChronicleNoteDialog(
+                              mode: ChronicleNoteDialogMode.edit,
+                              initialTitle: note.title,
+                              initialContent: note.content,
+                              initialTags: note.tags,
+                              initialPinned: note.isPinned,
+                            ),
+                          );
+
+                      if (result == null || result.title.trim().isEmpty) {
+                        return;
+                      }
+
+                      await ref
+                          .read(noteEditorControllerProvider.notifier)
+                          .updateNoteById(
+                            noteId: note.id,
+                            title: result.title,
+                            content: result.content,
+                            tags: result.tags,
+                            isPinned: result.isPinned,
+                          );
+                    },
+                    onTogglePinned: (note) async {
+                      await ref
+                          .read(noteEditorControllerProvider.notifier)
+                          .updateNoteById(
+                            noteId: note.id,
+                            isPinned: !note.isPinned,
+                          );
+                    },
+                    onDelete: (note) async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text(l10n.deleteNoteTitle),
+                          content: Text(
+                            l10n.deleteNoteConfirmation(note.title),
+                          ),
+                          actions: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: Text(l10n.cancelAction),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text(l10n.deleteAction),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirmed == true) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .deleteNote(note.id);
+                      }
+                    },
+                    onLink: (note) {
+                      return showChronicleLinkNoteDialogFlow(
+                        context: context,
+                        sourceNote: note,
+                        useMacOSNativeUI: _isMacOSNativeUIContext(context),
+                        loadAllNotes: () =>
+                            ref.read(allNotesForLinkPickerProvider.future),
+                        createLink: (result) async {
+                          await ref
+                              .read(linksControllerProvider)
+                              .createLink(
+                                sourceNoteId: note.id,
+                                targetNoteId: result.targetNoteId,
+                                context: result.context,
+                              );
+                        },
+                      );
+                    },
+                    onMoveToMatter: (note) async {
+                      final targetMatter = await _showMoveToMatterDialog(
+                        context: context,
+                        ref: ref,
+                        note: note,
+                      );
+                      if (!context.mounted || targetMatter == null) {
+                        return;
+                      }
+                      await _moveNoteToMatter(
+                        context: context,
+                        ref: ref,
+                        noteId: note.id,
+                        targetMatter: targetMatter,
+                      );
+                    },
+                    onMoveToPhase: (note) async {
+                      final matterId = note.matterId;
+                      if (matterId == null) {
+                        return;
+                      }
+                      Matter? sourceMatter = ref
+                          .read(mattersControllerProvider.notifier)
+                          .findMatter(matterId);
+                      if (sourceMatter == null) {
+                        final matters = await _allMattersForMove(ref);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        for (final candidate in matters) {
+                          if (candidate.id == matterId) {
+                            sourceMatter = candidate;
+                            break;
+                          }
+                        }
+                      }
+                      if (sourceMatter == null) {
+                        _showMoveMessage(
+                          context,
+                          context.l10n.moveSourceMatterMissingMessage,
                         );
-                  },
-                );
-              },
-              onMoveToMatter: (note) async {
-                final targetMatter = await _showMoveToMatterDialog(
-                  context: context,
-                  ref: ref,
-                  note: note,
-                );
-                if (!context.mounted || targetMatter == null) {
-                  return;
-                }
-                await _moveNoteToMatter(
-                  context: context,
-                  ref: ref,
-                  noteId: note.id,
-                  targetMatter: targetMatter,
-                );
-              },
-              onMoveToPhase: (note) async {
-                final matterId = note.matterId;
-                if (matterId == null) {
-                  return;
-                }
-                Matter? sourceMatter = ref
-                    .read(mattersControllerProvider.notifier)
-                    .findMatter(matterId);
-                if (sourceMatter == null) {
-                  final matters = await _allMattersForMove(ref);
-                  if (!context.mounted) {
-                    return;
-                  }
-                  for (final candidate in matters) {
-                    if (candidate.id == matterId) {
-                      sourceMatter = candidate;
-                      break;
-                    }
-                  }
-                }
-                if (sourceMatter == null) {
-                  _showMoveMessage(
-                    context,
-                    context.l10n.moveSourceMatterMissingMessage,
-                  );
-                  return;
-                }
-                final phase = await _showMoveToPhaseDialog(
-                  context: context,
-                  matter: sourceMatter,
-                  note: note,
-                );
-                if (!context.mounted || phase == null) {
-                  return;
-                }
-                await _moveNoteToPhase(
-                  context: context,
-                  ref: ref,
-                  noteId: note.id,
-                  sourceMatterId: sourceMatter.id,
-                  phase: phase,
-                );
-              },
-              onMoveToNotebook: (note) async {
-                await _moveNoteToNotebookViaDialog(
-                  context: context,
-                  ref: ref,
-                  note: note,
-                );
-              },
-            ),
-          ),
-        );
+                        return;
+                      }
+                      final phase = await _showMoveToPhaseDialog(
+                        context: context,
+                        matter: sourceMatter,
+                        note: note,
+                      );
+                      if (!context.mounted || phase == null) {
+                        return;
+                      }
+                      await _moveNoteToPhase(
+                        context: context,
+                        ref: ref,
+                        noteId: note.id,
+                        sourceMatterId: sourceMatter.id,
+                        phase: phase,
+                      );
+                    },
+                    onMoveToNotebook: (note) async {
+                      await _moveNoteToNotebookViaDialog(
+                        context: context,
+                        ref: ref,
+                        note: note,
+                      );
+                    },
+                  ),
+                ),
+              );
       },
     );
   }
@@ -830,37 +908,37 @@ class _MatterKanbanWorkspace extends ConsumerWidget {
               return Padding(
                 padding: const EdgeInsets.only(top: 5),
                 child: Row(
-                children: orderedPhases.map((phase) {
-                  final notes = notesByPhase[phase.id] ?? [];
-                  return Expanded(
-                    child: _KanbanPhaseColumn(
-                      phase: phase,
-                      notes: notes,
-                      isMacOSNativeUI: isMacOSNativeUI,
-                      useExpandedLayout: true,
-                      currentPhaseId: matter.currentPhaseId,
-                      currentPhaseOrder: currentPhaseOrder,
-                      onNoteTap: (note) async {
-                        await ref
-                            .read(noteEditorControllerProvider.notifier)
-                            .openNoteInWorkspace(note.id);
-                      },
-                      onNoteDropped: (note) async {
-                        if (note.phaseId == phase.id) return;
-                        await ref
-                            .read(noteEditorControllerProvider.notifier)
-                            .moveNoteById(
-                              noteId: note.id,
-                              matterId: note.matterId,
-                              phaseId: phase.id,
-                              notebookFolderId: null,
-                            );
-                        // Invalidate kanban provider to refresh the board
-                        ref.invalidate(kanbanNotesProvider);
-                      },
-                    ),
-                  );
-                }).toList(),
+                  children: orderedPhases.map((phase) {
+                    final notes = notesByPhase[phase.id] ?? [];
+                    return Expanded(
+                      child: _KanbanPhaseColumn(
+                        phase: phase,
+                        notes: notes,
+                        isMacOSNativeUI: isMacOSNativeUI,
+                        useExpandedLayout: true,
+                        currentPhaseId: matter.currentPhaseId,
+                        currentPhaseOrder: currentPhaseOrder,
+                        onNoteTap: (note) async {
+                          await ref
+                              .read(noteEditorControllerProvider.notifier)
+                              .openNoteInWorkspace(note.id);
+                        },
+                        onNoteDropped: (note) async {
+                          if (note.phaseId == phase.id) return;
+                          await ref
+                              .read(noteEditorControllerProvider.notifier)
+                              .moveNoteById(
+                                noteId: note.id,
+                                matterId: note.matterId,
+                                phaseId: phase.id,
+                                notebookFolderId: null,
+                              );
+                          // Invalidate kanban provider to refresh the board
+                          ref.invalidate(kanbanNotesProvider);
+                        },
+                      ),
+                    );
+                  }).toList(),
                 ),
               );
             } else {
@@ -952,8 +1030,6 @@ class _KanbanPhaseColumn extends StatelessWidget {
     return _PhaseStatus.future;
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
@@ -963,20 +1039,20 @@ class _KanbanPhaseColumn extends StatelessWidget {
     // Determine header colors based on phase status
     final (headerBgColor, headerTextColor, countBadgeColor) = switch (_status) {
       _PhaseStatus.current => (
-          theme.colorScheme.primary,
-          Colors.white,
-          theme.colorScheme.primaryContainer,
-        ),
+        theme.colorScheme.primary,
+        Colors.white,
+        theme.colorScheme.primaryContainer,
+      ),
       _PhaseStatus.past => (
-          theme.colorScheme.surfaceContainerHighest,
-          theme.colorScheme.onSurface,
-          theme.colorScheme.surfaceContainerHighest,
-        ),
+        theme.colorScheme.surfaceContainerHighest,
+        theme.colorScheme.onSurface,
+        theme.colorScheme.surfaceContainerHighest,
+      ),
       _PhaseStatus.future => (
-          theme.colorScheme.surface,
-          theme.colorScheme.onSurface,
-          theme.colorScheme.surfaceContainerHighest,
-        ),
+        theme.colorScheme.surface,
+        theme.colorScheme.onSurface,
+        theme.colorScheme.surfaceContainerHighest,
+      ),
     };
 
     Widget buildColumnContent({bool isHighlighted = false}) {
@@ -984,13 +1060,10 @@ class _KanbanPhaseColumn extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 6),
         decoration: BoxDecoration(
           border: isHighlighted
-              ? Border.all(
-                  color: theme.colorScheme.primary,
-                  width: 2,
-                )
+              ? Border.all(color: theme.colorScheme.primary, width: 2)
               : isMacOSNativeUI
-                  ? Border.all(color: macosTheme.dividerColor)
-                  : Border.all(color: theme.dividerColor),
+              ? Border.all(color: macosTheme.dividerColor)
+              : Border.all(color: theme.dividerColor),
           borderRadius: BorderRadius.circular(10),
           color: isMacOSNativeUI
               ? macosTheme.canvasColor
@@ -1019,13 +1092,13 @@ class _KanbanPhaseColumn extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: isMacOSNativeUI
                           ? macosTheme.typography.headline.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: headerTextColor,
-                              )
+                              fontWeight: FontWeight.w600,
+                              color: headerTextColor,
+                            )
                           : theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: headerTextColor,
-                              ),
+                              fontWeight: FontWeight.w600,
+                              color: headerTextColor,
+                            ),
                     ),
                   ),
                   Container(
@@ -1037,23 +1110,23 @@ class _KanbanPhaseColumn extends StatelessWidget {
                       color: _status == _PhaseStatus.current
                           ? Colors.white.withAlpha(230)
                           : isMacOSNativeUI
-                              ? macosTheme.dividerColor
-                              : theme.colorScheme.surfaceContainerHighest,
+                          ? macosTheme.dividerColor
+                          : theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       '${notes.length}',
                       style: isMacOSNativeUI
                           ? macosTheme.typography.caption2.copyWith(
-                                color: _status == _PhaseStatus.current
-                                    ? headerBgColor
-                                    : macosTheme.typography.caption2.color,
-                              )
+                              color: _status == _PhaseStatus.current
+                                  ? headerBgColor
+                                  : macosTheme.typography.caption2.color,
+                            )
                           : theme.textTheme.labelSmall?.copyWith(
-                                color: _status == _PhaseStatus.current
-                                    ? headerBgColor
-                                    : theme.textTheme.labelSmall?.color,
-                              ),
+                              color: _status == _PhaseStatus.current
+                                  ? headerBgColor
+                                  : theme.textTheme.labelSmall?.color,
+                            ),
                     ),
                   ),
                 ],
@@ -1069,12 +1142,14 @@ class _KanbanPhaseColumn extends StatelessWidget {
                           l10n.kanbanEmptyColumn,
                           textAlign: TextAlign.center,
                           style: isMacOSNativeUI
-                              ? MacosTheme.of(context).typography.caption1.copyWith(
-                                    color: MacosColors.secondaryLabelColor,
-                                  )
+                              ? MacosTheme.of(
+                                  context,
+                                ).typography.caption1.copyWith(
+                                  color: MacosColors.secondaryLabelColor,
+                                )
                               : Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).hintColor,
-                                  ),
+                                  color: Theme.of(context).hintColor,
+                                ),
                         ),
                       ),
                     )
@@ -1094,8 +1169,7 @@ class _KanbanPhaseColumn extends StatelessWidget {
     }
 
     return DragTarget<Note>(
-      onWillAcceptWithDetails: (details) =>
-          details.data.phaseId != phase.id,
+      onWillAcceptWithDetails: (details) => details.data.phaseId != phase.id,
       onAcceptWithDetails: (details) => onNoteDropped(details.data),
       builder: (context, candidateData, rejectedData) {
         return buildColumnContent(isHighlighted: candidateData.isNotEmpty);
@@ -1150,18 +1224,16 @@ class _KanbanNoteCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    note.title.trim().isEmpty
-                        ? l10n.untitledLabel
-                        : note.title,
+                    note.title.trim().isEmpty ? l10n.untitledLabel : note.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: isMacOSNativeUI
                         ? MacosTheme.of(context).typography.body.copyWith(
-                              fontWeight: FontWeight.w500,
-                            )
+                            fontWeight: FontWeight.w500,
+                          )
                         : Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
+                            fontWeight: FontWeight.w500,
+                          ),
                   ),
                 ),
                 if (note.isPinned) ...[
@@ -1184,8 +1256,8 @@ class _KanbanNoteCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: isMacOSNativeUI
                     ? MacosTheme.of(context).typography.caption1.copyWith(
-                          color: MacosColors.secondaryLabelColor,
-                        )
+                        color: MacosColors.secondaryLabelColor,
+                      )
                     : Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -1194,11 +1266,11 @@ class _KanbanNoteCard extends StatelessWidget {
               dateLabel,
               style: isMacOSNativeUI
                   ? MacosTheme.of(context).typography.caption2.copyWith(
-                        color: MacosColors.secondaryLabelColor,
-                      )
+                      color: MacosColors.secondaryLabelColor,
+                    )
                   : Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(context).hintColor,
-                      ),
+                      color: Theme.of(context).hintColor,
+                    ),
             ),
           ],
         ),
@@ -1212,10 +1284,7 @@ class _KanbanNoteCard extends StatelessWidget {
         type: MaterialType.transparency,
         child: SizedBox(
           width: 280,
-          child: Opacity(
-            opacity: 0.9,
-            child: cardContent,
-          ),
+          child: Opacity(opacity: 0.9, child: cardContent),
         ),
       ),
       childWhenDragging: Opacity(opacity: 0.3, child: cardContent),

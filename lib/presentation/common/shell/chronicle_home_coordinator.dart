@@ -44,6 +44,7 @@ import 'chronicle_macos_widgets.dart';
 import 'chronicle_modal_dialog.dart';
 import 'chronicle_note_editor_utilities.dart';
 import 'chronicle_note_title_header.dart';
+import 'chronicle_phase_selector.dart';
 import 'chronicle_root_shell.dart';
 import 'chronicle_search_results_view.dart';
 import 'chronicle_sidebar_matter_actions.dart';

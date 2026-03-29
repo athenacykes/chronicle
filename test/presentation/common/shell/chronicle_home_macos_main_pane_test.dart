@@ -222,20 +222,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('macos_matter_new_note_button')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('matter_top_phase_menu_button')),
-      findsOneWidget,
-    );
+    // Top bar now has only Notes, Board, Graph buttons
+    expect(find.byKey(const Key('matter_top_notes_button')), findsOneWidget);
     expect(find.byKey(const Key('matter_top_kanban_button')), findsOneWidget);
     expect(find.byKey(const Key('matter_top_graph_button')), findsOneWidget);
-    expect(find.text('New Note'), findsOneWidget);
-    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Notes'), findsOneWidget);
     expect(find.text('Board'), findsOneWidget);
     expect(find.text('Graph'), findsOneWidget);
+    // Phase selector and New Note are now in the notes view, not top bar
+    expect(
+      find.byKey(const Key('matter_notes_phase_selector')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('matter_notes_new_note_button')),
+      findsOneWidget,
+    );
     final searchCenter = tester.getCenter(
       find.byKey(const Key('macos_top_bar_search_slot')),
     );
@@ -619,8 +621,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('welcome_tour_panel')), findsNothing);
+    // Phase selector is now in the notes view, not top bar
     expect(
-      find.byKey(const Key('matter_top_phase_menu_button')),
+      find.byKey(const Key('matter_notes_phase_selector')),
       findsOneWidget,
     );
   });
@@ -649,8 +652,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Phase selector is now in the notes view, not top bar
       expect(
-        find.byKey(const Key('matter_top_phase_menu_button')),
+        find.byKey(const Key('matter_notes_phase_selector')),
         findsOneWidget,
       );
       expect(find.text('All Phases'), findsOneWidget);
@@ -688,7 +692,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('macos_matter_new_note_button')));
+    // New note button is now in the notes view, not top bar
+    await tester.tap(find.byKey(const Key('matter_notes_new_note_button')));
     await tester.pumpAndSettle();
 
     expect(find.text('Create Note'), findsNothing);
@@ -1384,6 +1389,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(MacosSearchField<void>), findsOneWidget);
+    // New note button is now in notes view title row (visible, but not in compact panel)
     expect(find.text('New Note'), findsOneWidget);
     expect(
       find.byKey(const Key('macos_top_bar_conflicts_button')),
@@ -2868,7 +2874,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('matter_top_phase_menu_button')));
+    // Phase selector is now in the notes view, not top bar
+    await tester.tap(find.byKey(const Key('matter_notes_phase_selector')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Manage Phases...'));
     await tester.pumpAndSettle();
@@ -2909,7 +2916,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('matter_top_phase_menu_button')));
+    // First switch to Notes view (phase selector is now in notes view)
+    await tester.tap(find.byKey(const Key('matter_top_notes_button')));
+    await tester.pumpAndSettle();
+
+    // Now tap the phase selector in the notes view
+    await tester.tap(find.byKey(const Key('matter_notes_phase_selector')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('In Progress'));
     await tester.pumpAndSettle();
@@ -2953,9 +2965,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('kanban_note_card_note-1')));
     await tester.pumpAndSettle();
 
-    // Verify note is opened (editor should be visible)
+    // Verify note is opened (phase selector should be visible in notes view)
     expect(
-      find.byKey(const Key('matter_top_phase_menu_button')),
+      find.byKey(const Key('matter_notes_phase_selector')),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
@@ -5539,12 +5551,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SegmentedButton<MatterViewMode>), findsNothing);
-    expect(
-      find.byKey(const Key('matter_top_phase_menu_button')),
-      findsOneWidget,
-    );
+    // Top bar now has Notes, Board, Graph buttons
+    expect(find.byKey(const Key('matter_top_notes_button')), findsOneWidget);
     expect(find.byKey(const Key('matter_top_kanban_button')), findsOneWidget);
     expect(find.byKey(const Key('matter_top_graph_button')), findsOneWidget);
+    // Phase selector is now in the notes view, not top bar
+    expect(
+      find.byKey(const Key('matter_notes_phase_selector')),
+      findsOneWidget,
+    );
   });
 }
 
