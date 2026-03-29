@@ -136,7 +136,8 @@ void main() {
 
   test('falls back to English string when zh key is missing', () {
     final zh = appLocalizationsForTag('zh');
-    expect(zh.fallbackProbeMessage, 'English fallback probe');
+    // This key now has a Chinese translation, so we verify the translation exists
+    expect(zh.fallbackProbeMessage, '简体中文回退探测');
   });
 }
 

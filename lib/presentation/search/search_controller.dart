@@ -50,7 +50,10 @@ class SearchController extends AsyncNotifier<List<NoteSearchHit>> {
             to: previous.to,
           ),
         );
-    ref.invalidateSelf();
+    // Note: We do NOT call ref.invalidateSelf() here because the provider
+    // already watches searchQueryProvider, so it will automatically rebuild
+    // when the query changes. Calling invalidateSelf() causes unnecessary
+    // rebuilds that can cause the search text field to lose focus.
   }
 
   Future<void> setMatterId(String? matterId) async {
@@ -66,7 +69,7 @@ class SearchController extends AsyncNotifier<List<NoteSearchHit>> {
             to: previous.to,
           ),
         );
-    ref.invalidateSelf();
+    // Note: No ref.invalidateSelf() needed - provider watches searchQueryProvider
   }
 
   Future<void> setTags(List<String> tags) async {
@@ -82,7 +85,7 @@ class SearchController extends AsyncNotifier<List<NoteSearchHit>> {
             to: previous.to,
           ),
         );
-    ref.invalidateSelf();
+    // Note: No ref.invalidateSelf() needed - provider watches searchQueryProvider
   }
 
   Future<void> setDateRange(DateTime? from, DateTime? to) async {
@@ -98,7 +101,7 @@ class SearchController extends AsyncNotifier<List<NoteSearchHit>> {
             to: to,
           ),
         );
-    ref.invalidateSelf();
+    // Note: No ref.invalidateSelf() needed - provider watches searchQueryProvider
   }
 
   bool _isEmpty(SearchQuery query) {

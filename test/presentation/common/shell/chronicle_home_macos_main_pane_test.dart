@@ -273,7 +273,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('macos_notebook_new_note_button')),
+      find.byKey(const Key('notebook_new_note_button')),
       findsOneWidget,
     );
     expect(find.byType(MacosPulldownButton), findsWidgets);
@@ -587,7 +587,7 @@ void main() {
     expect(container.read(showOrphansProvider), isTrue);
     expect(container.read(selectedMatterIdProvider), isNull);
     expect(
-      find.byKey(const Key('macos_notebook_new_note_button')),
+      find.byKey(const Key('notebook_new_note_button')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('welcome_tour_panel')), findsNothing);
@@ -738,7 +738,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('macos_notebook_new_note_button')));
+      await tester.tap(find.byKey(const Key('notebook_new_note_button')));
       await tester.pumpAndSettle();
 
       expect(find.text('Create Note'), findsNothing);

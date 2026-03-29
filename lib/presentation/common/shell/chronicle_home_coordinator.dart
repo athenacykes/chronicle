@@ -131,12 +131,17 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
       return;
     }
 
-    final queryNotifier = ref.read(searchControllerProvider.notifier);
     final currentText = ref.read(searchQueryProvider).text;
+    final queryNotifier = ref.read(searchControllerProvider.notifier);
+
+    // Update search query only if text changed - this triggers search via
+    // the provider's watch on searchQueryProvider, avoiding unnecessary
+    // invalidation that causes focus loss
     if (currentText != normalized) {
       unawaited(queryNotifier.setText(normalized));
     }
 
+    // Update visibility based on whether search text is valid
     final visibleNotifier = ref.read(searchResultsVisibleProvider.notifier);
     final shouldShowResults = _hasSearchText(normalized);
     final currentVisibility = ref.read(searchResultsVisibleProvider);
