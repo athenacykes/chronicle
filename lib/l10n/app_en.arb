@@ -803,5 +803,49 @@
   "kanbanEmptyColumn": "No notes in this phase",
   "selectMatterPrompt": "Select a Matter to begin.",
   "noPhasesYetMessage": "No phases yet. Add phases to organize your notes.",
-  "untitledPhaseLabel": "(untitled phase)"
+  "untitledPhaseLabel": "(untitled phase)",
+  "selectedNotesCountLabel": "{count} selected",
+  "@selectedNotesCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clearSelectionAction": "Clear Selection",
+  "pinNotesCountAction": "Pin {count} notes",
+  "@pinNotesCountAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "unpinNotesCountAction": "Unpin {count} notes",
+  "@unpinNotesCountAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "moveNotesCountAction": "Move {count} notes",
+  "@moveNotesCountAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deleteNotesCountConfirmation": "Delete {count} notes?",
+  "@deleteNotesCountConfirmation": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchMoveToMatterDialogTitle": "Move Notes to Matter",
+  "batchMoveToPhaseDialogTitle": "Move Notes to Phase",
+  "batchMoveToNotebookDialogTitle": "Move Notes to Notebook"
 }

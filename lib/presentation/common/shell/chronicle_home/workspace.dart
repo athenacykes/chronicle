@@ -850,6 +850,146 @@ class _MatterNotesWorkspace extends ConsumerWidget {
                         note: note,
                       );
                     },
+                    onBatchTogglePinned: (selectedNotes, pin) async {
+                      for (final note in selectedNotes) {
+                        if (note.isPinned != pin) {
+                          await ref
+                              .read(noteEditorControllerProvider.notifier)
+                              .updateNoteById(
+                                noteId: note.id,
+                                isPinned: pin,
+                              );
+                        }
+                      }
+                    },
+                    onBatchDelete: (selectedNotes) async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text(l10n.deleteNoteTitle),
+                          content: Text(
+                            l10n.deleteNotesCountConfirmation(selectedNotes.length),
+                          ),
+                          actions: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: Text(l10n.cancelAction),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text(l10n.deleteAction),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirmed == true) {
+                        for (final note in selectedNotes) {
+                          await ref
+                              .read(noteEditorControllerProvider.notifier)
+                              .deleteNote(note.id);
+                        }
+                      }
+                    },
+                    onBatchMoveToMatter: (selectedNotes) async {
+                      final targetMatter = await _showMoveToMatterDialog(
+                        context: context,
+                        ref: ref,
+                        note: selectedNotes.first,
+                      );
+                      if (!context.mounted || targetMatter == null) {
+                        return;
+                      }
+                      final targetPhaseId = _resolvedPhaseForMatter(targetMatter);
+                      if (targetPhaseId == null) {
+                        _showMoveMessage(
+                          context,
+                          l10n.moveTargetMatterHasNoPhases(
+                            _displayMatterTitle(context, targetMatter),
+                          ),
+                        );
+                        return;
+                      }
+                      for (final note in selectedNotes) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .moveNoteById(
+                              noteId: note.id,
+                              matterId: targetMatter.id,
+                              phaseId: targetPhaseId,
+                              notebookFolderId: null,
+                            );
+                      }
+                    },
+                    onBatchMoveToPhase: (selectedNotes) async {
+                      // All notes must be from the same matter for batch move to phase
+                      final matterIds = selectedNotes.map((n) => n.matterId).toSet();
+                      if (matterIds.length != 1 || matterIds.first == null) {
+                        _showMoveMessage(context, l10n.movePhaseRequiresSameMatterMessage);
+                        return;
+                      }
+                      final matterId = matterIds.first!;
+                      Matter? sourceMatter = ref
+                          .read(mattersControllerProvider.notifier)
+                          .findMatter(matterId);
+                      if (sourceMatter == null) {
+                        final matters = await _allMattersForMove(ref);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        for (final candidate in matters) {
+                          if (candidate.id == matterId) {
+                            sourceMatter = candidate;
+                            break;
+                          }
+                        }
+                      }
+                      if (sourceMatter == null) {
+                        _showMoveMessage(
+                          context,
+                          context.l10n.moveSourceMatterMissingMessage,
+                        );
+                        return;
+                      }
+                      final phase = await _showMoveToPhaseDialog(
+                        context: context,
+                        matter: sourceMatter,
+                        note: selectedNotes.first,
+                      );
+                      if (!context.mounted || phase == null) {
+                        return;
+                      }
+                      for (final note in selectedNotes) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .moveNoteById(
+                              noteId: note.id,
+                              matterId: phase.matterId,
+                              phaseId: phase.id,
+                              notebookFolderId: null,
+                            );
+                      }
+                    },
+                    onBatchMoveToNotebook: (selectedNotes) async {
+                      final selection = await _showMoveToNotebookDialog(
+                        context: context,
+                        ref: ref,
+                        note: selectedNotes.first,
+                      );
+                      if (!context.mounted || selection == null) {
+                        return;
+                      }
+                      for (final note in selectedNotes) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .moveNoteById(
+                              noteId: note.id,
+                              matterId: null,
+                              phaseId: null,
+                              notebookFolderId: selection.folderId,
+                            );
+                      }
+                    },
                   ),
                 ),
               );
@@ -1495,6 +1635,146 @@ class _NotebookWorkspace extends ConsumerWidget {
                         note: note,
                       );
                     },
+                    onBatchTogglePinned: (selectedNotes, pin) async {
+                      for (final note in selectedNotes) {
+                        if (note.isPinned != pin) {
+                          await ref
+                              .read(noteEditorControllerProvider.notifier)
+                              .updateNoteById(
+                                noteId: note.id,
+                                isPinned: pin,
+                              );
+                        }
+                      }
+                    },
+                    onBatchDelete: (selectedNotes) async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: Text(l10n.deleteNoteTitle),
+                          content: Text(
+                            l10n.deleteNotesCountConfirmation(selectedNotes.length),
+                          ),
+                          actions: <Widget>[
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: Text(l10n.cancelAction),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: Text(l10n.deleteAction),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirmed == true) {
+                        for (final note in selectedNotes) {
+                          await ref
+                              .read(noteEditorControllerProvider.notifier)
+                              .deleteNote(note.id);
+                        }
+                      }
+                    },
+                    onBatchMoveToMatter: (selectedNotes) async {
+                      final targetMatter = await _showMoveToMatterDialog(
+                        context: context,
+                        ref: ref,
+                        note: selectedNotes.first,
+                      );
+                      if (!context.mounted || targetMatter == null) {
+                        return;
+                      }
+                      final targetPhaseId = _resolvedPhaseForMatter(targetMatter);
+                      if (targetPhaseId == null) {
+                        _showMoveMessage(
+                          context,
+                          l10n.moveTargetMatterHasNoPhases(
+                            _displayMatterTitle(context, targetMatter),
+                          ),
+                        );
+                        return;
+                      }
+                      for (final note in selectedNotes) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .moveNoteById(
+                              noteId: note.id,
+                              matterId: targetMatter.id,
+                              phaseId: targetPhaseId,
+                              notebookFolderId: null,
+                            );
+                      }
+                    },
+                    onBatchMoveToPhase: (selectedNotes) async {
+                      // All notes must be from the same matter for batch move to phase
+                      final matterIds = selectedNotes.map((n) => n.matterId).toSet();
+                      if (matterIds.length != 1 || matterIds.first == null) {
+                        _showMoveMessage(context, l10n.movePhaseRequiresSameMatterMessage);
+                        return;
+                      }
+                      final matterId = matterIds.first!;
+                      Matter? sourceMatter = ref
+                          .read(mattersControllerProvider.notifier)
+                          .findMatter(matterId);
+                      if (sourceMatter == null) {
+                        final matters = await _allMattersForMove(ref);
+                        if (!context.mounted) {
+                          return;
+                        }
+                        for (final candidate in matters) {
+                          if (candidate.id == matterId) {
+                            sourceMatter = candidate;
+                            break;
+                          }
+                        }
+                      }
+                      if (sourceMatter == null) {
+                        _showMoveMessage(
+                          context,
+                          context.l10n.moveSourceMatterMissingMessage,
+                        );
+                        return;
+                      }
+                      final phase = await _showMoveToPhaseDialog(
+                        context: context,
+                        matter: sourceMatter,
+                        note: selectedNotes.first,
+                      );
+                      if (!context.mounted || phase == null) {
+                        return;
+                      }
+                      for (final note in selectedNotes) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .moveNoteById(
+                              noteId: note.id,
+                              matterId: phase.matterId,
+                              phaseId: phase.id,
+                              notebookFolderId: null,
+                            );
+                      }
+                    },
+                    onBatchMoveToNotebook: (selectedNotes) async {
+                      final selection = await _showMoveToNotebookDialog(
+                        context: context,
+                        ref: ref,
+                        note: selectedNotes.first,
+                      );
+                      if (!context.mounted || selection == null) {
+                        return;
+                      }
+                      for (final note in selectedNotes) {
+                        await ref
+                            .read(noteEditorControllerProvider.notifier)
+                            .moveNoteById(
+                              noteId: note.id,
+                              matterId: null,
+                              phaseId: null,
+                              notebookFolderId: selection.folderId,
+                            );
+                      }
+                    },
                   ),
                 ),
               );
@@ -1876,7 +2156,7 @@ class _CompactPanelNotePicker extends ConsumerWidget {
   }
 }
 
-class _NoteList extends ConsumerWidget {
+class _NoteList extends ConsumerStatefulWidget {
   const _NoteList({
     required this.notes,
     required this.onEdit,
@@ -1886,6 +2166,11 @@ class _NoteList extends ConsumerWidget {
     required this.onMoveToMatter,
     required this.onMoveToPhase,
     required this.onMoveToNotebook,
+    required this.onBatchTogglePinned,
+    required this.onBatchDelete,
+    required this.onBatchMoveToMatter,
+    required this.onBatchMoveToPhase,
+    required this.onBatchMoveToNotebook,
   });
 
   final List<Note> notes;
@@ -1896,12 +2181,448 @@ class _NoteList extends ConsumerWidget {
   final Future<void> Function(Note note) onMoveToMatter;
   final Future<void> Function(Note note) onMoveToPhase;
   final Future<void> Function(Note note) onMoveToNotebook;
+  final Future<void> Function(List<Note> notes, bool pin) onBatchTogglePinned;
+  final Future<void> Function(List<Note> notes) onBatchDelete;
+  final Future<void> Function(List<Note> notes) onBatchMoveToMatter;
+  final Future<void> Function(List<Note> notes) onBatchMoveToPhase;
+  final Future<void> Function(List<Note> notes) onBatchMoveToNotebook;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_NoteList> createState() => _NoteListState();
+}
+
+class _NoteListState extends ConsumerState<_NoteList> {
+  bool _isShiftPressed = false;
+  bool _isCtrlPressed = false;
+  bool _isMetaPressed = false;
+  String? _lastSelectedNoteId;
+
+  @override
+  void initState() {
+    super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    super.dispose();
+  }
+
+  bool _handleKeyEvent(KeyEvent event) {
+    final isShift = event.logicalKey == LogicalKeyboardKey.shiftLeft ||
+        event.logicalKey == LogicalKeyboardKey.shiftRight;
+    final isCtrl = event.logicalKey == LogicalKeyboardKey.controlLeft ||
+        event.logicalKey == LogicalKeyboardKey.controlRight;
+    final isMeta = event.logicalKey == LogicalKeyboardKey.metaLeft ||
+        event.logicalKey == LogicalKeyboardKey.metaRight;
+    final isAKey = event.logicalKey == LogicalKeyboardKey.keyA;
+
+    if (isShift) {
+      setState(() {
+        _isShiftPressed = event is KeyDownEvent || event is KeyRepeatEvent;
+      });
+      return false;
+    }
+
+    if (isCtrl) {
+      setState(() {
+        _isCtrlPressed = event is KeyDownEvent || event is KeyRepeatEvent;
+      });
+      return false;
+    }
+
+    if (isMeta) {
+      setState(() {
+        _isMetaPressed = event is KeyDownEvent || event is KeyRepeatEvent;
+      });
+      return false;
+    }
+
+    // Handle Ctrl+A / Cmd+A to select all
+    if (isAKey &&
+        event is KeyDownEvent &&
+        (isMetaPressed || isCtrlPressed || HardwareKeyboard.instance.isMetaPressed || HardwareKeyboard.instance.isControlPressed)) {
+      _selectAll();
+      return true;
+    }
+
+    return false;
+  }
+
+  bool get isShiftPressed =>
+      _isShiftPressed ||
+      HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+      HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftRight);
+
+  bool get isCtrlPressed =>
+      _isCtrlPressed ||
+      HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.controlLeft) ||
+      HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.controlRight);
+
+  bool get isMetaPressed =>
+      _isMetaPressed ||
+      HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.metaLeft) ||
+      HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.metaRight);
+
+  /// Returns true if the modifier key for multi-select is pressed.
+  /// On macOS, this is Cmd (meta). On Windows/Linux, this is Ctrl.
+  bool get isCtrlOrMetaPressed =>
+      isMetaPressed ||
+      isCtrlPressed ||
+      HardwareKeyboard.instance.isMetaPressed ||
+      HardwareKeyboard.instance.isControlPressed;
+
+  void _toggleNoteSelection(String noteId) {
+    final currentSelection = ref.read(selectedNoteIdsProvider);
+    final newSelection = Set<String>.from(currentSelection);
+    if (newSelection.contains(noteId)) {
+      newSelection.remove(noteId);
+    } else {
+      newSelection.add(noteId);
+    }
+    ref.read(selectedNoteIdsProvider.notifier).set(newSelection);
+  }
+
+  void _clearSelection() {
+    ref.read(selectedNoteIdsProvider.notifier).set({});
+  }
+
+  void _selectRange({required String? from, required String to}) {
+    if (from == null) {
+      // No anchor, just toggle the target
+      _toggleNoteSelection(to);
+      return;
+    }
+
+    final notes = widget.notes;
+    final fromIndex = notes.indexWhere((n) => n.id == from);
+    final toIndex = notes.indexWhere((n) => n.id == to);
+
+    if (fromIndex == -1 || toIndex == -1) {
+      // Anchor or target not found, just toggle the target
+      _toggleNoteSelection(to);
+      return;
+    }
+
+    final startIndex = fromIndex < toIndex ? fromIndex : toIndex;
+    final endIndex = fromIndex < toIndex ? toIndex : fromIndex;
+
+    final currentSelection = ref.read(selectedNoteIdsProvider);
+    final newSelection = Set<String>.from(currentSelection);
+
+    // Add all notes in the range
+    for (var i = startIndex; i <= endIndex; i++) {
+      newSelection.add(notes[i].id);
+    }
+
+    ref.read(selectedNoteIdsProvider.notifier).set(newSelection);
+  }
+
+  void _selectAll() {
+    final allNoteIds = widget.notes.map((n) => n.id).toSet();
+    if (allNoteIds.isNotEmpty) {
+      ref.read(selectedNoteIdsProvider.notifier).set(allNoteIds);
+      // Set last selected to the last note for range selection purposes
+      _lastSelectedNoteId = widget.notes.last.id;
+    }
+  }
+
+  Future<void> _handleNoteTap(Note note) async {
+    if (isCtrlOrMetaPressed) {
+      // Ctrl/Cmd + Click: Toggle selection of this item
+      // Do NOT update _lastSelectedNoteId - keep the existing anchor for range selection
+      _toggleNoteSelection(note.id);
+      return;
+    }
+
+    if (isShiftPressed) {
+      // Shift + Click: Range selection from anchor to clicked item
+      _selectRange(from: _lastSelectedNoteId, to: note.id);
+      _lastSelectedNoteId = note.id;
+      return;
+    }
+
+    // Normal click: Clear selection, open note, set anchor
+    _clearSelection();
+    _lastSelectedNoteId = note.id;
+    await ref.read(noteEditorControllerProvider.notifier).selectNote(note.id);
+  }
+
+  Future<void> _handleSecondaryTapDown(
+    BuildContext context,
+    Note note,
+    TapDownDetails details,
+  ) async {
+    final selectedIds = ref.read(selectedNoteIdsProvider);
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+
+    // If right-clicking on a note not in selection, clear and select that note
+    if (!selectedIds.contains(note.id)) {
+      _clearSelection();
+      _lastSelectedNoteId = note.id;
+      ref.read(selectedNoteIdsProvider.notifier).set({note.id});
+    }
+
+    final currentSelection = ref.read(selectedNoteIdsProvider);
+    final selectedNotes = widget.notes.where((n) => currentSelection.contains(n.id)).toList();
+    final isMultiSelect = selectedNotes.length > 1;
+
+    if (isMacOSNativeUI) {
+      await _showMacosSecondaryClickMenu<String>(
+        context: context,
+        details: details,
+        itemBuilder: (menuContext) => isMultiSelect
+            ? _buildMacosBatchNoteMenuEntries(menuContext, selectedNotes)
+            : _buildMacosSingleNoteMenuEntries(menuContext, note),
+        onSelected: (value) async {
+          if (isMultiSelect) {
+            await _handleBatchMenuSelection(selectedNotes, value);
+          } else {
+            await _handleSingleMenuSelection(note, value);
+          }
+        },
+      );
+    } else {
+      await _showSecondaryClickMenu<String>(
+        context: context,
+        details: details,
+        itemBuilder: (menuContext) => isMultiSelect
+            ? _buildBatchNoteMenuEntries(menuContext, selectedNotes)
+            : _buildSingleNoteMenuEntries(menuContext, note),
+        onSelected: (value) async {
+          if (isMultiSelect) {
+            await _handleBatchMenuSelection(selectedNotes, value);
+          } else {
+            await _handleSingleMenuSelection(note, value);
+          }
+        },
+      );
+    }
+  }
+
+  Future<void> _handleSingleMenuSelection(Note note, String value) async {
+    switch (value) {
+      case 'edit':
+        await widget.onEdit(note);
+        return;
+      case 'toggle_pin':
+        await widget.onTogglePinned(note);
+        return;
+      case 'link':
+        await widget.onLink(note);
+        return;
+      case 'move_matter':
+        await widget.onMoveToMatter(note);
+        return;
+      case 'move_phase':
+        await widget.onMoveToPhase(note);
+        return;
+      case 'move_notebook':
+        await widget.onMoveToNotebook(note);
+        return;
+      case 'delete':
+        await widget.onDelete(note);
+        _clearSelection();
+        return;
+    }
+  }
+
+  Future<void> _handleBatchMenuSelection(List<Note> selectedNotes, String value) async {
+    switch (value) {
+      case 'toggle_pin':
+        final allPinned = selectedNotes.every((n) => n.isPinned);
+        await widget.onBatchTogglePinned(selectedNotes, !allPinned);
+        return;
+      case 'move_matter':
+        await widget.onBatchMoveToMatter(selectedNotes);
+        _clearSelection();
+        return;
+      case 'move_phase':
+        await widget.onBatchMoveToPhase(selectedNotes);
+        _clearSelection();
+        return;
+      case 'move_notebook':
+        await widget.onBatchMoveToNotebook(selectedNotes);
+        _clearSelection();
+        return;
+      case 'delete':
+        await widget.onBatchDelete(selectedNotes);
+        _clearSelection();
+        return;
+    }
+  }
+
+  List<PopupMenuEntry<String>> _buildSingleNoteMenuEntries(
+    BuildContext menuContext,
+    Note note,
+  ) {
+    return <PopupMenuEntry<String>>[
+      PopupMenuItem<String>(
+        value: 'edit',
+        child: Text(menuContext.l10n.editAction),
+      ),
+      PopupMenuItem<String>(
+        value: 'toggle_pin',
+        child: Text(
+          note.isPinned
+              ? menuContext.l10n.unpinAction
+              : menuContext.l10n.pinAction,
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'link',
+        child: Text(menuContext.l10n.linkNoteActionEllipsis),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        value: 'move_matter',
+        child: Text(menuContext.l10n.moveNoteToMatterAction),
+      ),
+      PopupMenuItem<String>(
+        value: 'move_phase',
+        enabled: note.matterId != null,
+        child: Text(menuContext.l10n.moveNoteToPhaseAction),
+      ),
+      PopupMenuItem<String>(
+        value: 'move_notebook',
+        child: Text(menuContext.l10n.moveToNotebookAction),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        value: 'delete',
+        child: Text(menuContext.l10n.deleteAction),
+      ),
+    ];
+  }
+
+  List<PopupMenuEntry<String>> _buildBatchNoteMenuEntries(
+    BuildContext menuContext,
+    List<Note> selectedNotes,
+  ) {
+    final count = selectedNotes.length;
+    final allPinned = selectedNotes.every((n) => n.isPinned);
+    final hasMixedMatter = selectedNotes.map((n) => n.matterId).toSet().length > 1;
+    
+    return <PopupMenuEntry<String>>[
+      PopupMenuItem<String>(
+        value: 'toggle_pin',
+        child: Text(
+          allPinned
+              ? menuContext.l10n.unpinNotesCountAction(count)
+              : menuContext.l10n.pinNotesCountAction(count),
+        ),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        value: 'move_matter',
+        child: Text(menuContext.l10n.moveNotesCountAction(count)),
+      ),
+      PopupMenuItem<String>(
+        value: 'move_phase',
+        enabled: !hasMixedMatter && selectedNotes.any((n) => n.matterId != null),
+        child: Text(menuContext.l10n.moveNotesCountAction(count)),
+      ),
+      PopupMenuItem<String>(
+        value: 'move_notebook',
+        child: Text(menuContext.l10n.moveNotesCountAction(count)),
+      ),
+      const PopupMenuDivider(),
+      PopupMenuItem<String>(
+        value: 'delete',
+        child: Text(menuContext.l10n.deleteAction),
+      ),
+    ];
+  }
+
+  List<MacosPulldownMenuEntry> _buildMacosSingleNoteMenuEntries(
+    BuildContext menuContext,
+    Note note,
+  ) {
+    return <MacosPulldownMenuEntry>[
+      ChronicleMacosContextMenuItem<String>(
+        value: 'edit',
+        title: Text(menuContext.l10n.editAction),
+      ),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'toggle_pin',
+        title: Text(
+          note.isPinned
+              ? menuContext.l10n.unpinAction
+              : menuContext.l10n.pinAction,
+        ),
+      ),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'link',
+        title: Text(menuContext.l10n.linkNoteActionEllipsis),
+      ),
+      const MacosPulldownMenuDivider(),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'move_matter',
+        title: Text(menuContext.l10n.moveNoteToMatterAction),
+      ),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'move_phase',
+        enabled: note.matterId != null,
+        title: Text(menuContext.l10n.moveNoteToPhaseAction),
+      ),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'move_notebook',
+        title: Text(menuContext.l10n.moveToNotebookAction),
+      ),
+      const MacosPulldownMenuDivider(),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'delete',
+        title: Text(menuContext.l10n.deleteAction),
+      ),
+    ];
+  }
+
+  List<MacosPulldownMenuEntry> _buildMacosBatchNoteMenuEntries(
+    BuildContext menuContext,
+    List<Note> selectedNotes,
+  ) {
+    final count = selectedNotes.length;
+    final allPinned = selectedNotes.every((n) => n.isPinned);
+    final hasMixedMatter = selectedNotes.map((n) => n.matterId).toSet().length > 1;
+    
+    return <MacosPulldownMenuEntry>[
+      ChronicleMacosContextMenuItem<String>(
+        value: 'toggle_pin',
+        title: Text(
+          allPinned
+              ? menuContext.l10n.unpinNotesCountAction(count)
+              : menuContext.l10n.pinNotesCountAction(count),
+        ),
+      ),
+      const MacosPulldownMenuDivider(),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'move_matter',
+        title: Text(menuContext.l10n.moveNotesCountAction(count)),
+      ),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'move_phase',
+        enabled: !hasMixedMatter && selectedNotes.any((n) => n.matterId != null),
+        title: Text(menuContext.l10n.moveNotesCountAction(count)),
+      ),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'move_notebook',
+        title: Text(menuContext.l10n.moveNotesCountAction(count)),
+      ),
+      const MacosPulldownMenuDivider(),
+      ChronicleMacosContextMenuItem<String>(
+        value: 'delete',
+        title: Text(menuContext.l10n.deleteAction),
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
     final isMacOSNativeUI = _isMacOSNativeUIContext(context);
     final selectedNoteId = ref.watch(selectedNoteIdProvider);
+    final selectedIds = ref.watch(selectedNoteIdsProvider);
     final dragPayloadNotifier = ref.read(
       _activeNoteDragPayloadProvider.notifier,
     );
@@ -1954,208 +2675,135 @@ class _NoteList extends ConsumerWidget {
       );
     }
 
-    if (notes.isEmpty) {
+    if (widget.notes.isEmpty) {
       return Center(child: Text(l10n.noNotesYetMessage));
     }
 
-    Future<void> handleNoteMenuSelection(Note note, String value) async {
-      switch (value) {
-        case 'edit':
-          await onEdit(note);
-          return;
-        case 'toggle_pin':
-          await onTogglePinned(note);
-          return;
-        case 'link':
-          await onLink(note);
-          return;
-        case 'move_matter':
-          await onMoveToMatter(note);
-          return;
-        case 'move_phase':
-          await onMoveToPhase(note);
-          return;
-        case 'move_notebook':
-          await onMoveToNotebook(note);
-          return;
-        case 'delete':
-          await onDelete(note);
-          return;
+    Widget buildList() {
+      if (isMacOSNativeUI) {
+        return ListView.separated(
+          padding: const EdgeInsets.all(8),
+          itemCount: widget.notes.length,
+          separatorBuilder: (_, index) => const SizedBox(height: 2),
+          itemBuilder: (_, index) {
+            final note = widget.notes[index];
+            final isSelected = selectedIds.contains(note.id) || note.id == selectedNoteId;
+            final row = ChronicleMacosSelectableRow(
+              key: ValueKey<String>('phase_note_row_${note.id}'),
+              selected: isSelected,
+              leading: MacosIcon(
+                note.isPinned ? CupertinoIcons.pin_fill : CupertinoIcons.doc_text,
+                size: 14,
+              ),
+              title: Text(
+                note.title.isEmpty ? l10n.untitledLabel : note.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                note.content.replaceAll('\n', ' '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onSecondaryTapDown: (details) {
+                unawaited(_handleSecondaryTapDown(context, note, details));
+              },
+              onTap: () async {
+                await _handleNoteTap(note);
+              },
+            );
+            return buildDraggable(note: note, scope: 'list_macos', child: row);
+          },
+        );
       }
-    }
 
-    List<PopupMenuEntry<String>> buildNoteMenuEntries(
-      BuildContext menuContext,
-      Note note,
-    ) {
-      return <PopupMenuEntry<String>>[
-        PopupMenuItem<String>(
-          value: 'edit',
-          child: Text(menuContext.l10n.editAction),
-        ),
-        PopupMenuItem<String>(
-          value: 'toggle_pin',
-          child: Text(
-            note.isPinned
-                ? menuContext.l10n.unpinAction
-                : menuContext.l10n.pinAction,
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'link',
-          child: Text(menuContext.l10n.linkNoteActionEllipsis),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: 'move_matter',
-          child: Text(menuContext.l10n.moveNoteToMatterAction),
-        ),
-        PopupMenuItem<String>(
-          value: 'move_phase',
-          enabled: note.matterId != null,
-          child: Text(menuContext.l10n.moveNoteToPhaseAction),
-        ),
-        PopupMenuItem<String>(
-          value: 'move_notebook',
-          child: Text(menuContext.l10n.moveToNotebookAction),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: 'delete',
-          child: Text(menuContext.l10n.deleteAction),
-        ),
-      ];
-    }
-
-    List<MacosPulldownMenuEntry> buildMacosNoteMenuEntries(
-      BuildContext menuContext,
-      Note note,
-    ) {
-      return <MacosPulldownMenuEntry>[
-        ChronicleMacosContextMenuItem<String>(
-          value: 'edit',
-          title: Text(menuContext.l10n.editAction),
-        ),
-        ChronicleMacosContextMenuItem<String>(
-          value: 'toggle_pin',
-          title: Text(
-            note.isPinned
-                ? menuContext.l10n.unpinAction
-                : menuContext.l10n.pinAction,
-          ),
-        ),
-        ChronicleMacosContextMenuItem<String>(
-          value: 'link',
-          title: Text(menuContext.l10n.linkNoteActionEllipsis),
-        ),
-        const MacosPulldownMenuDivider(),
-        ChronicleMacosContextMenuItem<String>(
-          value: 'move_matter',
-          title: Text(menuContext.l10n.moveNoteToMatterAction),
-        ),
-        ChronicleMacosContextMenuItem<String>(
-          value: 'move_phase',
-          enabled: note.matterId != null,
-          title: Text(menuContext.l10n.moveNoteToPhaseAction),
-        ),
-        ChronicleMacosContextMenuItem<String>(
-          value: 'move_notebook',
-          title: Text(menuContext.l10n.moveToNotebookAction),
-        ),
-        const MacosPulldownMenuDivider(),
-        ChronicleMacosContextMenuItem<String>(
-          value: 'delete',
-          title: Text(menuContext.l10n.deleteAction),
-        ),
-      ];
-    }
-
-    if (isMacOSNativeUI) {
-      return ListView.separated(
-        padding: const EdgeInsets.all(8),
-        itemCount: notes.length,
-        separatorBuilder: (_, index) => const SizedBox(height: 2),
+      return ListView.builder(
+        itemCount: widget.notes.length,
         itemBuilder: (_, index) {
-          final note = notes[index];
-          final row = ChronicleMacosSelectableRow(
+          final note = widget.notes[index];
+          final isSelected = selectedIds.contains(note.id) || note.id == selectedNoteId;
+          final tile = GestureDetector(
             key: ValueKey<String>('phase_note_row_${note.id}'),
-            selected: note.id == selectedNoteId,
-            leading: MacosIcon(
-              note.isPinned ? CupertinoIcons.pin_fill : CupertinoIcons.doc_text,
-              size: 14,
-            ),
-            title: Text(
-              note.title.isEmpty ? l10n.untitledLabel : note.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              note.content.replaceAll('\n', ' '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+            behavior: HitTestBehavior.opaque,
             onSecondaryTapDown: (details) {
-              unawaited(
-                _showMacosSecondaryClickMenu<String>(
-                  context: context,
-                  details: details,
-                  itemBuilder: (menuContext) =>
-                      buildMacosNoteMenuEntries(menuContext, note),
-                  onSelected: (value) async {
-                    await handleNoteMenuSelection(note, value);
-                  },
-                ),
-              );
+              unawaited(_handleSecondaryTapDown(context, note, details));
             },
-            onTap: () async {
-              await ref
-                  .read(noteEditorControllerProvider.notifier)
-                  .selectNote(note.id);
-            },
+            child: ListTile(
+              selected: isSelected,
+              title: Text(note.title.isEmpty ? l10n.untitledLabel : note.title),
+              subtitle: Text(
+                note.content.replaceAll('\n', ' '),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onTap: () async {
+                await _handleNoteTap(note);
+              },
+            ),
           );
-          return buildDraggable(note: note, scope: 'list_macos', child: row);
+          return buildDraggable(note: note, scope: 'list_material', child: tile);
         },
       );
     }
 
-    return ListView.builder(
-      itemCount: notes.length,
-      itemBuilder: (_, index) {
-        final note = notes[index];
-        final tile = GestureDetector(
-          key: ValueKey<String>('phase_note_row_${note.id}'),
-          behavior: HitTestBehavior.opaque,
-          onSecondaryTapDown: (details) {
-            unawaited(
-              _showSecondaryClickMenu<String>(
-                context: context,
-                details: details,
-                itemBuilder: (menuContext) =>
-                    buildNoteMenuEntries(menuContext, note),
-                onSelected: (value) async {
-                  await handleNoteMenuSelection(note, value);
-                },
+    // Show selection header when multiple notes are selected
+    if (selectedIds.length > 1) {
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isMacOSNativeUI
+                  ? MacosTheme.of(context).primaryColor.withAlpha(20)
+                  : Theme.of(context).colorScheme.primaryContainer.withAlpha(100),
+              border: Border(
+                bottom: BorderSide(
+                  color: isMacOSNativeUI
+                      ? MacosTheme.of(context).dividerColor
+                      : Theme.of(context).dividerColor,
+                ),
               ),
-            );
-          },
-          child: ListTile(
-            selected: note.id == selectedNoteId,
-            title: Text(note.title.isEmpty ? l10n.untitledLabel : note.title),
-            subtitle: Text(
-              note.content.replaceAll('\n', ' '),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-            onTap: () async {
-              await ref
-                  .read(noteEditorControllerProvider.notifier)
-                  .selectNote(note.id);
-            },
+            child: Row(
+              children: [
+                MacosIcon(
+                  CupertinoIcons.checkmark_circle,
+                  size: 14,
+                  color: isMacOSNativeUI
+                      ? MacosTheme.of(context).primaryColor
+                      : Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    l10n.selectedNotesCountLabel(selectedIds.length),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isMacOSNativeUI
+                          ? MacosTheme.of(context).primaryColor
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                if (isMacOSNativeUI)
+                  MacosIconButton(
+                    icon: const MacosIcon(CupertinoIcons.xmark, size: 14),
+                    onPressed: _clearSelection,
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _clearSelection,
+                  ),
+              ],
+            ),
           ),
-        );
-        return buildDraggable(note: note, scope: 'list_material', child: tile);
-      },
-    );
+          Expanded(child: buildList()),
+        ],
+      );
+    }
+
+    return buildList();
   }
 }
 

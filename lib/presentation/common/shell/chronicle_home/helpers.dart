@@ -1,5 +1,11 @@
 part of '../chronicle_home_coordinator.dart';
 
+/// Provider for tracking multi-selected note IDs in the note list.
+final selectedNoteIdsProvider =
+    NotifierProvider<ValueNotifierController<Set<String>>, Set<String>>(
+      () => ValueNotifierController<Set<String>>({}),
+    );
+
 class _NoteDragPayload {
   const _NoteDragPayload({
     required this.noteId,

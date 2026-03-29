@@ -798,5 +798,49 @@
   "removeAttachmentAction": "移除附件",
   "loadingEllipsis": "...",
   "fileMissingLabel": "缺失",
-  "imagePreviewUnavailableMessage": "无法预览图片"
+  "imagePreviewUnavailableMessage": "无法预览图片",
+  "selectedNotesCountLabel": "已选择 {count} 项",
+  "@selectedNotesCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clearSelectionAction": "清除选择",
+  "pinNotesCountAction": "置顶 {count} 条笔记",
+  "@pinNotesCountAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "unpinNotesCountAction": "取消置顶 {count} 条笔记",
+  "@unpinNotesCountAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "moveNotesCountAction": "移动 {count} 条笔记",
+  "@moveNotesCountAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "deleteNotesCountConfirmation": "删除 {count} 条笔记？",
+  "@deleteNotesCountConfirmation": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "batchMoveToMatterDialogTitle": "将笔记移动到 Matter",
+  "batchMoveToPhaseDialogTitle": "将笔记移动到阶段",
+  "batchMoveToNotebookDialogTitle": "将笔记移动到笔记本"
 }

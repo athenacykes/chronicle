@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:macos_ui/macos_ui.dart';
@@ -349,6 +350,40 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
           selectedNotebookFolderIdProvider,
         );
         final notebookTree = ref.watch(notebookFolderTreeProvider);
+
+        // Clear note selection when view context changes
+        ref.listen(
+          selectedMatterIdProvider,
+          (previous, next) {
+            if (previous != next) {
+              ref.read(selectedNoteIdsProvider.notifier).set({});
+            }
+          },
+        );
+        ref.listen(
+          selectedNotebookFolderIdProvider,
+          (previous, next) {
+            if (previous != next) {
+              ref.read(selectedNoteIdsProvider.notifier).set({});
+            }
+          },
+        );
+        ref.listen(
+          selectedTimeViewProvider,
+          (previous, next) {
+            if (previous != next) {
+              ref.read(selectedNoteIdsProvider.notifier).set({});
+            }
+          },
+        );
+        ref.listen(
+          showConflictsProvider,
+          (previous, next) {
+            if (previous != next) {
+              ref.read(selectedNoteIdsProvider.notifier).set({});
+            }
+          },
+        );
         final notebookFolders = ref
             .watch(notebookFoldersProvider)
             .asData
