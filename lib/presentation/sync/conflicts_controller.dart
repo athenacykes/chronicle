@@ -90,8 +90,6 @@ class ConflictsController extends AsyncNotifier<List<SyncConflict>> {
 
   void selectConflict(String? conflictPath) {
     ref.read(selectedConflictPathProvider.notifier).set(conflictPath);
-    ref.invalidate(selectedConflictContentProvider);
-    ref.invalidate(selectedConflictDetailProvider);
   }
 
   Future<void> resolveConflict(
