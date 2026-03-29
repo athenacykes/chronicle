@@ -14,7 +14,7 @@ void main() {
       Category(
         id: 'category-b',
         name: 'Beta',
-        color: '#4C956C',
+        color: '#2563EB',
         icon: 'folder',
         createdAt: now,
         updatedAt: now,
@@ -22,7 +22,7 @@ void main() {
       Category(
         id: 'category-a',
         name: 'Alpha',
-        color: '#4C956C',
+        color: '#2563EB',
         icon: 'folder',
         createdAt: now,
         updatedAt: now,
@@ -101,7 +101,7 @@ Matter _matter({
     title: id,
     description: '',
     status: MatterStatus.active,
-    color: '#4C956C',
+    color: '#2563EB',
     icon: 'description',
     isPinned: isPinned,
     createdAt: createdAt,
@@ -128,7 +128,7 @@ class _MemoryMatterRepository implements MatterRepository {
     required String title,
     String description = '',
     String? categoryId,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'description',
     bool isPinned = false,
   }) {
@@ -178,7 +178,7 @@ class _MemoryCategoryRepository implements CategoryRepository {
   @override
   Future<Category> createCategory({
     required String name,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'folder',
   }) {
     throw UnimplementedError();

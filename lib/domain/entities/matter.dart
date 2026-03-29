@@ -107,7 +107,7 @@ class Matter {
         (value) => value.name == json['status'],
         orElse: () => MatterStatus.active,
       ),
-      color: (json['color'] as String?) ?? '#4C956C',
+      color: (json['color'] as String?) ?? '#2563EB',
       icon: (json['icon'] as String?) ?? 'description',
       isPinned: (json['isPinned'] as bool?) ?? false,
       createdAt: parseIsoUtc(json['createdAt'] as String),

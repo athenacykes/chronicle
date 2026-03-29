@@ -10,7 +10,7 @@ class CreateMatter {
     required String title,
     String description = '',
     String? categoryId,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'description',
     bool isPinned = false,
   }) {

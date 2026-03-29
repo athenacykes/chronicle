@@ -50,7 +50,7 @@ class Category {
     return Category(
       id: json['id'] as String,
       name: (json['name'] as String?) ?? '',
-      color: (json['color'] as String?) ?? '#4C956C',
+      color: (json['color'] as String?) ?? '#2563EB',
       icon: (json['icon'] as String?) ?? 'folder',
       createdAt: parseIsoUtc(json['createdAt'] as String),
       updatedAt: parseIsoUtc(json['updatedAt'] as String),

@@ -74,7 +74,7 @@ void main() {
     title: 'Matter One',
     description: 'Simple matter',
     status: MatterStatus.active,
-    color: '#4C956C',
+    color: '#2563EB',
     icon: 'description',
     isPinned: false,
     createdAt: now,
@@ -1979,7 +1979,7 @@ void main() {
       Category(
         id: 'category-1',
         name: 'Work',
-        color: '#4C956C',
+        color: '#2563EB',
         icon: 'folder',
         createdAt: now,
         updatedAt: now,
@@ -2031,7 +2031,7 @@ void main() {
         Category(
           id: 'category-1',
           name: 'Work',
-          color: '#4C956C',
+          color: '#2563EB',
           icon: 'folder',
           createdAt: now,
           updatedAt: now,
@@ -2048,7 +2048,7 @@ void main() {
           title: title,
           description: '',
           status: MatterStatus.active,
-          color: '#4C956C',
+          color: '#2563EB',
           icon: 'description',
           isPinned: false,
           createdAt: updatedAt.subtract(const Duration(minutes: 10)),
@@ -2138,7 +2138,7 @@ void main() {
         Category(
           id: 'category-1',
           name: 'Work',
-          color: '#4C956C',
+          color: '#2563EB',
           icon: 'folder',
           createdAt: now,
           updatedAt: now,
@@ -2150,7 +2150,7 @@ void main() {
         title: 'matter 123',
         description: '',
         status: MatterStatus.active,
-        color: '#4C956C',
+        color: '#2563EB',
         icon: 'build',
         isPinned: true,
         createdAt: now,
@@ -2220,7 +2220,7 @@ void main() {
         Category(
           id: 'category-1',
           name: 'Work',
-          color: '#4C956C',
+          color: '#2563EB',
           icon: 'folder',
           createdAt: now,
           updatedAt: now,
@@ -2232,7 +2232,7 @@ void main() {
         title: 'matter 123',
         description: '',
         status: MatterStatus.active,
-        color: '#4C956C',
+        color: '#2563EB',
         icon: 'build',
         isPinned: true,
         createdAt: now,
@@ -2309,7 +2309,7 @@ void main() {
       Category(
         id: 'category-1',
         name: 'Work',
-        color: '#4C956C',
+        color: '#2563EB',
         icon: 'folder',
         createdAt: now,
         updatedAt: now,
@@ -2358,7 +2358,7 @@ void main() {
         Category(
           id: 'category-1',
           name: 'Work',
-          color: '#4C956C',
+          color: '#2563EB',
           icon: 'folder',
           createdAt: now,
           updatedAt: now,
@@ -2415,7 +2415,7 @@ void main() {
       Category(
         id: 'category-1',
         name: 'Work',
-        color: '#4C956C',
+        color: '#2563EB',
         icon: 'folder',
         createdAt: now,
         updatedAt: now,
@@ -5164,7 +5164,7 @@ void main() {
     final preview = tester.widget<TextField>(
       find.byKey(const Key('matter_color_preview_field')),
     );
-    expect(preview.controller?.text, '#4C956C');
+    expect(preview.controller?.text, '#2563EB');
   });
 
   testWidgets('force deletion override is one-time in material shell', (
@@ -5716,7 +5716,7 @@ class _MemoryCategoryRepository implements CategoryRepository {
   @override
   Future<Category> createCategory({
     required String name,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'folder',
   }) async {
     final now = DateTime.now().toUtc();
@@ -5772,7 +5772,7 @@ class _MemoryMatterRepository implements MatterRepository {
     required String title,
     String description = '',
     String? categoryId,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'description',
     bool isPinned = false,
   }) async {

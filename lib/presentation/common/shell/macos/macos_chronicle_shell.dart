@@ -86,7 +86,7 @@ Widget _withMaterialBridge({
   final brightness = MacosTheme.brightnessOf(context);
   final materialTheme = ThemeData(
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF2D6A4F),
+      seedColor: const Color(0xFF2563EB),
       brightness: brightness,
     ),
     useMaterial3: true,

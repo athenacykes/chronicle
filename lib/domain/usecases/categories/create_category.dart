@@ -8,7 +8,7 @@ class CreateCategory {
 
   Future<Category> call({
     required String name,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'folder',
   }) {
     return _categoryRepository.createCategory(

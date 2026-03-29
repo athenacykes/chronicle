@@ -18,7 +18,7 @@ Future<ChronicleMatterDialogResult?> showChronicleMatterDialog({
   String initialTitle = '',
   String initialDescription = '',
   MatterStatus initialStatus = MatterStatus.active,
-  String initialColor = '#4C956C',
+  String initialColor = '#2563EB',
   String initialIcon = 'description',
   bool initialPinned = false,
 }) {
@@ -43,7 +43,7 @@ class ChronicleMatterDialog extends StatefulWidget {
     this.initialTitle = '',
     this.initialDescription = '',
     this.initialStatus = MatterStatus.active,
-    this.initialColor = '#4C956C',
+    this.initialColor = '#2563EB',
     this.initialIcon = 'description',
     this.initialPinned = false,
   });
@@ -510,7 +510,7 @@ Future<ChronicleCategoryDialogResult?> showChronicleCategoryDialog({
   required BuildContext context,
   required ChronicleCategoryDialogMode mode,
   String initialName = '',
-  String initialColor = '#4C956C',
+  String initialColor = '#2563EB',
   String initialIcon = 'folder',
 }) {
   return showChronicleModalDialog<ChronicleCategoryDialogResult>(
@@ -529,7 +529,7 @@ class ChronicleCategoryDialog extends StatefulWidget {
     super.key,
     required this.mode,
     this.initialName = '',
-    this.initialColor = '#4C956C',
+    this.initialColor = '#2563EB',
     this.initialIcon = 'folder',
   });
 
@@ -1148,7 +1148,7 @@ List<String> _colorOptionsForSelection(String selectedColorHex) {
   return <String>[normalized, ..._kMatterPresetColors];
 }
 
-String _normalizeHexColor(String value, {String fallback = '#4C956C'}) {
+String _normalizeHexColor(String value, {String fallback = '#2563EB'}) {
   final normalizedFallback = fallback.trim().toUpperCase();
   final trimmed = value.trim().toUpperCase();
   if (RegExp(r'^#[0-9A-F]{6}$').hasMatch(trimmed)) {
@@ -1159,10 +1159,10 @@ String _normalizeHexColor(String value, {String fallback = '#4C956C'}) {
   }
   return RegExp(r'^#[0-9A-F]{6}$').hasMatch(normalizedFallback)
       ? normalizedFallback
-      : '#4C956C';
+      : '#2563EB';
 }
 
-Color _colorFromHex(String value, {String fallback = '#4C956C'}) {
+Color _colorFromHex(String value, {String fallback = '#2563EB'}) {
   final normalized = _normalizeHexColor(value, fallback: fallback);
   final rgbValue = int.parse(normalized.substring(1), radix: 16);
   return Color(0xFF000000 | rgbValue);

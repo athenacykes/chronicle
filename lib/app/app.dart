@@ -281,12 +281,12 @@ class _ChronicleAppState extends ConsumerState<ChronicleApp> {
         themeMode: ThemeMode.system,
         theme: MacosThemeData(
           brightness: Brightness.light,
-          accentColor: AccentColor.green,
+          accentColor: AccentColor.blue,
           visualDensity: VisualDensity.standard,
         ),
         darkTheme: MacosThemeData(
           brightness: Brightness.dark,
-          accentColor: AccentColor.green,
+          accentColor: AccentColor.blue,
           visualDensity: VisualDensity.standard,
         ),
         home: nativeMacOSHome,
@@ -303,7 +303,7 @@ class _ChronicleAppState extends ConsumerState<ChronicleApp> {
       themeMode: ThemeMode.system,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2D6A4F),
+          seedColor: const Color(0xFF2563EB),
           brightness: Brightness.light,
         ),
         useMaterial3: true,
@@ -311,7 +311,7 @@ class _ChronicleAppState extends ConsumerState<ChronicleApp> {
       ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2D6A4F),
+          seedColor: const Color(0xFF2563EB),
           brightness: Brightness.dark,
         ),
         useMaterial3: true,

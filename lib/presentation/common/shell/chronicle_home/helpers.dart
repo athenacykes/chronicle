@@ -626,7 +626,7 @@ bool _isMacOSNativeUIContext(BuildContext context) {
   return MacosTheme.maybeOf(context) != null;
 }
 
-String _normalizeHexColor(String value, {String fallback = '#4C956C'}) {
+String _normalizeHexColor(String value, {String fallback = '#2563EB'}) {
   final normalizedFallback = fallback.trim().toUpperCase();
   final trimmed = value.trim().toUpperCase();
   if (RegExp(r'^#[0-9A-F]{6}$').hasMatch(trimmed)) {
@@ -637,10 +637,10 @@ String _normalizeHexColor(String value, {String fallback = '#4C956C'}) {
   }
   return RegExp(r'^#[0-9A-F]{6}$').hasMatch(normalizedFallback)
       ? normalizedFallback
-      : '#4C956C';
+      : '#2563EB';
 }
 
-Color _colorFromHex(String value, {String fallback = '#4C956C'}) {
+Color _colorFromHex(String value, {String fallback = '#2563EB'}) {
   final normalized = _normalizeHexColor(value, fallback: fallback);
   final rgbValue = int.parse(normalized.substring(1), radix: 16);
   return Color(0xFF000000 | rgbValue);

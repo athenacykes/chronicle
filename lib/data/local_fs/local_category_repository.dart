@@ -77,7 +77,7 @@ class LocalCategoryRepository implements CategoryRepository {
   @override
   Future<Category> createCategory({
     required String name,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'folder',
   }) async {
     final now = _clock.nowUtc();

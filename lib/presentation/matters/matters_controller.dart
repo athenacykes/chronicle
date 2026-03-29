@@ -62,7 +62,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
     String description = '',
     String? categoryId,
     MatterStatus status = MatterStatus.active,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'description',
     bool isPinned = false,
   }) async {
@@ -151,7 +151,7 @@ class MattersController extends AsyncNotifier<MatterSections> {
 
   Future<void> createCategory({
     required String name,
-    String color = '#4C956C',
+    String color = '#2563EB',
     String icon = 'folder',
   }) async {
     final trimmed = name.trim();
