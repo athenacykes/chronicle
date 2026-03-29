@@ -1,3 +1,8 @@
+---
+name: chronicle-ui-ux-principles
+description: Adaptive shell, dialog, interaction consistency, localization, and regression-safety skill for Chronicle Material and macOS UI work.
+---
+
 # Chronicle UI/UX Principles
 
 ## Purpose

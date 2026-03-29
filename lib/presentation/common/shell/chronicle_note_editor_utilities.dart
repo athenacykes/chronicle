@@ -5,6 +5,9 @@ import 'package:macos_ui/macos_ui.dart';
 import 'package:path/path.dart' as p;
 
 import '../../../domain/entities/note.dart';
+import '../../../domain/repositories/matter_repository.dart';
+import '../../../domain/repositories/notebook_repository.dart';
+import '../../../domain/repositories/search_repository.dart';
 import '../../../l10n/localization.dart';
 import '../../links/links_controller.dart';
 import '../../notes/note_attachment_widgets.dart';
@@ -310,44 +313,20 @@ Future<void> showChronicleLinkNoteDialogFlow({
   required BuildContext context,
   required Note sourceNote,
   required bool useMacOSNativeUI,
-  required Future<List<Note>> Function() loadAllNotes,
-  required Future<void> Function(ChronicleLinkNoteDialogResult result)
-  createLink,
+  required SearchRepository searchRepository,
+  required MatterRepository matterRepository,
+  required NotebookRepository notebookRepository,
+  required Future<void> Function(String targetNoteId, String context) createLink,
 }) async {
   final l10n = context.l10n;
-  List<Note> allNotes;
-  try {
-    allNotes = await loadAllNotes();
-  } catch (error) {
-    if (!context.mounted) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.unableToLoadNotes(error.toString()))),
-    );
-    return;
-  }
-
-  final candidates = allNotes
-      .where((note) => note.id != sourceNote.id)
-      .toList(growable: false);
-
-  if (!context.mounted) {
-    return;
-  }
-
-  if (candidates.isEmpty) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(l10n.noNotesAvailableToLink)));
-    return;
-  }
 
   final result = await showDialog<ChronicleLinkNoteDialogResult>(
     context: context,
     builder: (_) => ChronicleLinkNoteDialog(
       sourceNote: sourceNote,
-      candidates: candidates,
+      searchRepository: searchRepository,
+      matterRepository: matterRepository,
+      notebookRepository: notebookRepository,
       useMacOSNativeUI: useMacOSNativeUI,
     ),
   );
@@ -356,13 +335,21 @@ Future<void> showChronicleLinkNoteDialogFlow({
   }
 
   try {
-    await createLink(result);
+    // Create links for all selected notes
+    for (final targetNoteId in result.targetNoteIds) {
+      await createLink(targetNoteId, result.context);
+    }
+
     if (!context.mounted) {
       return;
     }
+
+    final successMessage = result.targetNoteIds.length == 1
+        ? l10n.linkCreatedMessage
+        : l10n.linksCreatedMessage(result.targetNoteIds.length);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text(l10n.linkCreatedMessage)));
+    ).showSnackBar(SnackBar(content: Text(successMessage)));
   } catch (error) {
     if (!context.mounted) {
       return;

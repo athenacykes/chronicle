@@ -12,6 +12,7 @@ const Key _kReturnSearchResultsButtonKey = Key(
   'macos_return_search_results_button',
 );
 const Key _kMacosTopBarSearchSlotKey = Key('macos_top_bar_search_slot');
+const Key _kMacosSearchFieldKey = Key('macos_search_field');
 const Key _kMacosTopBarConflictsButtonKey = Key(
   'macos_top_bar_conflicts_button',
 );
@@ -115,6 +116,7 @@ class _MacosTopBar extends StatelessWidget {
       key: _kMacosTopBarSearchSlotKey,
       width: width,
       child: SizedBox(
+        key: _kMacosSearchFieldKey,
         height: 34,
         child: Align(
           alignment: Alignment.center,

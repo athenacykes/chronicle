@@ -419,7 +419,9 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
           isResolvingWorkspace: isResolvingWorkspace,
           matterViewMode: matterViewMode,
         );
-        final workspaceTitle = showConflicts
+        final workspaceTitle = hasSearchResultsOpen
+            ? l10n.searchResultTitle
+            : showConflicts
             ? l10n.conflictsLabel
             : showNotebook
             ? (selectedNotebookFolder?.name.trim().isNotEmpty == true
@@ -434,7 +436,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
         Widget? compactHamburgerContent;
         if (!showConflicts && !hasSearchResultsOpen) {
           if (showNotebook) {
-            topBarContextActions = const ChronicleNotebookTopControls();
+            // New note button moved to _NotebookWorkspace title row
             compactHamburgerContent = _CompactPanelNotePicker(
               notesAsync: ref.watch(notebookNoteListProvider),
             );
@@ -483,6 +485,7 @@ class _ChronicleHomeScreenState extends ConsumerState<ChronicleHomeScreen> {
                       notebookTree: notebookTree,
                     ),
                     snippet: hit.snippet,
+                    searchQuery: searchQuery.text,
                   ),
                 )
                 .toList();

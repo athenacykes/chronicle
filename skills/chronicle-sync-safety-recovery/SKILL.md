@@ -1,3 +1,8 @@
+---
+name: chronicle-sync-safety-recovery
+description: WebDAV sync blocker, recovery, conflict-handling, credential-safety, and metadata-tracking skill for Chronicle sync behavior changes.
+---
+
 # Chronicle Sync Safety & Recovery
 
 ## Purpose

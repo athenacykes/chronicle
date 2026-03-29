@@ -1,3 +1,8 @@
+---
+name: chronicle-storage-schema-evolution
+description: Local storage layout, schema compatibility, repository path evolution, and metadata persistence safety skill for Chronicle filesystem changes.
+---
+
 # Chronicle Storage Schema Evolution
 
 ## Purpose

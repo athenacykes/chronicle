@@ -2,6 +2,7 @@
   "@@locale": "zh",
   "appTitle": "Chronicle",
   "languageSelfName": "简体中文",
+  "fallbackProbeMessage": "简体中文回退探测",
   "searchNotesHint": "搜索笔记...",
   "toggleSidebarTooltip": "切换侧边栏",
   "conflictsLabel": "冲突",
@@ -467,6 +468,7 @@
   "viewModeKanban": "看板",
   "viewModeList": "列表",
   "viewModeGraph": "关系图",
+  "viewModeList": "列表",
   "newNoteAction": "新建笔记",
   "deleteNoteTitle": "删除笔记",
   "deleteNoteConfirmation": "删除 \"{title}\"？",
@@ -482,6 +484,10 @@
     }
   },
   "noLinkedNotesInMatterMessage": "此 Matter 还没有关联笔记。\n请在笔记操作中创建链接来生成关系图。",
+  "kanbanEmptyColumn": "此阶段没有笔记",
+  "selectMatterPrompt": "请选择一个 Matter 开始。",
+  "noPhasesYetMessage": "还没有阶段。添加阶段来组织笔记。",
+  "untitledPhaseLabel": "（未命名阶段）",
   "graphLimitedNotice": "关系图最多显示 {limit} 个节点（隐藏 {hiddenCount} 个）。",
   "@graphLimitedNotice": {
     "placeholders": {
@@ -666,11 +672,39 @@
   "contextOptionalLabel": "上下文（可选）",
   "linkContextHint": "这些笔记为什么相关？",
   "linkNoteDialogTitle": "关联笔记",
+  "linkNoteSearchHint": "按标题或内容搜索笔记...",
+  "linkNoteNoResultsMessage": "未找到匹配的笔记。",
+  "linkNoteSelectedCountLabel": "已选择 {count} 项",
+  "@linkNoteSelectedCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "linkNotesAction": "关联 {count} 条笔记",
+  "@linkNotesAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "linkNoteSingleAction": "关联笔记",
+  "linksCreatedMessage": "已创建 {count} 条链接",
+  "@linksCreatedMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "createLinkAction": "创建链接",
   "orphanLabel": "笔记本",
   "conflictTypeNote": "笔记",
   "conflictTypeLink": "链接",
   "conflictTypeUnknown": "未知",
+  "searchResultTitle": "搜索结果",
   "noSearchResultsMessage": "没有搜索结果。",
   "returnToSearchResultsAction": "返回搜索结果",
   "languageLabel": "语言",

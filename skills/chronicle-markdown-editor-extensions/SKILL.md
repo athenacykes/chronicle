@@ -1,3 +1,8 @@
+---
+name: chronicle-markdown-editor-extensions
+description: Markdown parser, renderer, editor-extension, and note-session safety skill for Chronicle markdown and editor behavior changes.
+---
+
 # Chronicle Markdown Rendering & Editor Extensions
 
 ## Purpose

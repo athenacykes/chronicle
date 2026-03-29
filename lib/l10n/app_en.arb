@@ -668,10 +668,38 @@
   "linkContextHint": "Why are these notes related?",
   "linkNoteDialogTitle": "Link Note",
   "createLinkAction": "Create Link",
+  "linkNoteSearchHint": "Search notes by title or content...",
+  "linkNoteNoResultsMessage": "No matching notes found.",
+  "linkNoteSelectedCountLabel": "{count} selected",
+  "@linkNoteSelectedCountLabel": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "linkNotesAction": "Link {count} Notes",
+  "@linkNotesAction": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "linkNoteSingleAction": "Link Note",
+  "linksCreatedMessage": "{count} links created",
+  "@linksCreatedMessage": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "orphanLabel": "Notebook",
   "conflictTypeNote": "Note",
   "conflictTypeLink": "Link",
   "conflictTypeUnknown": "Unknown",
+  "searchResultTitle": "Search Result",
   "noSearchResultsMessage": "No search results.",
   "returnToSearchResultsAction": "Return to search results",
   "languageLabel": "Language",

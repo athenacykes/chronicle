@@ -1,3 +1,8 @@
+---
+name: chronicle-localization-workflow
+description: ARB, locale resolution, string update, and localization generation skill for Chronicle UI copy and locale behavior changes.
+---
+
 # Chronicle Localization Workflow
 
 ## Purpose

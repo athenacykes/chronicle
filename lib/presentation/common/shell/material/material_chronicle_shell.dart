@@ -7,6 +7,7 @@ import '../chronicle_shell_contract.dart';
 const Key _kReturnSearchResultsButtonKey = Key(
   'material_return_search_results_button',
 );
+const Key _kMaterialSearchFieldKey = Key('material_search_field');
 
 class MaterialChronicleShell extends StatelessWidget {
   const MaterialChronicleShell({super.key, required this.viewModel});
@@ -51,6 +52,7 @@ class MaterialChronicleShell extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
               child: TextField(
+                key: _kMaterialSearchFieldKey,
                 controller: viewModel.searchController,
                 onChanged: viewModel.onSearchChanged,
                 onTap: viewModel.onSearchFieldTap,

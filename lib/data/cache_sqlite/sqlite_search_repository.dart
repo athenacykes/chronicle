@@ -236,18 +236,18 @@ class SqliteSearchRepository implements SearchRepository {
     }
 
     if (!_hasSearchText(searchText)) {
-      return plain.length <= 180 ? plain : '${plain.substring(0, 180)}...';
+      return plain.length <= 400 ? plain : '${plain.substring(0, 400)}...';
     }
 
     final lower = plain.toLowerCase();
     final needle = _normalizeTextQuery(searchText).toLowerCase();
     final index = lower.indexOf(needle);
     if (index == -1) {
-      return plain.length <= 180 ? plain : '${plain.substring(0, 180)}...';
+      return plain.length <= 400 ? plain : '${plain.substring(0, 400)}...';
     }
 
-    final start = (index - 60).clamp(0, plain.length);
-    final end = (index + needle.length + 80).clamp(0, plain.length);
+    final start = (index - 120).clamp(0, plain.length);
+    final end = (index + needle.length + 200).clamp(0, plain.length);
     final prefix = start > 0 ? '...' : '';
     final suffix = end < plain.length ? '...' : '';
     return '$prefix${plain.substring(start, end)}$suffix';

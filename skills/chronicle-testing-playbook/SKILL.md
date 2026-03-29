@@ -1,3 +1,8 @@
+---
+name: chronicle-testing-playbook
+description: Test planning, targeted verification, and regression-safety skill for Chronicle code changes, refactors, UI updates, and integrity-sensitive behavior.
+---
+
 # Chronicle Testing Playbook
 
 ## Purpose

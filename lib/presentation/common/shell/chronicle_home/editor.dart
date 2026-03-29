@@ -787,14 +787,16 @@ class _NoteEditorPaneState extends ConsumerState<_NoteEditorPane> {
         context: context,
         sourceNote: note,
         useMacOSNativeUI: isMacOSNativeUI,
-        loadAllNotes: () => ref.read(allNotesForLinkPickerProvider.future),
-        createLink: (result) async {
+        searchRepository: ref.read(searchRepositoryProvider),
+        matterRepository: ref.read(matterRepositoryProvider),
+        notebookRepository: ref.read(notebookRepositoryProvider),
+        createLink: (targetNoteId, linkContext) async {
           await ref
               .read(linksControllerProvider)
               .createLink(
                 sourceNoteId: note.id,
-                targetNoteId: result.targetNoteId,
-                context: result.context,
+                targetNoteId: targetNoteId,
+                context: linkContext,
               );
         },
       );

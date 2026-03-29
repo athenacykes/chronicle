@@ -1,3 +1,8 @@
+---
+name: chronicle-architecture-principles
+description: Architecture boundary, provider wiring, note-integrity, and refactor guardrail skill for Chronicle changes affecting layers, orchestration, or tracked write paths.
+---
+
 # Chronicle Architecture Principles
 
 ## Purpose

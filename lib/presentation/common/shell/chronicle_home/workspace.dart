@@ -771,15 +771,16 @@ class _MatterNotesWorkspace extends ConsumerWidget {
                         context: context,
                         sourceNote: note,
                         useMacOSNativeUI: _isMacOSNativeUIContext(context),
-                        loadAllNotes: () =>
-                            ref.read(allNotesForLinkPickerProvider.future),
-                        createLink: (result) async {
+                        searchRepository: ref.read(searchRepositoryProvider),
+                        matterRepository: ref.read(matterRepositoryProvider),
+                        notebookRepository: ref.read(notebookRepositoryProvider),
+                        createLink: (targetNoteId, linkContext) async {
                           await ref
                               .read(linksControllerProvider)
                               .createLink(
                                 sourceNoteId: note.id,
-                                targetNoteId: result.targetNoteId,
-                                context: result.context,
+                                targetNoteId: targetNoteId,
+                                context: linkContext,
                               );
                         },
                       );
@@ -1448,19 +1449,75 @@ class _NotebookWorkspace extends ConsumerWidget {
         ? allDraft
         : null;
 
+    final isMacOSNativeUI = _isMacOSNativeUIContext(context);
+
+    Future<void> createNewNote() async {
+      await ref
+          .read(noteEditorControllerProvider.notifier)
+          .createUntitledNotebookNote();
+      ref
+          .read(noteEditorViewModeProvider.notifier)
+          .set(NoteEditorViewMode.edit);
+    }
+
+    final titleWidget = currentNote == null && notebookDraft != null
+        ? _NotebookDraftTitleHeader(draft: notebookDraft)
+        : currentNote == null && isResolvingWorkspace
+            ? const _WorkspaceTitleSkeleton()
+            : ChronicleNoteTitleHeader(
+                note: currentNote,
+                canEdit: currentNote?.isInNotebook ?? false,
+              );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          child: currentNote == null && notebookDraft != null
-              ? _NotebookDraftTitleHeader(draft: notebookDraft)
-              : currentNote == null && isResolvingWorkspace
-              ? const _WorkspaceTitleSkeleton()
-              : ChronicleNoteTitleHeader(
-                  note: currentNote,
-                  canEdit: currentNote?.isInNotebook ?? false,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              // Title - takes available space
+              Expanded(child: titleWidget),
+              // New note button - fixed width
+              const SizedBox(width: 12),
+              if (isMacOSNativeUI)
+                PushButton(
+                  key: const Key('notebook_new_note_button'),
+                  controlSize: ControlSize.regular,
+                  secondary: true,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  onPressed: () {
+                    unawaited(createNewNote());
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const MacosIcon(CupertinoIcons.add, size: 14),
+                      const SizedBox(width: 6),
+                      Text(context.l10n.newNoteAction),
+                    ],
+                  ),
+                )
+              else
+                TextButton.icon(
+                  key: const Key('notebook_new_note_button'),
+                  onPressed: () {
+                    unawaited(createNewNote());
+                  },
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: const Size(0, 32),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                  label: Text(context.l10n.newNoteAction),
+                  icon: const Icon(Icons.note_add_outlined, size: 18),
                 ),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
         Expanded(
@@ -1556,15 +1613,16 @@ class _NotebookWorkspace extends ConsumerWidget {
                         context: context,
                         sourceNote: note,
                         useMacOSNativeUI: _isMacOSNativeUIContext(context),
-                        loadAllNotes: () =>
-                            ref.read(allNotesForLinkPickerProvider.future),
-                        createLink: (result) async {
+                        searchRepository: ref.read(searchRepositoryProvider),
+                        matterRepository: ref.read(matterRepositoryProvider),
+                        notebookRepository: ref.read(notebookRepositoryProvider),
+                        createLink: (targetNoteId, linkContext) async {
                           await ref
                               .read(linksControllerProvider)
                               .createLink(
                                 sourceNoteId: note.id,
-                                targetNoteId: result.targetNoteId,
-                                context: result.context,
+                                targetNoteId: targetNoteId,
+                                context: linkContext,
                               );
                         },
                       );
@@ -2332,13 +2390,27 @@ class _NoteListState extends ConsumerState<_NoteList> {
     if (isCtrlOrMetaPressed) {
       // Ctrl/Cmd + Click: Toggle selection of this item
       // Do NOT update _lastSelectedNoteId - keep the existing anchor for range selection
+
+      // If selection is empty and there's a currently open note, include it first
+      final currentSelection = ref.read(selectedNoteIdsProvider);
+      if (currentSelection.isEmpty) {
+        final openNoteId = ref.read(selectedNoteIdProvider);
+        if (openNoteId != null && openNoteId != note.id) {
+          final newSelection = Set<String>.from(currentSelection);
+          newSelection.add(openNoteId);
+          ref.read(selectedNoteIdsProvider.notifier).set(newSelection);
+        }
+      }
+
       _toggleNoteSelection(note.id);
       return;
     }
 
     if (isShiftPressed) {
       // Shift + Click: Range selection from anchor to clicked item
-      _selectRange(from: _lastSelectedNoteId, to: note.id);
+      // If no anchor but there's an open note, use the open note as anchor
+      final anchor = _lastSelectedNoteId ?? ref.read(selectedNoteIdProvider);
+      _selectRange(from: anchor, to: note.id);
       _lastSelectedNoteId = note.id;
       return;
     }
@@ -2748,57 +2820,62 @@ class _NoteListState extends ConsumerState<_NoteList> {
 
     // Show selection header when multiple notes are selected
     if (selectedIds.length > 1) {
-      return Column(
+      return Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isMacOSNativeUI
-                  ? MacosTheme.of(context).primaryColor.withAlpha(20)
-                  : Theme.of(context).colorScheme.primaryContainer.withAlpha(100),
-              border: Border(
-                bottom: BorderSide(
-                  color: isMacOSNativeUI
-                      ? MacosTheme.of(context).dividerColor
-                      : Theme.of(context).dividerColor,
+          buildList(),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isMacOSNativeUI
+                    ? MacosTheme.of(context).canvasColor
+                    : Theme.of(context).colorScheme.surface,
+                border: Border(
+                  top: BorderSide(
+                    color: isMacOSNativeUI
+                        ? MacosTheme.of(context).dividerColor
+                        : Theme.of(context).dividerColor,
+                  ),
                 ),
               ),
-            ),
-            child: Row(
-              children: [
-                MacosIcon(
-                  CupertinoIcons.checkmark_circle,
-                  size: 14,
-                  color: isMacOSNativeUI
-                      ? MacosTheme.of(context).primaryColor
-                      : Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    l10n.selectedNotesCountLabel(selectedIds.length),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: isMacOSNativeUI
-                          ? MacosTheme.of(context).primaryColor
-                          : Theme.of(context).colorScheme.primary,
+              child: Row(
+                children: [
+                  MacosIcon(
+                    CupertinoIcons.checkmark_circle,
+                    size: 14,
+                    color: isMacOSNativeUI
+                        ? MacosTheme.of(context).primaryColor
+                        : Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n.selectedNotesCountLabel(selectedIds.length),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: isMacOSNativeUI
+                            ? MacosTheme.of(context).primaryColor
+                            : Theme.of(context).colorScheme.primary,
+                      ),
                     ),
                   ),
-                ),
-                if (isMacOSNativeUI)
-                  MacosIconButton(
-                    icon: const MacosIcon(CupertinoIcons.xmark, size: 14),
-                    onPressed: _clearSelection,
-                  )
-                else
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: _clearSelection,
-                  ),
-              ],
+                  if (isMacOSNativeUI)
+                    MacosIconButton(
+                      icon: const MacosIcon(CupertinoIcons.xmark, size: 14),
+                      onPressed: _clearSelection,
+                    )
+                  else
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: _clearSelection,
+                    ),
+                ],
+              ),
             ),
           ),
-          Expanded(child: buildList()),
         ],
       );
     }
