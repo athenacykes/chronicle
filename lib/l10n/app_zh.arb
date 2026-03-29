@@ -464,6 +464,7 @@
   "conflictReviewTextDiffUnavailableMessage": "此冲突当前无法提供文本差异视图。",
   "viewModePhase": "阶段",
   "viewModeTimeline": "时间线",
+  "viewModeKanban": "看板",
   "viewModeList": "列表",
   "viewModeGraph": "关系图",
   "newNoteAction": "新建笔记",

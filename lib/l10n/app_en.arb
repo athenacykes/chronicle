@@ -465,7 +465,8 @@
   "conflictReviewTextDiffUnavailableMessage": "A text diff is not available for this conflict.",
   "viewModePhase": "Phase",
   "viewModeTimeline": "Timeline",
-  "viewModeList": "List",
+  "viewModeKanban": "Board",
+
   "viewModeGraph": "Graph",
   "newNoteAction": "New Note",
   "deleteNoteTitle": "Delete note",
@@ -798,5 +799,9 @@
   "removeAttachmentAction": "Remove attachment",
   "loadingEllipsis": "...",
   "fileMissingLabel": "Missing",
-  "imagePreviewUnavailableMessage": "Image preview unavailable"
+  "imagePreviewUnavailableMessage": "Image preview unavailable",
+  "kanbanEmptyColumn": "No notes in this phase",
+  "selectMatterPrompt": "Select a Matter to begin.",
+  "noPhasesYetMessage": "No phases yet. Add phases to organize your notes.",
+  "untitledPhaseLabel": "(untitled phase)"
 }

@@ -4,4 +4,4 @@ enum SyncTargetType { none, filesystem, webdav }
 
 enum SyncProxyType { none, http, socks5 }
 
-enum MatterViewMode { phase, timeline, graph }
+enum MatterViewMode { phase, kanban, graph }

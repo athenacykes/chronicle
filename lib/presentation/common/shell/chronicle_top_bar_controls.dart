@@ -19,14 +19,14 @@ class ChronicleMatterTopControls extends ConsumerWidget {
     required this.matter,
     this.newNoteButtonKey = const Key('macos_matter_new_note_button'),
     this.phaseMenuButtonKey = const Key('matter_top_phase_menu_button'),
-    this.timelineButtonKey = const Key('matter_top_timeline_button'),
+    this.kanbanButtonKey = const Key('matter_top_kanban_button'),
     this.graphButtonKey = const Key('matter_top_graph_button'),
   });
 
   final Matter matter;
   final Key newNoteButtonKey;
   final Key phaseMenuButtonKey;
-  final Key timelineButtonKey;
+  final Key kanbanButtonKey;
   final Key graphButtonKey;
 
   @override
@@ -285,24 +285,24 @@ class ChronicleMatterTopControls extends ConsumerWidget {
         const SizedBox(width: 6),
         if (isMacOSNativeUI)
           macosLabeledAction(
-            buttonKey: timelineButtonKey,
-            tooltip: l10n.viewModeTimeline,
-            icon: CupertinoIcons.clock,
-            label: l10n.viewModeTimeline,
-            selected: viewMode == MatterViewMode.timeline,
+            buttonKey: kanbanButtonKey,
+            tooltip: l10n.viewModeKanban,
+            icon: CupertinoIcons.square_grid_2x2,
+            label: l10n.viewModeKanban,
+            selected: viewMode == MatterViewMode.kanban,
             onPressed: () {
-              unawaited(setViewMode(MatterViewMode.timeline));
+              unawaited(setViewMode(MatterViewMode.kanban));
             },
           )
         else
           materialLabeledAction(
-            buttonKey: timelineButtonKey,
-            tooltip: l10n.viewModeTimeline,
-            icon: Icons.timeline,
-            label: l10n.viewModeTimeline,
-            selected: viewMode == MatterViewMode.timeline,
+            buttonKey: kanbanButtonKey,
+            tooltip: l10n.viewModeKanban,
+            icon: Icons.view_column_outlined,
+            label: l10n.viewModeKanban,
+            selected: viewMode == MatterViewMode.kanban,
             onPressed: () {
-              unawaited(setViewMode(MatterViewMode.timeline));
+              unawaited(setViewMode(MatterViewMode.kanban));
             },
           ),
         const SizedBox(width: 6),

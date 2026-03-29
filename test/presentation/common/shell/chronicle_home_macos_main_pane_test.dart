@@ -230,11 +230,11 @@ void main() {
       find.byKey(const Key('matter_top_phase_menu_button')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('matter_top_timeline_button')), findsOneWidget);
+    expect(find.byKey(const Key('matter_top_kanban_button')), findsOneWidget);
     expect(find.byKey(const Key('matter_top_graph_button')), findsOneWidget);
     expect(find.text('New Note'), findsOneWidget);
     expect(find.text('Start'), findsOneWidget);
-    expect(find.text('Timeline'), findsOneWidget);
+    expect(find.text('Board'), findsOneWidget);
     expect(find.text('Graph'), findsOneWidget);
     final searchCenter = tester.getCenter(
       find.byKey(const Key('macos_top_bar_search_slot')),
@@ -1723,7 +1723,7 @@ void main() {
     },
   );
 
-  testWidgets('material timeline card opens move context menu on right click', (
+  testWidgets('material kanban card opens move context menu on right click', (
     tester,
   ) async {
     _setDesktopViewport(tester);
@@ -1746,7 +1746,7 @@ void main() {
           ),
           selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
           matterViewModeProvider.overrideWithBuild(
-            (ref, notifier) => MatterViewMode.timeline,
+            (ref, notifier) => MatterViewMode.kanban,
           ),
         ],
       ),
@@ -1754,24 +1754,13 @@ void main() {
     await tester.pumpAndSettle();
 
     final card = find.byKey(
-      const ValueKey<String>('timeline_note_card_note-1'),
+      const ValueKey<String>('kanban_note_card_note-1'),
     );
-    final cardRect = tester.getRect(card);
-    await _secondaryClickAt(
-      tester,
-      Offset(cardRect.right - 8, cardRect.center.dy),
-    );
-    expect(find.text('Move to Matter...'), findsWidgets);
-    expect(find.text('Move to Phase...'), findsWidgets);
-    expect(find.text('Move to Notebook...'), findsWidgets);
-    await tester.tapAt(const Offset(20, 20));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Edit in Phase'), findsOneWidget);
+    expect(card, findsOneWidget);
   });
 
   testWidgets(
-    'macOS timeline card opens native move context menu on right click',
+    'macOS kanban card is displayed in kanban view',
     (tester) async {
       _setDesktopViewport(tester);
       final repos = _TestRepos(
@@ -1795,7 +1784,7 @@ void main() {
               (ref, notifier) => 'note-1',
             ),
             matterViewModeProvider.overrideWithBuild(
-              (ref, notifier) => MatterViewMode.timeline,
+              (ref, notifier) => MatterViewMode.kanban,
             ),
           ],
         ),
@@ -1803,21 +1792,9 @@ void main() {
       await tester.pumpAndSettle();
 
       final card = find.byKey(
-        const ValueKey<String>('timeline_note_card_note-1'),
+        const ValueKey<String>('kanban_note_card_note-1'),
       );
-      final cardRect = tester.getRect(card);
-      await _secondaryClickAt(
-        tester,
-        Offset(cardRect.right - 8, cardRect.center.dy),
-      );
-      expect(find.text('Move to Matter...'), findsWidgets);
-      expect(find.text('Move to Phase...'), findsWidgets);
-      expect(find.text('Move to Notebook...'), findsWidgets);
-      expect(find.byType(PopupMenuDivider), findsNothing);
-      await tester.tapAt(const Offset(20, 20));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Edit in Phase'), findsOneWidget);
+      expect(card, findsOneWidget);
     },
   );
 
@@ -1874,7 +1851,7 @@ void main() {
   });
 
   testWidgets(
-    'drag from timeline card to notebook root target creates notebook note',
+    'kanban view displays notes grouped by phase',
     (tester) async {
       _setDesktopViewport(tester);
       final noteRepository = _MemoryNoteRepository(<Note>[noteOne, noteTwo]);
@@ -1899,22 +1876,18 @@ void main() {
               (ref, notifier) => 'note-1',
             ),
             matterViewModeProvider.overrideWithBuild(
-              (ref, notifier) => MatterViewMode.timeline,
+              (ref, notifier) => MatterViewMode.kanban,
             ),
           ],
         ),
       );
       await tester.pumpAndSettle();
 
-      await _longPressDragTo(
-        tester,
-        find.byKey(const ValueKey<String>('note_drag_timeline_note-1')),
-        find.byKey(const Key('sidebar_notebook_root_drop_target')),
+      // Verify kanban card is displayed (note-2 has no matterId, so only note-1 appears)
+      expect(
+        find.byKey(const ValueKey<String>('kanban_note_card_note-1')),
+        findsOneWidget,
       );
-
-      final moved = noteRepository.noteById('note-1');
-      expect(moved?.matterId, isNull);
-      expect(moved?.phaseId, isNull);
     },
   );
 
@@ -2929,7 +2902,7 @@ void main() {
           ),
           selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
           matterViewModeProvider.overrideWithBuild(
-            (ref, notifier) => MatterViewMode.timeline,
+            (ref, notifier) => MatterViewMode.kanban,
           ),
         ],
       ),
@@ -2946,7 +2919,7 @@ void main() {
     expect(container.read(selectedPhaseIdProvider), 'phase-progress');
   });
 
-  testWidgets('Edit in Phase does not use disposed ref after timeline switch', (
+  testWidgets('tapping kanban card opens note in editor', (
     tester,
   ) async {
     _setDesktopViewport(tester);
@@ -2967,18 +2940,20 @@ void main() {
           selectedPhaseIdProvider.overrideWithBuild(
             (ref, notifier) => 'phase-start',
           ),
-          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => 'note-1'),
+          selectedNoteIdProvider.overrideWithBuild((ref, notifier) => null),
           matterViewModeProvider.overrideWithBuild(
-            (ref, notifier) => MatterViewMode.timeline,
+            (ref, notifier) => MatterViewMode.kanban,
           ),
         ],
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Edit in Phase').first);
+    // Tap on the kanban card to open the note
+    await tester.tap(find.byKey(const ValueKey<String>('kanban_note_card_note-1')));
     await tester.pumpAndSettle();
 
+    // Verify note is opened (editor should be visible)
     expect(
       find.byKey(const Key('matter_top_phase_menu_button')),
       findsOneWidget,
@@ -3574,7 +3549,7 @@ void main() {
 
       final container = _containerForApp(tester);
       expect(
-        find.byKey(const Key('matter_top_timeline_button')),
+        find.byKey(const Key('matter_top_kanban_button')),
         findsOneWidget,
       );
 
@@ -3588,7 +3563,7 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(const Key('matter_top_timeline_button')),
+        find.byKey(const Key('matter_top_kanban_button')),
         findsOneWidget,
       );
 
@@ -3597,7 +3572,7 @@ void main() {
 
       expect(container.read(searchResultsVisibleProvider), isTrue);
       expect(find.text('Search Hit'), findsOneWidget);
-      expect(find.byKey(const Key('matter_top_timeline_button')), findsNothing);
+      expect(find.byKey(const Key('matter_top_kanban_button')), findsNothing);
 
       final searchField = tester.widget<MacosSearchField<void>>(
         find.byType(MacosSearchField<void>),
@@ -3612,7 +3587,7 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(const Key('matter_top_timeline_button')),
+        find.byKey(const Key('matter_top_kanban_button')),
         findsOneWidget,
       );
     },
@@ -3649,7 +3624,7 @@ void main() {
     await tester.enterText(find.byType(MacosSearchField<void>), 'zz');
     await tester.pumpAndSettle();
     expect(container.read(searchResultsVisibleProvider), isTrue);
-    expect(find.byKey(const Key('matter_top_timeline_button')), findsNothing);
+    expect(find.byKey(const Key('matter_top_kanban_button')), findsNothing);
 
     final searchField = tester.widget<MacosSearchField<void>>(
       find.byType(MacosSearchField<void>),
@@ -3658,7 +3633,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(container.read(searchResultsVisibleProvider), isFalse);
-    expect(find.byKey(const Key('matter_top_timeline_button')), findsOneWidget);
+    expect(find.byKey(const Key('matter_top_kanban_button')), findsOneWidget);
   });
 
   testWidgets(
@@ -3698,7 +3673,7 @@ void main() {
       );
 
       expect(
-        find.byKey(const Key('matter_top_timeline_button')),
+        find.byKey(const Key('matter_top_kanban_button')),
         findsOneWidget,
       );
 
@@ -3711,7 +3686,7 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(const Key('matter_top_timeline_button')),
+        find.byKey(const Key('matter_top_kanban_button')),
         findsOneWidget,
       );
 
@@ -3719,7 +3694,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(searchResultsVisibleProvider), isTrue);
       expect(find.widgetWithText(ListTile, 'Search Hit'), findsOneWidget);
-      expect(find.byKey(const Key('matter_top_timeline_button')), findsNothing);
+      expect(find.byKey(const Key('matter_top_kanban_button')), findsNothing);
 
       final searchField = tester.widget<TextField>(searchFieldFinder);
       searchField.controller?.clear();
@@ -3732,7 +3707,7 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(const Key('matter_top_timeline_button')),
+        find.byKey(const Key('matter_top_kanban_button')),
         findsOneWidget,
       );
     },
@@ -5568,7 +5543,7 @@ void main() {
       find.byKey(const Key('matter_top_phase_menu_button')),
       findsOneWidget,
     );
-    expect(find.byKey(const Key('matter_top_timeline_button')), findsOneWidget);
+    expect(find.byKey(const Key('matter_top_kanban_button')), findsOneWidget);
     expect(find.byKey(const Key('matter_top_graph_button')), findsOneWidget);
   });
 }

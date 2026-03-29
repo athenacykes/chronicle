@@ -18,6 +18,15 @@ final selectedMatterIdProvider =
     NotifierProvider<ValueNotifierController<String?>, String?>(
       () => ValueNotifierController<String?>(null),
     );
+
+/// Provider that returns the currently selected Matter, or null if none selected.
+final selectedMatterProvider = Provider<Matter?>((ref) {
+  final matterId = ref.watch(selectedMatterIdProvider);
+  if (matterId == null || matterId.isEmpty) {
+    return null;
+  }
+  return ref.watch(mattersControllerProvider.notifier).findMatter(matterId);
+});
 final selectedPhaseIdProvider =
     NotifierProvider<ValueNotifierController<String?>, String?>(
       () => ValueNotifierController<String?>(null),

@@ -181,6 +181,32 @@ final orphanNotesProvider = FutureProvider<List<Note>>((ref) {
   return ref.watch(noteRepositoryProvider).listOrphanNotes();
 });
 
+/// Provider that groups notes by phase for Kanban view.
+/// Returns a map of phaseId -> list of notes in that phase.
+final kanbanNotesProvider = FutureProvider<Map<String, List<Note>>>((ref) async {
+  final repository = ref.watch(noteRepositoryProvider);
+  final matterId = ref.watch(selectedMatterIdProvider);
+
+  if (matterId == null || matterId.isEmpty) {
+    return <String, List<Note>>{};
+  }
+
+  final notes = await repository.listMatterTimeline(matterId);
+  final grouped = <String, List<Note>>{};
+
+  for (final note in notes) {
+    final phaseId = note.phaseId ?? 'ungrouped';
+    grouped.putIfAbsent(phaseId, () => <Note>[]).add(note);
+  }
+
+  // Sort notes within each phase by creation date (newest first)
+  for (final list in grouped.values) {
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  return grouped;
+});
+
 final notebookFoldersProvider = FutureProvider<List<NotebookFolder>>((ref) {
   return ref.watch(notebookRepositoryProvider).listFolders();
 });
